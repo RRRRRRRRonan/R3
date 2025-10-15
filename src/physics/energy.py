@@ -103,14 +103,12 @@ def calculate_energy_consumption(distance: float = None,
     # 方式1: 使用 config 对象（route.py的调用）
     if config is not None and distance is not None:
         # 计算旅行时间（假设恒定速度2.0 m/s）
-        speed = 2.0  # 可以从 config 扩展获取
+        speed = vehicle_speed if vehicle_speed is not None else 2.0
+        capacity = vehicle_capacity if vehicle_capacity is not None else 150.0
         travel_time = distance / speed
         consumption_rate = config.consumption_rate
-
-        capacity = vehicle_capacity if vehicle_capacity is not None else 150.0
-        
         # 载重影响系数 (载重越大，能耗越高)
-        load_factor = 1.0 + (load / 150.0) * 0.2  # 满载增加20%能耗
+        load_factor = 1.0 + (load / capacity) * 0.2  # 满载增加20%能耗
         
         return consumption_rate * travel_time * load_factor
     
