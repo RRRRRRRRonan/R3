@@ -132,10 +132,10 @@ class TaskNode(Node):
         - t_i^{serv}: 服务时间
         - D_i^w: 需求量
     """
-    task_id: int                           # 所属任务ID
-    time_window: TimeWindow                # 时间窗 [e_i, l_i]
-    service_time: float                    # 服务时间 t_i^{serv}
-    demand: float                          # 需求量（货物重量）
+    task_id: int = 0                         # 所属任务ID
+    time_window: Optional[TimeWindow] = None # 时间窗约束
+    service_time: float = 0.0                # 服务时间 t_i^{serv}
+    demand: float = 0.0                      # 需求量（货物重量）
     
     def __post_init__(self):
         """任务节点合法性检查"""
@@ -199,6 +199,8 @@ class ChargingNode(Node):
     
     # 充电站可以有名称（可选）
     station_name: Optional[str] = None
+
+    charge_amount: float = 0.0  # 本次访问充多少电 (kWh)
     
     def __post_init__(self):
         """充电站节点合法性检查"""
@@ -328,10 +330,10 @@ def create_task_node_pair(task_id: int,
                           delivery_id: int,
                           pickup_coords: Tuple[float, float],
                           delivery_coords: Tuple[float, float],
-                          pickup_time_window: TimeWindow,
-                          delivery_time_window: TimeWindow,
-                          service_time: float = 30.0,
-                          demand: float = 1.0) -> Tuple[TaskNode, TaskNode]:
+                          pickup_time_window: Optional[TimeWindow] = None,
+                          delivery_time_window: Optional[TimeWindow] = None,
+                          demand: float = 10.0,
+                          service_time: float = 60.0) -> Tuple[TaskNode, TaskNode]:
     """
     同时创建配对的pickup和delivery节点
     
@@ -349,14 +351,24 @@ def create_task_node_pair(task_id: int,
             delivery_time_window=TimeWindow(50, 150)
         )
     """
-    pickup = create_pickup_node(
-        pickup_id, pickup_coords, task_id,
-        pickup_time_window, service_time, demand
+    pickup = TaskNode(
+        node_id=pickup_id,
+        node_type=NodeType.PICKUP,
+        coordinates=pickup_coords,
+        task_id=task_id,
+        demand=demand,
+        time_window=pickup_time_window,
+        service_time=service_time
     )
     
-    delivery = create_delivery_node(
-        delivery_id, delivery_coords, task_id,
-        delivery_time_window, service_time, demand
+    delivery = TaskNode(
+        node_id=delivery_id,
+        node_type=NodeType.DELIVERY,
+        coordinates=delivery_coords,
+        task_id=task_id,
+        demand=demand,
+        time_window=delivery_time_window,
+        service_time=service_time
     )
     
     return pickup, delivery

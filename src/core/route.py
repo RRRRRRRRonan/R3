@@ -594,6 +594,204 @@ class Route:
                 lines.append(f"     ⚠ Delay: {visit.get_delay():.1f}s")
         
         return "\n".join(lines)
+    
+        # ========== ALNS操作接口 ==========
+    
+    def copy(self) -> 'Route':
+        """
+        深拷贝路径
+        
+        为什么需要：
+            ALNS的destroy-repair会频繁创建路径的副本
+            因为我们要"试错"——尝试很多种组合，最后选最好的
+            
+        使用场景：
+            temp_route = current_route.copy()
+            temp_route.remove_task(task1)  # 不影响原路径
+        
+        返回：
+            完全独立的Route对象
+        """
+        from copy import deepcopy
+        return deepcopy(self)
+    
+    def insert_task(self, task: Task, position: Tuple[int, int]) -> None:
+        """
+        插入任务到路径
+        
+        参数：
+            task: 要插入的任务（包含pickup和delivery节点）
+            position: (pickup位置索引, delivery位置索引)
+        
+        为什么需要：
+            这是ALNS的Repair操作的核心
+            
+        注意：
+            - pickup必须在delivery之前
+            - 插入后会清空visits（需要重新计算时间表）
+            
+        示例：
+            # 原路径：[Depot, B取, B送, Depot]
+            route.insert_task(taskA, (1, 2))
+            # 新路径：[Depot, A取, A送, B取, B送, Depot]
+        """
+        pickup_pos, delivery_pos = position
+        
+        # 验证位置合法性
+        if pickup_pos < 0 or delivery_pos > len(self.nodes):
+            raise ValueError(f"Invalid insertion position: ({pickup_pos}, {delivery_pos})")
+        
+        if pickup_pos >= delivery_pos:
+            raise ValueError(f"Pickup position must be before delivery: ({pickup_pos}, {delivery_pos})")
+        
+        # 插入pickup节点
+        self.nodes.insert(pickup_pos, task.pickup_node)
+        
+        # 注意：因为pickup已经插入，delivery的位置要+1
+        self.nodes.insert(delivery_pos + 1, task.delivery_node)
+        
+        # 清空计算结果（标记为需要重新计算）
+        self.visits = []
+        self.is_feasible = None
+        self.infeasibility_info = None
+    
+    def remove_task(self, task: Task) -> None:
+        """
+        从路径中移除任务
+        
+        参数：
+            task: 要移除的任务
+            
+        为什么需要：
+            这是ALNS的Destroy操作的核心
+            
+        实现：
+            通过node_id匹配并移除pickup和delivery节点
+            
+        示例：
+            # 原路径：[Depot, A取, A送, B取, B送, Depot]
+            route.remove_task(taskA)
+            # 新路径：[Depot, B取, B送, Depot]
+        """
+        # 获取要移除的节点ID
+        pickup_id = task.pickup_node.node_id
+        delivery_id = task.delivery_node.node_id
+        
+        # 过滤掉这两个节点
+        self.nodes = [
+            node for node in self.nodes 
+            if node.node_id not in [pickup_id, delivery_id]
+        ]
+        
+        # 清空计算结果
+        self.visits = []
+        self.is_feasible = None
+        self.infeasibility_info = None
+    
+    def get_served_tasks(self) -> List[Task]:
+        """
+        获取路径中服务的所有任务ID
+        
+        为什么需要：
+            - ALNS的destroy需要知道有哪些任务可以移除
+            - 统计路径服务了多少任务
+            
+        返回：
+            任务ID列表
+            
+        实现：
+            遍历节点，找出所有pickup节点，提取task_id
+            
+        注意：
+            需要你的TaskNode有task_id属性
+            如果没有，需要先添加（我之前说的Node类修改）
+        """
+        task_ids = []
+        
+        for node in self.nodes:
+            # 只关心pickup节点（每个任务只统计一次）
+            if node.node_type == NodeType.PICKUP:
+                # 从node中提取task_id
+                # 方法1：如果你的TaskNode有task_id属性
+                if hasattr(node, 'task_id'):
+                    task_ids.append(node.task_id)
+                # 方法2：从node_id推算（如果你的编号规则是node_id = task_id）
+                # task_ids.append(node.node_id)
+        
+        return task_ids
+    
+    def insert_charging_visit(self, 
+                             station: ChargingNode, 
+                             position: int,
+                             charge_amount: float) -> None:
+        """
+        插入充电站访问
+        
+        参数:
+            station: 充电站节点
+            position: 插入位置
+            charge_amount: 充电量 (kWh)
+        """
+        # 创建带充电量信息的节点副本
+        charging_node = deepcopy(station)
+        charging_node.charge_amount = charge_amount  # 你需要在ChargingNode添加这个属性
+        
+        self.nodes.insert(position, charging_node)
+        
+        # 标记需要重新计算
+        self.visits = []
+        self.is_feasible = None
+    
+    def find_task_positions(self, task: Task) -> Optional[Tuple[int, int]]:
+        """
+        查找任务在路径中的位置
+        
+        返回:
+            (pickup位置, delivery位置) 或 None
+        """
+        pickup_pos = None
+        delivery_pos = None
+        
+        for i, node in enumerate(self.nodes):
+            if node.node_id == task.pickup_node.node_id:
+                pickup_pos = i
+            elif node.node_id == task.delivery_node.node_id:
+                delivery_pos = i
+        
+        if pickup_pos is not None and delivery_pos is not None:
+            return (pickup_pos, delivery_pos)
+        return None
+    
+    def calculate_insertion_cost_delta(self,
+                                       task: Task,
+                                       position: Tuple[int, int],
+                                       distance_matrix: DistanceMatrix) -> float:
+        """
+        计算插入任务的距离增量（不实际插入）
+        
+        这是ALNS最常用的方法！
+        
+        参数:
+            task: 待插入任务
+            position: (pickup位置, delivery位置)
+            distance_matrix: 距离矩阵
+        
+        返回:
+            距离增量 (m)
+        """
+        pickup_pos, delivery_pos = position
+        
+        # 原始距离
+        original_distance = self.calculate_total_distance(distance_matrix)
+        
+        # 创建临时路径
+        temp_route = self.copy()
+        temp_route.insert_task(task, position)
+        
+        # 新距离
+        new_distance = temp_route.calculate_total_distance(distance_matrix)
+        
+        return new_distance - original_distance
 
 
 # ========== 便捷构造函数 ==========
