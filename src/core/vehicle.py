@@ -353,6 +353,14 @@ class Vehicle:
             f"  Route: {self.route is not None}"
         )
 
+    def get_remaining_capacity(self) -> float:
+        """获取剩余容量（ALNS计算插入可行性时用）"""
+        return self.capacity - self.current_load
+    
+    def get_remaining_battery(self) -> float:
+        """获取剩余电量（ALNS计算充电需求时用）"""
+        return self.current_battery
+
 
 # ========== 车队管理器 ==========
 
