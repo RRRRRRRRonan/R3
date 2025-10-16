@@ -68,11 +68,12 @@ def test_alns_optimization():
     # 创建场景
     initial_route, task_pool = create_test_scenario()
     
-    # 创建距离矩阵
-    # 先收集所有节点
+    # 创建距离矩阵（直接使用底层构造函数）
+    from physics.distance import DistanceMatrix
     all_nodes = initial_route.nodes
     coords = {node.node_id: node.coordinates for node in all_nodes}
-    distance_matrix = create_distance_matrix_from_layout(coords)
+
+    distance_matrix = DistanceMatrix(coordinates=coords, num_tasks=5, num_charging_stations=0)
     
     # 初始成本
     initial_cost = initial_route.calculate_total_distance(distance_matrix)

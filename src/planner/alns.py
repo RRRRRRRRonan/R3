@@ -67,7 +67,7 @@ class MinimalALNS:
             # 2. Repair:贪心重新插入
             # 注意：这里需要传入task_pool以获取Task对象
             # 先简化：假设我们能从route中恢复Task信息
-            candidate_route = self.greedy_insertion(destroyed_route, removed_task_ids, task_pool=None)
+            candidate_route = self.greedy_insertion(destroyed_route, removed_task_ids)
             # 3. 评估新解成本
             candidate_cost = self.evaluate_cost(candidate_route)
             current_cost = self.evaluate_cost(current_route)
@@ -106,6 +106,7 @@ class MinimalALNS:
         destroyed_route = route.copy()
         for task_id in removed_task_ids:
             task = self.task_pool.get_task(task_id)  # 从任务池获取Task对象
+            destroyed_route.remove_task(task)
         return destroyed_route, removed_task_ids
     
     def greedy_insertion(self, 
@@ -136,7 +137,7 @@ class MinimalALNS:
                 #delivery必须在pickup之后
                 for delivery_pos in range(pickup_pos + 1, num_nodes + 1):
                     # 计算插入这个位置的成本增量
-                    cost_delta = self.calculate_insertion_cost(
+                    cost_delta = self._calculate_insertion_cost(
                         repaired_route, task, pickup_pos, delivery_pos
                     )
                     if cost_delta < best_cost:
