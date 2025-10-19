@@ -14,6 +14,7 @@ sys.path.append('src')
 from core.route import Route
 from core.task import Task
 from core.vehicle import Vehicle
+from physics.energy import EnergyConfig
 from physics.distance import DistanceMatrix
 
 class MinimalALNS:
@@ -132,7 +133,9 @@ class MinimalALNS:
     
     def greedy_insertion(self, 
                         route: Route, 
-                        removed_task_ids: List[int]) -> Route:
+                        removed_task_ids: List[int], 
+                        vehicle: Vehicle = None, 
+                        energy_config: EnergyConfig = None) -> Route:
         """
         Repair算子：贪心插入移除的任务
         
@@ -143,30 +146,74 @@ class MinimalALNS:
         
         返回：
             修复后的路径
+
+        贪心插入修复 + 充电检查
+        新增功能：
+        - 检查电量可行性
+        - 必要时插入充电站
         """
         repaired_route = route.copy()
+        remaining_tasks = removed_task_ids.copy()
 
-        # 对每个被移除的任务
-        for task_id in removed_task_ids: 
-            task = self.task_pool.get_task(task_id)  # 从任务池获取Task对象
+        # 如果没有车辆和能量配置，使用默认值
+        if vehicle is None:
+            from core.vehicle import create_vehicle
+            vehicle = create_vehicle(1, battery_capacity=100.0)
+
+        if energy_config is None:
+            energy_config = EnergyConfig()
+
+        while remaining_tasks:
+            best_task_id = None
             best_cost = float('inf')
             best_position = None
-            # 尝试所有可能的插入位置
-            num_nodes = len(repaired_route.nodes)
-            #pickup可以插在任意位置 （除了第一个depot）
-            for pickup_pos in range(1, num_nodes):
-                #delivery必须在pickup之后
-                for delivery_pos in range(pickup_pos + 1, num_nodes + 1):
-                    # 计算插入这个位置的成本增量
-                    cost_delta = self._calculate_insertion_cost(
-                        repaired_route, task, pickup_pos, delivery_pos
-                    )
-                    if cost_delta < best_cost:
-                        best_cost = cost_delta
-                        best_position = (pickup_pos, delivery_pos)
-            # 执行最优插入
-            if best_position:
+            best_charging_plan = None
+
+            # 对每个被移除的任务
+            for task_id in remaining_tasks: 
+                task = self.task_pool.get_task(task_id)  # 从任务池获取Task对象
+                for pickup_pos in range(1, len(repaired_route.nodes)):
+                    for delivery_pos in range(pickup_pos + 1, len(repaired_route.nodes) + 1):
+                        # 计算插入这个位置的成本增量
+                        cost_delta = repaired_route.calculate_insertion_code(
+                            task,
+                            (pickup_pos, delivery_pos),
+                            self.distance   
+                        )
+
+                        feasible, charging_plan = repaired_route.check_feasibility_with_insertion(
+                            task,
+                            (pickup_pos, delivery_pos),
+                            vehicle,
+                            energy_config,
+                            self.distance
+                        )
+
+                        if charging_plan: 
+                            charging_cost = len(charging_plan) * 50.0  # 假设每次充电停留成本50m
+                            cost_delta += charging_cost
+                        if feasible and cost_delta < best_cost:
+                            best_cost = cost_delta
+                            best_task_id = task_id
+                            best_position = (pickup_pos, delivery_pos)
+                            best_charging_plan = charging_plan
+            if best_task_id is not None:
+                task = self.task_pool.get_task(best_task_id)
+                # 先插入任务
                 repaired_route.insert_task(task, best_position)
+
+                if best_charging_plan:
+                    for charge_plan in best_charging_plan:
+                        repaired_route.insert_charging_visit(
+                            station=charge_plan['station_node'], 
+                            position=charge_plan['position'],
+                            charge_amount=charge_plan['amount']
+                        )
+                remaining_tasks.remove(best_task_id)
+            else:
+                # 没有可行插入（理论上不应该发生）
+                break
+
         return repaired_route
     
     def _calculate_insertion_cost(self, route: Route, task: Task, pickup_pos: int, delivery_pos: int) -> float:

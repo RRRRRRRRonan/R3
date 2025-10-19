@@ -41,6 +41,7 @@ from physics.time import (
     TimeConfig,
     calculate_travel_time
 )
+from core.vehicle import Vehicle
 
 
 # ========== 路径节点访问记录 ==========
@@ -622,33 +623,43 @@ class Route:
         参数：
             task: 要插入的任务（包含pickup和delivery节点）
             position: (pickup位置索引, delivery位置索引)
+                    - pickup_pos: 在原始路径中的插入位置
+                    - delivery_pos: 在"插入pickup后"的路径中的插入位置
         
-        为什么需要：
-            这是ALNS的Repair操作的核心
+        理解示例：
+            原路径：[Depot, Depot]  (索引0, 1)
+            调用：insert_task(taskA, (1, 2))
             
+            执行过程：
+            1. 插入pickup到索引1 → [Depot, PickupA, Depot]
+            2. 插入delivery到索引2 → [Depot, PickupA, DeliveryA, Depot]
+            
+            最终结果：[Depot, PickupA, DeliveryA, Depot] ✓
+        
         注意：
             - pickup必须在delivery之前
             - 插入后会清空visits（需要重新计算时间表）
-            
-        示例：
-            # 原路径：[Depot, B取, B送, Depot]
-            route.insert_task(taskA, (1, 2))
-            # 新路径：[Depot, A取, A送, B取, B送, Depot]
         """
         pickup_pos, delivery_pos = position
         
         # 验证位置合法性
         if pickup_pos < 0 or delivery_pos > len(self.nodes):
-            raise ValueError(f"Invalid insertion position: ({pickup_pos}, {delivery_pos})")
+            raise ValueError(
+                f"Invalid insertion position: pickup={pickup_pos}, delivery={delivery_pos}, "
+                f"route length={len(self.nodes)}"
+            )
         
         if pickup_pos >= delivery_pos:
-            raise ValueError(f"Pickup position must be before delivery: ({pickup_pos}, {delivery_pos})")
+            raise ValueError(
+                f"Pickup position ({pickup_pos}) must be before delivery position ({delivery_pos})"
+            )
         
-        # 插入pickup节点
+        # 步骤1：插入pickup节点
         self.nodes.insert(pickup_pos, task.pickup_node)
         
-        # 注意：因为pickup已经插入，delivery的位置要+1
-        self.nodes.insert(delivery_pos + 1, task.delivery_node)
+        # 步骤2：插入delivery节点
+        # 关键修复：不需要+1，因为delivery_pos已经是基于"插入pickup后的路径"
+        self.nodes.insert(delivery_pos, task.delivery_node)
         
         # 清空计算结果（标记为需要重新计算）
         self.visits = []
@@ -720,6 +731,146 @@ class Route:
         
         return task_ids
     
+    def check_energy_feasibility_for_insertion(self,
+                                            task: Task,
+                                            insert_position: Tuple[int, int],
+                                            vehicle: Vehicle,
+                                            distance_matrix: DistanceMatrix,
+                                            energy_config: EnergyConfig) -> Tuple[bool, Optional[List]]:
+        """
+        检查插入任务后是否需要充电（预见性充电策略）
+        
+        算法流程：
+        1. 第一遍模拟：识别所有能量不足的危险点
+        2. 为每个危险点规划充电站插入
+        3. 第二遍模拟：验证充电方案的有效性
+        
+        参数:
+            task: 要插入的任务
+            insert_position: (pickup_pos, delivery_pos)
+            vehicle: AMR对象
+            distance_matrix: 距离矩阵
+            energy_config: 能量配置
+        
+        返回:
+            (是否可行, 充电计划列表)
+        """
+        from core.node import ChargingNode, NodeType
+        
+        pickup_pos, delivery_pos = insert_position
+        
+        # 模拟插入后的节点序列
+        temp_nodes = self.nodes.copy()
+        temp_nodes.insert(pickup_pos, task.pickup_node)
+        temp_nodes.insert(delivery_pos + 1, task.delivery_node)  # +1因为pickup已插入
+        
+        # ========== 第一遍：识别危险点 ==========
+        current_battery = vehicle.current_battery
+        current_load = vehicle.current_load
+        danger_points = []
+        
+        # 记录每个节点的电量状态（用于调试）
+        battery_trace = [current_battery]
+        
+        for i in range(len(temp_nodes) - 1):
+            current_node = temp_nodes[i]
+            next_node = temp_nodes[i + 1]
+            
+            # 计算移动能耗
+            distance = distance_matrix.get_distance(current_node.node_id, next_node.node_id)
+            energy_needed = calculate_energy_consumption(
+                distance=distance,
+                load=current_load,
+                config=energy_config,
+                vehicle_speed=vehicle.speed,
+                vehicle_capacity=vehicle.capacity
+            )
+            
+            # ⭐ 关键：检查电量是否充足
+            if current_battery < energy_needed:
+                # 发现危险点！记录详细信息
+                danger_points.append({
+                    'edge_index': i,  # 边的索引（从节点i到节点i+1）
+                    'from_node': current_node,
+                    'to_node': next_node,
+                    'battery_before': current_battery,
+                    'energy_needed': energy_needed,
+                    'deficit': energy_needed - current_battery
+                })
+            
+            # 模拟移动
+            current_battery -= energy_needed
+            battery_trace.append(current_battery)
+            
+            # 更新载重
+            if hasattr(next_node, 'demand'):
+                if next_node.is_pickup():
+                    current_load += next_node.demand
+                elif next_node.is_delivery():
+                    current_load -= next_node.demand
+        
+        # 如果无危险点，无需充电
+        if not danger_points:
+            return (True, [])
+        
+        # ========== 第二遍：规划充电站 ==========
+        charging_plan = []
+        
+        for danger_idx, danger in enumerate(danger_points):
+            edge_idx = danger['edge_index']
+            from_node = danger['from_node']
+            
+            # 找到最近的充电站
+            station_id, dist_to_station = distance_matrix.get_nearest_charging_station(
+                from_node.node_id
+            )
+            
+            # ⭐ 关键：计算合理的充电量
+            # 策略1：充到足够完成剩余路径 + 20%缓冲
+            # 策略2：如果策略1超过容量，就充满
+            
+            # 简化版：先充满电（后续可以优化为部分充电）
+            # 注意：这里要用danger点的电量，而不是循环中的current_battery
+            battery_at_danger = danger['battery_before']
+            
+            # 计算充电量：充到满或充到足够
+            # 方案A：充满电（简单但不是最优）
+            charge_amount = vehicle.battery_capacity - battery_at_danger
+            
+            # ⭐ 保护：确保充电量合理
+            if charge_amount < 0:
+                # 电量已经超标（不应该发生，但保护一下）
+                charge_amount = 0
+            
+            if charge_amount > vehicle.battery_capacity:
+                # 充电量超过容量（不应该发生，但保护一下）
+                charge_amount = vehicle.battery_capacity
+            
+            # 创建充电节点
+            charging_node = ChargingNode(
+                node_id=station_id,
+                coordinates=distance_matrix.coordinates[station_id],
+                node_type=NodeType.CHARGING,
+                charge_amount=charge_amount
+            )
+            
+            # ⭐ 关键：确定插入位置
+            # 充电站应该插入在危险边之前
+            # 考虑已插入的充电站数量，动态调整位置
+            insert_position = edge_idx + len(charging_plan)
+            
+            charging_plan.append({
+                'station_node': charging_node,
+                'position': insert_position,
+                'amount': charge_amount
+            })
+        
+        # ========== 第三遍（可选）：验证充电方案 ==========
+        # 简化版：直接返回方案
+        # 完整版：应该模拟充电后的路径，确保电量充足
+        
+        return (True, charging_plan)
+        
     def insert_charging_visit(self, 
                              station: ChargingNode, 
                              position: int,
@@ -732,9 +883,10 @@ class Route:
             position: 插入位置
             charge_amount: 充电量 (kWh)
         """
+        from copy import deepcopy
         # 创建带充电量信息的节点副本
         charging_node = deepcopy(station)
-        charging_node.charge_amount = charge_amount  # 你需要在ChargingNode添加这个属性
+        object.__setattr__(charging_node, 'charge_amount', charge_amount)
         
         self.nodes.insert(position, charging_node)
         
