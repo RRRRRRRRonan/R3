@@ -11,9 +11,10 @@ from core.node import create_depot, create_task_node_pair
 from core.task import create_task, TaskPool
 from core.route import Route
 from core.vehicle import create_vehicle
-from physics.distance import create_distance_matrix_from_layout
+from physics.distance import create_distance_matrix_from_layout, DistanceMatrix
 from physics.time import TimeWindow
 from planner.alns import MinimalALNS
+import random
 
 
 def create_test_scenario():
@@ -82,7 +83,7 @@ def test_alns_optimization():
     
     # 运行ALNS
     alns = MinimalALNS(distance_matrix, task_pool)
-    optimized_route = alns.optimize(initial_route, max_iterations=100)
+    optimized_route = alns.optimize(initial_route, max_iterations=300)
     
     # 优化后成本
     final_cost = optimized_route.calculate_total_distance(distance_matrix)
@@ -97,6 +98,47 @@ def test_alns_optimization():
     assert final_cost <= initial_cost, "ALNS应该改进或保持成本不变"
     print("\n✓ ALNS优化测试通过！")
 
+def test_stability():
+    """测试ALNS稳定性"""
+    results = []
+    
+    for run in range(10):
+        # 设置不同的随机种子
+        random.seed(run)
+        
+        initial_route, task_pool = create_test_scenario()
+        distance_matrix = DistanceMatrix(
+            coordinates={node.node_id: node.coordinates for node in initial_route.nodes},
+            num_tasks=5,
+            num_charging_stations=0
+        )
+        
+        initial_cost = initial_route.calculate_total_distance(distance_matrix)
+        
+        alns = MinimalALNS(distance_matrix, task_pool, repair_mode='greedy')  # 可修改，测试不同模式 （greedy or regret-2）
+        optimized_route = alns.optimize(initial_route, max_iterations=300)
+        
+        final_cost = optimized_route.calculate_total_distance(distance_matrix)
+        improvement = (initial_cost - final_cost) / initial_cost * 100
+        
+        results.append({
+            'run': run,
+            'initial': initial_cost,
+            'final': final_cost,
+            'improvement': improvement
+        })
+        
+        print(f"Run {run+1}: {improvement:.1f}% improvement")
+    
+    # 统计分析
+    import numpy as np
+    improvements = [r['improvement'] for r in results]
+    print(f"\n统计结果:")
+    print(f"  平均改进: {np.mean(improvements):.1f}%")
+    print(f"  标准差: {np.std(improvements):.1f}%")
+    print(f"  最好: {np.max(improvements):.1f}%")
+    print(f"  最差: {np.min(improvements):.1f}%")
+
 
 if __name__ == "__main__":
-    test_alns_optimization()
+    test_stability()
