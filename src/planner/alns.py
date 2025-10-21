@@ -13,7 +13,7 @@ sys.path.append('src')
 
 from core.route import Route
 from core.task import Task
-from core.vehicle import Vehicle
+from core.vehicle import Vehicle, create_vehicle
 from physics.energy import EnergyConfig
 from physics.distance import DistanceMatrix
 
@@ -109,111 +109,148 @@ class MinimalALNS:
     def random_removal(self, route: Route, q: int = 2) -> Tuple[Route, List[int]]:
         """
         Destroy算子：随机移除q个任务
-        
-        参数：
-            route: 当前路径
-            q: 移除任务数量
-        
-        返回：
-            (破坏后的路径, 被移除的任务ID列表)
         """
-        # 获取当前路径中的任务ID
         task_ids = route.get_served_tasks()
-        # 如果任务数太少，减少移除数量
+        
+        # ⭐ 关键修复：确保移除数量不超过现有任务数
         if len(task_ids) < q:
-            q = max(1, len(task_ids) - 1)
-        # 随机选择q个任务
+            q = max(1, len(task_ids))  # 至少移除1个，最多移除全部
+        
+        # ⭐ 如果任务数为0，直接返回空列表
+        if len(task_ids) == 0:
+            return route.copy(), []
+        
         removed_task_ids = random.sample(task_ids, q)
-        # 复制路径并移除任务
+        
         destroyed_route = route.copy()
         for task_id in removed_task_ids:
-            task = self.task_pool.get_task(task_id)  # 从任务池获取Task对象
+            task = self.task_pool.get_task(task_id)
             destroyed_route.remove_task(task)
+        
         return destroyed_route, removed_task_ids
     
-    def greedy_insertion(self, 
-                        route: Route, 
-                        removed_task_ids: List[int], 
-                        vehicle: Vehicle = None, 
-                        energy_config: EnergyConfig = None) -> Route:
+    def greedy_insertion(self, route: Route, removed_task_ids: List[int]) -> Route:
         """
-        Repair算子：贪心插入移除的任务
-        
-        参数：
-            route: 被破坏的路径
-            removed_task_ids: 需要重新插入的任务ID
-            task_pool: 任务池（用于获取Task对象）
-        
-        返回：
-            修复后的路径
+        贪心插入算子 + 充电支持
 
-        贪心插入修复 + 充电检查
-        新增功能：
-        - 检查电量可行性
-        - 必要时插入充电站
+        策略：
+        1. 对每个任务，找到成本最小的插入位置
+        2. 如果需要充电，在总成本中加入充电惩罚
+        3. 插入成本 = 距离增量 + 充电惩罚
         """
+        from core.vehicle import create_vehicle
+        from physics.energy import EnergyConfig
+        
         repaired_route = route.copy()
-        remaining_tasks = removed_task_ids.copy()
+        
+        # 需要vehicle和energy_config参数
+        if not hasattr(self, 'vehicle') or self.vehicle is None:
+            raise ValueError("必须设置vehicle属性才能进行充电约束规划")
+        if not hasattr(self, 'energy_config') or self.energy_config is None:
+            raise ValueError("必须设置energy_config属性才能进行充电约束规划")
 
-        # 如果没有车辆和能量配置，使用默认值
-        if vehicle is None:
-            from core.vehicle import create_vehicle
-            vehicle = create_vehicle(1, battery_capacity=100.0)
+        vehicle = self.vehicle
+        energy_config = self.energy_config
 
-        if energy_config is None:
-            energy_config = EnergyConfig()
-
-        while remaining_tasks:
-            best_task_id = None
+        print(f"\n🔧 [DEBUG] Greedy Insertion 开始")
+        print(f"  当前路径节点数: {len(repaired_route.nodes)}")
+        print(f"  需要插入的任务: {removed_task_ids}")
+        print(f"  使用的电池容量: {vehicle.battery_capacity}kWh")
+        
+        successfully_inserted = []
+        failed_to_insert = []
+        
+        for task_id in removed_task_ids:
+            task = self.task_pool.get_task(task_id)
+            
             best_cost = float('inf')
             best_position = None
             best_charging_plan = None
 
-            # 对每个被移除的任务
-            for task_id in remaining_tasks: 
-                task = self.task_pool.get_task(task_id)  # 从任务池获取Task对象
-                for pickup_pos in range(1, len(repaired_route.nodes)):
-                    for delivery_pos in range(pickup_pos + 1, len(repaired_route.nodes) + 1):
-                        # 计算插入这个位置的成本增量
-                        cost_delta = repaired_route.calculate_insertion_code(
-                            task,
-                            (pickup_pos, delivery_pos),
-                            self.distance   
-                        )
+            feasible_positions_count = 0
+            total_positions_checked = 0
+            
+            # 遍历所有可能的插入位置
+            for pickup_pos in range(1, len(repaired_route.nodes)):
+                for delivery_pos in range(pickup_pos + 1, len(repaired_route.nodes) + 1):
+                    total_positions_checked += 1
 
-                        feasible, charging_plan = repaired_route.check_feasibility_with_insertion(
-                            task,
-                            (pickup_pos, delivery_pos),
-                            vehicle,
-                            energy_config,
-                            self.distance
-                        )
+                    # 1️⃣ 计算基础插入成本（距离）
+                    cost_delta = repaired_route.calculate_insertion_cost_delta(
+                        task, 
+                        (pickup_pos, delivery_pos),
+                        self.distance
+                    )
+                    
+                    # 2️⃣ 检查能量可行性和充电需求
+                    feasible, charging_plan = repaired_route.check_energy_feasibility_for_insertion(
+                        task,
+                        (pickup_pos, delivery_pos),
+                        vehicle,
+                        self.distance,
+                        energy_config
+                    )
 
-                        if charging_plan: 
-                            charging_cost = len(charging_plan) * 50.0  # 假设每次充电停留成本50m
-                            cost_delta += charging_cost
-                        if feasible and cost_delta < best_cost:
-                            best_cost = cost_delta
-                            best_task_id = task_id
-                            best_position = (pickup_pos, delivery_pos)
-                            best_charging_plan = charging_plan
-            if best_task_id is not None:
-                task = self.task_pool.get_task(best_task_id)
-                # 先插入任务
+                    if feasible:
+                        feasible_positions_count += 1
+                    
+                    if not feasible:
+                        continue  # 这个位置不可行，跳过
+                    
+                    # 3️⃣ 如果需要充电，增加充电成本
+                    if charging_plan:
+                        # 每个充电站的惩罚成本
+                        # 这个值可以调整，代表充电的综合成本（时间、绕路、运营中断等）
+                        charging_penalty_per_station = 100.0  # 相当于100米的距离成本
+                    
+                        total_charging_penalty = len(charging_plan) * charging_penalty_per_station
+                        cost_delta += total_charging_penalty
+                    
+                    # 4️⃣ 更新最佳方案
+                    if cost_delta < best_cost:
+                        best_cost = cost_delta
+                        best_position = (pickup_pos, delivery_pos)
+                        best_charging_plan = charging_plan
+            
+            print(f"\n  任务 {task_id} 分析:")
+            print(f"    检查的位置数: {total_positions_checked}")
+            print(f"    可行的位置数: {feasible_positions_count}")
+
+            if best_position is not None:
+                print(f"    ✅ 找到最佳位置: {best_position}")
+                print(f"    插入成本: {best_cost:.2f}")
+                if best_charging_plan:
+                    print(f"    🔋 需要充电: {len(best_charging_plan)}个充电站")
+                    for i, plan in enumerate(best_charging_plan):
+                        print(f"      充电站{i+1}: 位置{plan['position']}, 充电{plan['amount']:.2f}kWh")
+                else:
+                    print(f"    🔋 不需要充电")
+                
                 repaired_route.insert_task(task, best_position)
 
+                # 从后往前插入充电站（避免位置偏移）
                 if best_charging_plan:
-                    for charge_plan in best_charging_plan:
+                    sorted_plans = sorted(best_charging_plan, key=lambda x: x['position'], reverse=True)
+                    for plan in sorted_plans:
                         repaired_route.insert_charging_visit(
-                            station=charge_plan['station_node'], 
-                            position=charge_plan['position'],
-                            charge_amount=charge_plan['amount']
+                            station=plan['station_node'],
+                            position=plan['position'],
+                            charge_amount=plan['amount']
                         )
-                remaining_tasks.remove(best_task_id)
+                
+                successfully_inserted.append(task_id)
             else:
-                # 没有可行插入（理论上不应该发生）
-                break
-
+                print(f"    ❌ 无法找到可行的插入位置！")
+                failed_to_insert.append(task_id)
+        
+        print(f"\n  插入总结:")
+        print(f"    成功插入: {successfully_inserted}")
+        print(f"    插入失败: {failed_to_insert}")
+        print(f"    最终路径节点数: {len(repaired_route.nodes)}")
+        
+        if failed_to_insert:
+            print(f"\n⚠️  警告：有 {len(failed_to_insert)} 个任务无法插入！")
+            print(f"   失败的任务: {failed_to_insert}")
         return repaired_route
     
     def _calculate_insertion_cost(self, route: Route, task: Task, pickup_pos: int, delivery_pos: int) -> float:
@@ -232,15 +269,23 @@ class MinimalALNS:
     
     def evaluate_cost(self, route: Route) -> float:
         """
-        评估路径成本（目前只考虑距离）
+        评估路径成本
         
-        参数：
-            route: 路径
-        
-        返回：
-            成本值（越小越好）
+        成本 = 距离 + 任务丢失惩罚
         """
-        return route.calculate_total_distance(self.distance)
+        # 基础距离成本
+        distance_cost = route.calculate_total_distance(self.distance)
+        
+        # 任务完整性检查
+        served_tasks = set(route.get_served_tasks())
+        all_tasks = self.task_pool.get_all_tasks()
+        expected_tasks = set(task.task_id for task in all_tasks)
+        missing_tasks = expected_tasks - served_tasks
+        
+        # 每个丢失的任务，施加巨大惩罚（比如10000米）
+        missing_penalty = len(missing_tasks) * 10000.0
+        
+        return distance_cost + missing_penalty
     
     def accept_solution(self, 
                        new_cost: float, 
@@ -268,7 +313,7 @@ class MinimalALNS:
                       route: Route, 
                       removed_task_ids: List[int]) -> Route:
         """
-        Regret-2插入算子：防止贪心的短视
+        Regret-2插入算子+充电支持：防止贪心的短视
         
         核心思想：
         优先插入"后悔值"大的任务，即如果现在不插入，
@@ -283,66 +328,99 @@ class MinimalALNS:
         """
         repaired_route = route.copy()
         remaining_tasks = removed_task_ids.copy()
+
+        if not hasattr(self, 'vehicle') or self.vehicle is None:
+            raise ValueError("必须设置vehicle属性才能进行充电约束规划")
+        if not hasattr(self, 'energy_config') or self.energy_config is None:
+            raise ValueError("必须设置energy_config属性才能进行充电约束规划")
+
+        vehicle = self.vehicle
+        energy_config = self.energy_config
         
         # 迭代插入，每次选择regret值最大的任务
         while remaining_tasks:
             best_regret = -float('inf')  # 找最大regret
             best_task_id = None
             best_position = None
+            best_charging_plan = None
             
             # 对每个剩余任务，计算其regret值
             for task_id in remaining_tasks:
                 task = self.task_pool.get_task(task_id)
                 
-                # 找到该任务的最优和次优插入位置
-                insertion_costs = []  # 存储所有可能的插入成本
-                
-                num_nodes = len(repaired_route.nodes)
-                
+                # 存储所有插入位置的成本
+                feasible_insertions = []
+
                 # 遍历所有可能的插入位置
-                for pickup_pos in range(1, num_nodes):
-                    for delivery_pos in range(pickup_pos + 1, num_nodes + 1):
+                for pickup_pos in range(1, len(repaired_route.nodes)):
+                    for delivery_pos in range(pickup_pos + 1, len(repaired_route.nodes) + 1):
                         cost_delta = repaired_route.calculate_insertion_cost_delta(
                             task, 
                             (pickup_pos, delivery_pos),
                             self.distance
                         )
-                        insertion_costs.append({
+                        # 检查能量可行性
+                        feaasible, charging_plan = repaired_route.check_energy_feasibility_for_insertion(
+                            task,
+                            (pickup_pos, delivery_pos),
+                            vehicle,
+                            self.distance,
+                            energy_config
+                        )
+                        if not feaasible:
+                            continue  # 不可行，跳过
+
+                        # 加入充电成本
+                        if charging_plan:
+                            cost_delta += len(charging_plan) * 50.0  # 充电惩罚
+                        feasible_insertions.append({
                             'cost': cost_delta,
-                            'position': (pickup_pos, delivery_pos)
+                            'position': (pickup_pos, delivery_pos),
+                            'charging_plan': charging_plan
                         })
                 
-                # 按成本排序
-                insertion_costs.sort(key=lambda x: x['cost'])
-                
                 # 计算regret值
-                if len(insertion_costs) >= 2:
-                    c1 = insertion_costs[0]['cost']  # 最优
-                    c2 = insertion_costs[1]['cost']  # 次优
-                    regret = c2 - c1  # regret-2值
+                if len(feasible_insertions) >= 2:
+                    # 按成本排序
+                    feasible_insertions.sort(key=lambda x: x['cost'])
                     
-                    # 更新最大regret的任务
+                    best_cost = feasible_insertions[0]['cost']
+                    second_best_cost = feasible_insertions[1]['cost']
+                    
+                    regret = second_best_cost - best_cost  # regret值
+                    
                     if regret > best_regret:
                         best_regret = regret
                         best_task_id = task_id
-                        best_position = insertion_costs[0]['position']
+                        best_position = feasible_insertions[0]['position']
+                        best_charging_plan = feasible_insertions[0]['charging_plan']
                 
-                elif len(insertion_costs) == 1:
-                    # 只有一个可行位置，regret为无穷大（必须插这里）
-                    regret = float('inf')
-                    if regret > best_regret:
-                        best_regret = regret
+                elif len(feasible_insertions) == 1:
+                    # 只有一个可行位置，regret = 无穷大（优先插入）
+                    if best_regret < float('inf'):
+                        best_regret = float('inf')
                         best_task_id = task_id
-                        best_position = insertion_costs[0]['position']
+                        best_position = feasible_insertions[0]['position']
+                        best_charging_plan = feasible_insertions[0]['charging_plan']
             
-            # 插入选中的任务
-            if best_task_id is not None:
+            # 插入regret值最大的任务
+            if best_task_id:
                 task = self.task_pool.get_task(best_task_id)
                 repaired_route.insert_task(task, best_position)
+                
+                if best_charging_plan:
+                    sorted_plans = sorted(best_charging_plan,
+                                        key=lambda x: x['position'],
+                                        reverse=True)
+                    for plan in sorted_plans:
+                        repaired_route.insert_charging_visit(
+                            station=plan['station_node'],
+                            position=plan['position'],
+                            charge_amount=plan['amount']
+                        )
+                
                 remaining_tasks.remove(best_task_id)
             else:
-                # 没有可行插入（理论上不应该发生）
-                break
+                break  # 无可行插入
         
         return repaired_route
-            
