@@ -187,7 +187,7 @@ def test_alns_with_charging_comprehensive():
     
     random.seed(42)  # 固定随机种子便于复现
     
-    alns = MinimalALNS(distance_matrix, task_pool, repair_mode='greedy')
+    alns = MinimalALNS(distance_matrix, task_pool, repair_mode='greedy') #设置repair_mode的格式
     
     # 🔧 关键：必须设置这两个属性！
     alns.vehicle = vehicle
