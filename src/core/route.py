@@ -739,12 +739,7 @@ class Route:
                                             energy_config: EnergyConfig,
                                             debug: bool = False) -> Tuple[bool, Optional[List]]:
         """
-        检查插入任务后的能量可行性（最终修复版）
-        
-        关键修复：
-            修复了 delivery 插入位置的计算错误
-            原来是 delivery_pos + 1，导致 delivery 被插入到错误位置
-            现在改为直接使用 delivery_pos
+        检查插入任务后的能量可行性（修复版）
         
         参数:
             task: 要插入的任务
@@ -761,139 +756,69 @@ class Route:
         
         pickup_pos, delivery_pos = insert_position
         
-        # 关键参数
-        SOC_SAFE = 0.30  # 30%安全阈值
-        MAX_ITERATIONS = 3  # 最多3次迭代
-        
-        # 🔧 关键修复：构建临时路径
+        # 构建临时路径
         temp_nodes = self.nodes.copy()
-        
-        if debug:
-            print(f"\n🔧 构建临时路径：")
-            print(f"  原始路径: {[n.node_id for n in temp_nodes]}")
-            print(f"  插入位置: pickup={pickup_pos}, delivery={delivery_pos}")
-        
-        # 插入 pickup
         temp_nodes.insert(pickup_pos, task.pickup_node)
-        
-        if debug:
-            print(f"  插入pickup后: {[n.node_id for n in temp_nodes]}")
-        
-        # 🔧 关键修复：直接使用 delivery_pos，不要 +1
         temp_nodes.insert(delivery_pos, task.delivery_node)
         
-        if debug:
-            print(f"  插入delivery后: {[n.node_id for n in temp_nodes]}")
-        
         charging_plan = []
+        MAX_ITERATIONS = 5
         
         for iteration in range(MAX_ITERATIONS):
-            if debug:
-                print(f"\n🔄 迭代 {iteration + 1}/{MAX_ITERATIONS}")
-            
-            # 从头模拟整条路径
-            current_battery = vehicle.current_battery
-            current_load = vehicle.current_load
-            
-            critical_position = -1  # 需要充电的位置
+            current_battery = vehicle.battery_capacity  # 满电出发
+            current_load = 0.0
+            critical_position = -1
             critical_node = None
             
+            # 模拟整条路径
             for i in range(len(temp_nodes) - 1):
                 current_node = temp_nodes[i]
                 next_node = temp_nodes[i + 1]
                 
                 # 在充电站充满电
                 if current_node.is_charging_station():
-                    if debug:
-                        print(f"  节点{i} (充电站{current_node.node_id}): 充电 {vehicle.battery_capacity - current_battery:.2f}kWh")
                     current_battery = vehicle.battery_capacity
                 
-                # 计算到下一节点的能耗
+                # 计算距离和能耗
                 distance = distance_matrix.get_distance(
                     current_node.node_id,
                     next_node.node_id
                 )
                 
-                # 🔧 关键修复：距离单位转换（米 → 公里）
-                distance_km = distance / 1000.0
+                # 简化能量计算：distance(m) * consumption_rate(kWh/km) / 1000
+                energy_needed = (distance / 1000.0) * energy_config.consumption_rate
                 
-                energy_needed = calculate_energy_consumption(
-                    distance=distance_km,  # ← 传入公里而不是米
-                    load=current_load,
-                    config=energy_config,
-                    vehicle_speed=vehicle.speed,
-                    vehicle_capacity=vehicle.capacity
-                )
-                
-                if debug:
-                    print(f"  节点{i} ({current_node.node_id}) → 节点{i+1} ({next_node.node_id}): "
-                        f"距离{distance:.1f}m, 需要{energy_needed:.3f}kWh, "
-                        f"当前{current_battery:.3f}kWh")
-                
-                # 检查1：能否完成这一步移动
+                # 检查能量是否足够
                 if current_battery < energy_needed:
                     critical_position = i + 1
                     critical_node = current_node
-                    if debug:
-                        print(f"  ⚠️  电量不足！需要在节点{i}后插入充电站")
                     break
                 
-                # 检查2：移动后是否低于安全阈值
-                battery_after = current_battery - energy_needed
-                soc_after = battery_after / vehicle.battery_capacity
-                
-                if soc_after < SOC_SAFE:
-                    # 估算剩余路程
-                    remaining_dist = sum(
-                        distance_matrix.get_distance(
-                            temp_nodes[j].node_id,
-                            temp_nodes[j+1].node_id
-                        )
-                        for j in range(i + 1, len(temp_nodes) - 1)
-                    )
-                    
-                    remaining_energy = remaining_dist / 1000.0 * energy_config.consumption_rate
-                    
-                    if battery_after < remaining_energy * 0.6:
-                        critical_position = i + 1
-                        critical_node = current_node
-                        if debug:
-                            print(f"  ⚠️  预防性充电：SOC={soc_after*100:.1f}%, "
-                                f"剩余路程需{remaining_energy:.3f}kWh")
-                        break
-                
-                # 正常前进
+                # 消耗能量
                 current_battery -= energy_needed
                 
                 # 更新载重
-                if hasattr(next_node, 'demand'):
-                    if next_node.is_pickup():
-                        current_load += next_node.demand
-                    elif next_node.is_delivery():
-                        current_load -= next_node.demand
+                if next_node.is_pickup() and hasattr(next_node, 'demand'):
+                    current_load += next_node.demand
+                elif next_node.is_delivery() and hasattr(next_node, 'demand'):
+                    current_load = max(0.0, current_load - next_node.demand)
             
-            # 如果整条路径都OK
+            # 路径模拟完成，检查是否需要充电
             if critical_position == -1:
-                if debug:
-                    print(f"  ✅ 路径可行！")
+                # 没有发现能量不足点，路径可行
                 return (True, charging_plan if charging_plan else None)
             
             # 需要插入充电站
             if critical_position < len(temp_nodes) and temp_nodes[critical_position].is_charging_station():
-                if debug:
-                    print(f"  ❌ 位置{critical_position}已有充电站但仍不足，无解")
+                # 该位置已有充电站但仍不足，无解
                 return (False, None)
             
-            # 找最近的充电站
+            # 查找最近充电站
             try:
                 station_id, dist = distance_matrix.get_nearest_charging_station(
                     critical_node.node_id
                 )
-                if debug:
-                    print(f"  找到充电站: ID={station_id}, 距离={dist:.1f}m")
             except Exception as e:
-                if debug:
-                    print(f"  ❌ 查找充电站失败: {e}")
                 return (False, None)
             
             # 创建充电节点
@@ -904,13 +829,10 @@ class Route:
                 charge_amount=vehicle.battery_capacity
             )
             
-            # 插入到临时路径
+            # 插入充电站
             temp_nodes.insert(critical_position, charging_node)
             
-            if debug:
-                print(f"  插入充电站后路径: {[n.node_id for n in temp_nodes]}")
-            
-            # 记录到计划
+            # 记录充电计划
             charging_plan.append({
                 'station_node': charging_node,
                 'position': critical_position,
@@ -918,8 +840,6 @@ class Route:
             })
         
         # 超过最大迭代次数
-        if debug:
-            print(f"  ❌ 超过最大迭代次数，无解")
         return (False, None)
         
     def insert_charging_visit(self, 
