@@ -7,7 +7,8 @@ ALNS (Adaptive Large Neighborhood Search) 优化器
 import random
 import math
 import time
-from typing import List, Tuple
+from typing import List, Tuple, Dict
+from dataclasses import dataclass
 import sys
 sys.path.append('src')
 
@@ -17,26 +18,76 @@ from core.vehicle import Vehicle, create_vehicle
 from physics.energy import EnergyConfig
 from physics.distance import DistanceMatrix
 
+
+# ========== 成本参数配置 ==========
+@dataclass
+class CostParameters:
+    """
+    多目标成本函数参数配置
+    支持距离、充电、时间、延迟多目标优化
+    """
+    # 基础成本权重
+    C_tr: float = 1.0      # 距离成本 ($/m)
+    C_ch: float = 0.6      # 充电成本 ($/kWh)
+    C_time: float = 0.1    # 时间成本 ($/s)
+    C_delay: float = 2.0   # 延迟惩罚 ($/s)
+    C_wait: float = 0.05   # 等待成本 ($/s)
+
+    # 惩罚项
+    C_missing_task: float = 10000.0  # 任务丢失惩罚
+    C_infeasible: float = 10000.0    # 不可行解惩罚
+
+    def get_total_cost(self, distance: float, charging: float,
+                      time: float, delay: float, waiting: float) -> float:
+        """
+        计算加权总成本
+
+        参数:
+            distance: 总距离 (m)
+            charging: 总充电量 (kWh)
+            time: 总时间 (s)
+            delay: 总延迟 (s)
+            waiting: 总等待 (s)
+
+        返回:
+            float: 加权总成本
+        """
+        return (self.C_tr * distance +
+                self.C_ch * charging +
+                self.C_time * time +
+                self.C_delay * delay +
+                self.C_wait * waiting)
+
 class MinimalALNS:
     """
     最简ALNS实现
-    
+
     第一版功能：
     - Random Removal (destroy)
     - Greedy Insertion (repair)
     - 模拟退火接受准则
     - 充电约束集成
+
+    Week 1 改进:
+    - 多目标成本函数 (距离 + 充电 + 时间 + 延迟)
     """
-    
-    def __init__(self, distance_matrix: DistanceMatrix, task_pool, repair_mode='mixed'):
+
+    def __init__(self, distance_matrix: DistanceMatrix, task_pool,
+                 repair_mode='mixed', cost_params: CostParameters = None):
         """
         参数：
             distance_matrix: 距离矩阵（用于计算成本）
+            task_pool: 任务池
+            repair_mode: 修复算子模式 ('greedy', 'regret2', 'mixed')
+            cost_params: 成本参数配置
         """
         self.distance = distance_matrix
         self.task_pool = task_pool
         self.repair_mode = repair_mode
-        
+
+        # Week 1: 成本参数
+        self.cost_params = cost_params or CostParameters()
+
         # 模拟退火参数
         self.initial_temp = 100.0
         self.cooling_rate = 0.995
@@ -199,32 +250,105 @@ class MinimalALNS:
     
     def evaluate_cost(self, route: Route) -> float:
         """
-        评估路径成本
-        
-        成本 = 距离 + 任务丢失惩罚 + 能量不可行惩罚
+        多目标成本评估
+
+        成本组成:
+        1. 距离成本 = 总距离 × C_tr
+        2. 充电成本 = 总充电量 × C_ch (从visits推导)
+        3. 时间成本 = 总时间 × C_time (可选)
+        4. 延迟成本 = 总延迟 × C_delay (可选)
+        5. 任务丢失惩罚
+        6. 不可行解惩罚
+
+        返回:
+            float: 加权总成本
         """
-        distance_cost = route.calculate_total_distance(self.distance)
-        
+        # 1. 距离成本
+        total_distance = route.calculate_total_distance(self.distance)
+        distance_cost = total_distance * self.cost_params.C_tr
+
+        # 2. 充电成本 (从visits推导)
+        charging_amount = 0.0
+        if route.visits:
+            for visit in route.visits:
+                if visit.node.is_charging_station():
+                    # 充电量 = 离开时电量 - 到达时电量
+                    charged = visit.battery_after_service - visit.battery_after_travel
+                    charging_amount += max(0.0, charged)
+        charging_cost = charging_amount * self.cost_params.C_ch
+
+        # 3. 时间成本 (可选)
+        time_cost = 0.0
+        if route.visits and len(route.visits) > 0:
+            total_time = route.visits[-1].departure_time - route.visits[0].arrival_time
+            time_cost = total_time * self.cost_params.C_time
+
+        # 4. 延迟成本 (可选)
+        delay_cost = 0.0
+        if route.visits:
+            for visit in route.visits:
+                delay_cost += visit.get_delay() * self.cost_params.C_delay
+
+        # 5. 任务丢失惩罚
         served_tasks = set(route.get_served_tasks())
         all_tasks = self.task_pool.get_all_tasks()
         expected_tasks = set(task.task_id for task in all_tasks)
         missing_tasks = expected_tasks - served_tasks
-        
-        missing_penalty = len(missing_tasks) * 10000.0
-        
-        # 能量可行性检查
-        total_distance = route.calculate_total_distance(self.distance)
-        estimated_energy = (total_distance / 1000.0) * self.energy_config.consumption_rate
-        
-        from core.node import NodeType
-        num_charging_stations = len([n for n in route.nodes if n.node_type == NodeType.CHARGING])
-        
-        if estimated_energy > self.vehicle.battery_capacity and num_charging_stations == 0:
-            energy_penalty = 10000.0
-        else:
-            energy_penalty = 0.0
-        
-        return distance_cost + missing_penalty + energy_penalty
+        missing_penalty = len(missing_tasks) * self.cost_params.C_missing_task
+
+        # 6. 不可行解惩罚
+        infeasible_penalty = 0.0
+        if route.is_feasible is False:
+            infeasible_penalty = self.cost_params.C_infeasible
+
+        total_cost = (distance_cost + charging_cost + time_cost +
+                     delay_cost + missing_penalty + infeasible_penalty)
+
+        return total_cost
+
+    def get_cost_breakdown(self, route: Route) -> Dict:
+        """
+        获取成本分解（用于分析和调试）
+
+        返回:
+            Dict: 各项成本明细
+        """
+        distance = route.calculate_total_distance(self.distance)
+
+        # 充电量统计
+        charging_amount = 0.0
+        num_charging_stops = 0
+        if route.visits:
+            for visit in route.visits:
+                if visit.node.is_charging_station():
+                    charged = visit.battery_after_service - visit.battery_after_travel
+                    charging_amount += max(0.0, charged)
+                    num_charging_stops += 1
+
+        # 时间统计
+        total_time = 0.0
+        if route.visits and len(route.visits) > 0:
+            total_time = route.visits[-1].departure_time - route.visits[0].arrival_time
+
+        # 延迟统计
+        total_delay = 0.0
+        if route.visits:
+            for visit in route.visits:
+                total_delay += visit.get_delay()
+
+        return {
+            'total_distance': distance,
+            'total_charging': charging_amount,
+            'total_time': total_time,
+            'total_delay': total_delay,
+            'num_charging_stops': num_charging_stops,
+            'distance_cost': distance * self.cost_params.C_tr,
+            'charging_cost': charging_amount * self.cost_params.C_ch,
+            'time_cost': total_time * self.cost_params.C_time,
+            'delay_cost': total_delay * self.cost_params.C_delay,
+            'total_cost': self.evaluate_cost(route),
+            'cost_per_km': self.evaluate_cost(route) / (distance / 1000) if distance > 0 else 0
+        }
     
     def accept_solution(self, 
                        new_cost: float, 

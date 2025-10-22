@@ -528,14 +528,115 @@ class Route:
     def calculate_total_delay(self) -> float:
         """
         计算总延迟（所有节点的延迟之和）
-        
+
         返回:
             总延迟 (s)
         """
         if not self.visits:
             return 0.0
-        
+
         return sum(visit.get_delay() for visit in self.visits)
+
+    # ========== 充电统计方法 (Week 1 新增) ==========
+
+    def get_total_charging_amount(self) -> float:
+        """
+        获取总充电量 (kWh)
+
+        从visits中推导充电信息，无需额外存储
+
+        返回:
+            float: 总充电量
+        """
+        if not self.visits:
+            return 0.0
+
+        total = 0.0
+        for visit in self.visits:
+            if visit.node.is_charging_station():
+                # 充电量 = 离开时电量 - 到达时电量
+                charged = visit.battery_after_service - visit.battery_after_travel
+                total += max(0.0, charged)
+
+        return total
+
+    def get_total_charging_time(self) -> float:
+        """
+        获取总充电时间 (s)
+
+        返回:
+            float: 总充电时间
+        """
+        if not self.visits:
+            return 0.0
+
+        total = 0.0
+        for visit in self.visits:
+            if visit.node.is_charging_station():
+                # 充电时间 = 离开时间 - 到达时间
+                charging_time = visit.departure_time - visit.start_service_time
+                total += max(0.0, charging_time)
+
+        return total
+
+    def get_num_charging_visits(self) -> int:
+        """
+        获取充电站访问次数
+
+        返回:
+            int: 充电次数
+        """
+        if not self.visits:
+            # 如果没有计算visits，从nodes推导
+            return len([n for n in self.nodes if n.is_charging_station()])
+
+        return len([v for v in self.visits if v.node.is_charging_station()])
+
+    def get_charging_statistics(self) -> Dict:
+        """
+        获取充电统计信息（Week 1 新增）
+
+        返回:
+            Dict: 充电统计数据
+        """
+        if not self.visits:
+            return {
+                'total_amount': 0.0,
+                'total_time': 0.0,
+                'num_visits': self.get_num_charging_visits(),
+                'avg_amount': 0.0,
+                'avg_time': 0.0,
+                'charging_records': []
+            }
+
+        total_amount = self.get_total_charging_amount()
+        total_time = self.get_total_charging_time()
+        num_visits = self.get_num_charging_visits()
+
+        # 提取详细的充电记录
+        charging_records = []
+        for i, visit in enumerate(self.visits):
+            if visit.node.is_charging_station():
+                charged = visit.battery_after_service - visit.battery_after_travel
+                charge_time = visit.departure_time - visit.start_service_time
+
+                charging_records.append({
+                    'station_id': visit.node.node_id,
+                    'position': i,
+                    'amount': max(0.0, charged),
+                    'time': max(0.0, charge_time),
+                    'arrival_battery': visit.battery_after_travel,
+                    'departure_battery': visit.battery_after_service
+                })
+
+        return {
+            'total_amount': total_amount,
+            'total_time': total_time,
+            'num_visits': num_visits,
+            'avg_amount': total_amount / num_visits if num_visits > 0 else 0.0,
+            'avg_time': total_time / num_visits if num_visits > 0 else 0.0,
+            'charging_records': charging_records
+        }
     
     def get_metrics(self, distance_matrix: DistanceMatrix) -> Dict:
         """
