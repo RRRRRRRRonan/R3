@@ -209,9 +209,17 @@ def simulate_route_with_strategy(route, vehicle, distance_matrix,
 
         # 如果当前节点是充电站，执行充电
         if current_node.is_charging_station():
-            # 估算剩余路径能耗 (简化: 假设平均每段100m)
-            remaining_nodes = len(route.nodes) - i - 1
-            estimated_remaining = remaining_nodes * 100 * energy_config.consumption_rate / 1000.0
+            # 精确计算剩余路径能耗
+            remaining_distance = 0.0
+            for j in range(i, len(route.nodes) - 1):
+                seg_distance = distance_matrix.get_distance(
+                    route.nodes[j].node_id,
+                    route.nodes[j + 1].node_id
+                )
+                remaining_distance += seg_distance
+
+            # 转换为能量需求 (kWh)
+            estimated_remaining = (remaining_distance / 1000.0) * energy_config.consumption_rate
 
             # 使用策略决定充电量
             charge_amount = charging_strategy.determine_charging_amount(
@@ -242,6 +250,11 @@ def simulate_route_with_strategy(route, vehicle, distance_matrix,
                 print(f"  充电站{current_node.node_id}: "
                       f"充{charge_amount:.2f}kWh ({charge_time:.1f}s), "
                       f"电量 {current_battery-charge_amount:.2f}→{current_battery:.2f}")
+                print(f"    → 剩余路径需求: {estimated_remaining:.2f}kWh, "
+                      f"剩余距离: {remaining_distance/1000:.1f}km")
+            elif estimated_remaining > 0:
+                print(f"  充电站{current_node.node_id}: 策略决定不充电")
+                print(f"    → 当前电量{current_battery:.2f}kWh已足够剩余路径需求{estimated_remaining:.2f}kWh")
 
         # 更新载重
         if next_node.is_pickup():
