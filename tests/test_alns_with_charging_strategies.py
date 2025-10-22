@@ -232,12 +232,18 @@ def test_alns_with_strategies():
             alns.vehicle = vehicle
             alns.energy_config = energy_config
 
-            # 运行优化（使用较少迭代以加快测试）
-            best_route = alns.optimize(initial_route, max_iterations=20)
+            # 运行优化（增加迭代次数以获得更好的解）
+            best_route = alns.optimize(initial_route, max_iterations=50)
 
             # 收集统计
             breakdown = alns.get_cost_breakdown(best_route)
             final_cost = alns.evaluate_cost(best_route)
+
+            # 检查路径中的充电站数量
+            num_cs_in_route = len([n for n in best_route.nodes if n.is_charging_station()])
+
+            # 检查可行性
+            battery_feasible = alns._check_battery_feasibility(best_route)
 
             result = {
                 'strategy': strategy_name,
@@ -247,15 +253,19 @@ def test_alns_with_strategies():
                 'charging_kwh': breakdown['total_charging'],
                 'num_charging': breakdown['num_charging_stops'],
                 'time_min': breakdown['total_time'] / 60,
+                'num_cs': num_cs_in_route,
+                'battery_feasible': battery_feasible,
             }
             results.append(result)
 
             print(f"\n最终结果:")
             print(f"  总成本: {final_cost:.2f}")
             print(f"  总距离: {breakdown['total_distance']/1000:.2f} km")
+            print(f"  充电站数: {num_cs_in_route}")
             print(f"  充电量: {breakdown['total_charging']:.2f} kWh")
             print(f"  充电次数: {breakdown['num_charging_stops']}")
             print(f"  总时间: {breakdown['total_time']/60:.1f} min")
+            print(f"  电池可行: {'✓' if battery_feasible else '✗不可行!'}")
 
     # 5. 对比分析
     print(f"\n{'='*60}")

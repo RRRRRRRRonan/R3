@@ -265,7 +265,7 @@ class MinimalALNS:
     
     def evaluate_cost(self, route: Route) -> float:
         """
-        多目标成本评估（Week 1 改进）
+        多目标成本评估（Week 2 改进）
 
         成本组成:
         1. 距离成本 = 总距离 × C_tr
@@ -274,6 +274,7 @@ class MinimalALNS:
         4. 延迟成本 = 总延迟 × C_delay (可选)
         5. 任务丢失惩罚
         6. 不可行解惩罚
+        7. 电池可行性惩罚 (Week 2新增)
 
         返回:
             float: 加权总成本
@@ -316,10 +317,91 @@ class MinimalALNS:
         if route.is_feasible is False:
             infeasible_penalty = self.cost_params.C_infeasible
 
+        # 7. Week 2新增：电池可行性检查
+        battery_penalty = 0.0
+        if hasattr(self, 'vehicle') and hasattr(self, 'energy_config'):
+            battery_feasible = self._check_battery_feasibility(route)
+            if not battery_feasible:
+                # 不可行解给予极大惩罚
+                battery_penalty = self.cost_params.C_infeasible * 10.0
+
         total_cost = (distance_cost + charging_cost + time_cost +
-                     delay_cost + missing_penalty + infeasible_penalty)
+                     delay_cost + missing_penalty + infeasible_penalty +
+                     battery_penalty)
 
         return total_cost
+
+    def _check_battery_feasibility(self, route: Route, debug=False) -> bool:
+        """
+        检查路径的电池可行性 (Week 2新增)
+
+        模拟整个路径的电池消耗，检查是否会出现电量不足
+
+        返回:
+            bool: True表示可行，False表示不可行
+        """
+        if not hasattr(self, 'vehicle') or not hasattr(self, 'energy_config'):
+            return True  # 没有约束则认为可行
+
+        vehicle = self.vehicle
+        energy_config = self.energy_config
+
+        # 模拟电池消耗
+        current_battery = vehicle.battery_capacity  # 满电出发
+
+        for i in range(len(route.nodes) - 1):
+            current_node = route.nodes[i]
+            next_node = route.nodes[i + 1]
+
+            # 如果当前节点是充电站，先充电
+            if current_node.is_charging_station():
+                # 使用充电策略决定充电量
+                if self.charging_strategy:
+                    # 计算剩余路径能耗（包括当前到下一节点的距离）
+                    remaining_energy_demand = 0.0
+                    for j in range(i, len(route.nodes) - 1):
+                        seg_distance = self.distance.get_distance(
+                            route.nodes[j].node_id,
+                            route.nodes[j + 1].node_id
+                        )
+                        remaining_energy_demand += (seg_distance / 1000.0) * energy_config.consumption_rate
+
+                    charge_amount = self.charging_strategy.determine_charging_amount(
+                        current_battery=current_battery,
+                        remaining_demand=remaining_energy_demand,
+                        battery_capacity=vehicle.battery_capacity
+                    )
+                    if debug:
+                        print(f"  CS at node {i}: battery={current_battery:.1f}, demand={remaining_energy_demand:.1f}, charge={charge_amount:.1f}")
+                    current_battery = min(vehicle.battery_capacity, current_battery + charge_amount)
+                else:
+                    # 没有充电策略，默认充满
+                    if debug:
+                        print(f"  CS at node {i}: charging to full")
+                    current_battery = vehicle.battery_capacity
+
+            # 计算到下一节点的距离和能耗
+            distance = self.distance.get_distance(
+                current_node.node_id,
+                next_node.node_id
+            )
+            energy_consumed = (distance / 1000.0) * energy_config.consumption_rate
+
+            # 消耗能量前往下一节点
+            current_battery -= energy_consumed
+
+            if debug:
+                print(f"  After move to node {i+1}: battery={current_battery:.1f}, consumed={energy_consumed:.1f}")
+
+            # 检查是否电量不足
+            if current_battery < 0:
+                if debug:
+                    print(f"  ✗ Battery depleted at node {i+1}!")
+                return False  # 电量不足，不可行
+
+        if debug:
+            print(f"  ✓ Route feasible, final battery={current_battery:.1f}")
+        return True  # 整个路径可行
 
     def get_cost_breakdown(self, route: Route) -> Dict:
         """
