@@ -39,12 +39,14 @@ def create_test_scenario():
     创建测试场景
 
     场景设计:
-        - 5个任务点 (远距离分布)
+        - 5个任务点 (合理分布，单位：米)
         - 1个仓库 (原点)
-        - 3个充电站 (战略位置)
+        - 2个充电站 (战略位置)
         - 电池容量: 100kWh (标准值)
-        - 能耗率: 1.0 kWh/km (高能耗场景)
-        - 路径设计: 必须多次充电才能完成
+        - 能耗率: 0.5 kWh/km (正常能耗)
+        - 车速: 10 m/s = 36 km/h (AMR合理速度)
+        - 充电功率: 50 kW (现实的快充功率)
+        - 路径设计: 先做任务，电量不足时充电
 
     返回:
         (depot, tasks, charging_stations, distance_matrix, vehicle)
@@ -57,16 +59,19 @@ def create_test_scenario():
     depot = create_depot((0, 0))
 
     # 2. 创建任务 (pickup + delivery)
-    # 关键设计: 创建"电池耗尽"场景，强制充电
-    # 坐标单位: 米 (1km = 1000m)
-    # 策略: Depot→CS1(85km)消耗85kWh，剩15kWh → 必须充电！
+    # 合理场景设计：
+    # - 坐标单位：米
+    # - 先完成一些任务，电量降低到需要充电
+    # - 总路程约120km，需要充电1-2次
     task_locations = [
-        ((62000, 55000), (64000, 57000)),  # Task 1 - CS1附近
-        ((67000, 52000), (69000, 54000)),  # Task 2 - 中部
-        ((60000, 48000), (62000, 50000)),  # Task 3 - 中部
-        ((58000, 46000), (60000, 48000)),  # Task 4 - 中部
-        ((55000, 48000), (53000, 50000)),  # Task 5 - 返回方向
+        ((5000, 8000), (7000, 10000)),   # Task 1 - 10km外，消耗约5kWh
+        ((12000, 6000), (15000, 8000)),  # Task 2 - 远处，消耗约10kWh
+        ((18000, 12000), (20000, 14000)), # Task 3 - 最远，消耗约15kWh
+        ((16000, 16000), (14000, 18000)), # Task 4 - 远处，消耗约10kWh
+        ((8000, 14000), (6000, 12000)),   # Task 5 - 返回方向，消耗约5kWh
     ]
+    # 预期能耗：0→T1(10km) + T1(5km) → T2(15km) → ... ≈ 60km ≈ 30kWh
+    # 到达第一个充电站时，剩余约70kWh
 
     tasks = []
     node_id_counter = 1  # 从1开始分配节点ID
@@ -87,12 +92,10 @@ def create_test_scenario():
         ))
         node_id_counter += 2  # 每个任务占用2个节点ID
 
-    # 3. 创建充电站 (关键位置 - 精确设计让电量降到15kWh左右)
-    # 距离计算: √(x²+y²) = 85000m → 如果x=y, 则x = 60104
+    # 3. 创建充电站 (合理位置 - 在任务区域中间)
     charging_stations = [
-        create_charging_node(100, (60000, 60000)),  # CS1: 距Depot约85km → 剩15kWh
-        create_charging_node(101, (65000, 50000)),  # CS2: 任务区域
-        create_charging_node(102, (55000, 45000)),  # CS3: 任务区域
+        create_charging_node(100, (12000, 10000)),  # CS1: 任务区域中心
+        create_charging_node(101, (16000, 14000)),  # CS2: 远端任务区
     ]
 
     # 4. 创建距离矩阵
@@ -152,13 +155,17 @@ def simulate_route_with_strategy(route, vehicle, distance_matrix,
     返回:
         dict: 模拟结果统计
     """
-    # 高能耗场景配置
+    # 现实场景配置
+    # 注意: EnergyConfig中charging_rate单位是 kWh/s (能量/秒)
+    # 50 kW = 50 kWh/hour = 50/3600 kWh/s ≈ 0.0139 kWh/s
     energy_config = EnergyConfig(
-        consumption_rate=1.0,     # 1.0 kWh/km (默认0.5)
-        charging_rate=100.0,      # 100 kWh/s 快速充电
+        consumption_rate=0.5,     # 0.5 kWh/km (正常能耗)
+        charging_rate=50.0/3600,  # 50 kW = 50/3600 kWh/s (现实快充)
         charging_efficiency=0.9
     )
-    time_config = TimeConfig()
+    time_config = TimeConfig(
+        vehicle_speed=10.0  # 10 m/s = 36 km/h (AMR合理速度)
+    )
 
     current_battery = vehicle.battery_capacity  # 满电出发
     current_load = 0.0
@@ -248,7 +255,7 @@ def simulate_route_with_strategy(route, vehicle, distance_matrix,
                 })
 
                 print(f"  充电站{current_node.node_id}: "
-                      f"充{charge_amount:.2f}kWh ({charge_time:.1f}s), "
+                      f"充{charge_amount:.2f}kWh ({charge_time/60:.1f}min), "
                       f"电量 {current_battery-charge_amount:.2f}→{current_battery:.2f}")
                 print(f"    → 剩余路径需求: {estimated_remaining:.2f}kWh, "
                       f"剩余距离: {remaining_distance/1000:.1f}km")
@@ -286,11 +293,11 @@ def simulate_route_with_strategy(route, vehicle, distance_matrix,
     }
 
     print(f"\n执行完成:")
-    print(f"  总距离: {total_distance:.2f} m")
+    print(f"  总距离: {total_distance/1000:.2f} km")
     print(f"  充电次数: {charging_visits}")
     print(f"  总充电量: {total_charging_amount:.2f} kWh")
-    print(f"  总充电时间: {total_charging_time:.1f} s")
-    print(f"  总时间: {current_time:.1f} s")
+    print(f"  总充电时间: {total_charging_time/60:.1f} min")
+    print(f"  总时间: {current_time/60:.1f} min")
     print(f"  最终电量: {current_battery:.2f} kWh")
     print(f"  总成本: {total_cost:.2f}")
 
@@ -310,30 +317,26 @@ def test_fr_vs_pr_comparison():
     # 1. 创建测试场景
     depot, tasks, charging_stations, distance_matrix, vehicle = create_test_scenario()
 
-    # 2. 构造测试路径 (关键设计：让第一段路程耗尽大部分电量)
+    # 2. 构造测试路径 (合理设计：先做任务，电量不足时充电)
     # 路径设计思路:
-    #   Depot(0,0) → [超长距离] → CS1(60km,60km) ← 约85km，消耗85kWh
-    #   剩余15kWh → 必须充电！
-    #     FR: 充85kWh (15→100)
-    #     PR-30%: 充15kWh (15→30)
-    #     PR-50%: 充35kWh (15→50)
-    #   → 完成所有任务
+    #   Depot → Task1 P/D → Task2 P/D → CS1 (电量约65kWh，补充能量)
+    #   → Task3 P/D → Task4 P/D → CS2 (如需要)
+    #   → Task5 P/D → Depot
     route = create_empty_route(1, depot)
 
-    # 插入节点顺序
-    route.nodes.insert(1, charging_stations[0])     # CS1 (此时剩约57kWh)
-    route.nodes.insert(2, tasks[0].pickup_node)     # Task1 P (消耗约5kWh)
-    route.nodes.insert(3, tasks[0].delivery_node)   # Task1 D (消耗约7kWh)
-    route.nodes.insert(4, charging_stations[1])     # CS2 (此时剩约45kWh)
-    route.nodes.insert(5, tasks[1].pickup_node)     # Task2 P
-    route.nodes.insert(6, tasks[1].delivery_node)   # Task2 D
-    route.nodes.insert(7, tasks[2].pickup_node)     # Task3 P
-    route.nodes.insert(8, tasks[2].delivery_node)   # Task3 D
-    route.nodes.insert(9, charging_stations[2])     # CS3
-    route.nodes.insert(10, tasks[3].pickup_node)    # Task4 P
-    route.nodes.insert(11, tasks[3].delivery_node)  # Task4 D
-    route.nodes.insert(12, tasks[4].pickup_node)    # Task5 P
-    route.nodes.insert(13, tasks[4].delivery_node)  # Task5 D
+    # 插入节点顺序 (先做前2个任务，再充电)
+    route.nodes.insert(1, tasks[0].pickup_node)     # Task1 P
+    route.nodes.insert(2, tasks[0].delivery_node)   # Task1 D
+    route.nodes.insert(3, tasks[1].pickup_node)     # Task2 P
+    route.nodes.insert(4, tasks[1].delivery_node)   # Task2 D
+    route.nodes.insert(5, charging_stations[0])     # CS1 (完成2任务后，电量约65kWh)
+    route.nodes.insert(6, tasks[2].pickup_node)     # Task3 P
+    route.nodes.insert(7, tasks[2].delivery_node)   # Task3 D
+    route.nodes.insert(8, tasks[3].pickup_node)     # Task4 P
+    route.nodes.insert(9, tasks[3].delivery_node)   # Task4 D
+    route.nodes.insert(10, charging_stations[1])    # CS2 (如需要)
+    route.nodes.insert(11, tasks[4].pickup_node)    # Task5 P
+    route.nodes.insert(12, tasks[4].delivery_node)  # Task5 D
 
     print(f"\n测试路径节点序列:")
     for i, node in enumerate(route.nodes):
@@ -423,7 +426,7 @@ def test_fr_vs_pr_comparison():
             if pr_result:
                 print(f"\nFR vs {pr_result['strategy_name']} 对比:")
                 print(f"  充电量差异: {fr_result['total_charging_amount'] - pr_result['total_charging_amount']:.2f} kWh")
-                print(f"  充电时间差异: {fr_result['total_charging_time'] - pr_result['total_charging_time']:.1f} s")
+                print(f"  充电时间差异: {(fr_result['total_charging_time'] - pr_result['total_charging_time'])/60:.1f} min")
                 print(f"  总成本差异: {fr_result['total_cost'] - pr_result['total_cost']:.2f}")
 
                 if fr_result['total_cost'] < pr_result['total_cost']:
