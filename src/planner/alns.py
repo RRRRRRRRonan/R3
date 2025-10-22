@@ -407,30 +407,55 @@ class MinimalALNS:
         """
         获取成本分解（用于分析和调试）
 
+        Week 2改进：
+        - 使用RouteExecutor执行路径生成visits
+        - 准确记录充电量和充电次数
+
         返回:
             Dict: 各项成本明细
         """
+        from core.route_executor import RouteExecutor
+
         distance = route.calculate_total_distance(self.distance)
+
+        # Week 2新增：执行路径生成visits（如果有vehicle和energy_config）
+        if hasattr(self, 'vehicle') and hasattr(self, 'energy_config'):
+            executor = RouteExecutor(
+                distance_matrix=self.distance,
+                energy_config=self.energy_config,
+                time_config=getattr(self, 'time_config', None)
+            )
+            # 执行路径并生成visits
+            executed_route = executor.execute(
+                route=route,
+                vehicle=self.vehicle,
+                charging_strategy=self.charging_strategy
+            )
+            # 使用执行后的路径
+            route_to_analyze = executed_route
+        else:
+            route_to_analyze = route
 
         # 充电量统计
         charging_amount = 0.0
         num_charging_stops = 0
-        if route.visits:
-            for visit in route.visits:
+        if route_to_analyze.visits:
+            for visit in route_to_analyze.visits:
                 if visit.node.is_charging_station():
                     charged = visit.battery_after_service - visit.battery_after_travel
-                    charging_amount += max(0.0, charged)
-                    num_charging_stops += 1
+                    if charged > 0.01:  # 只计算实际充电的
+                        charging_amount += charged
+                        num_charging_stops += 1
 
         # 时间统计
         total_time = 0.0
-        if route.visits and len(route.visits) > 0:
-            total_time = route.visits[-1].departure_time - route.visits[0].arrival_time
+        if route_to_analyze.visits and len(route_to_analyze.visits) > 0:
+            total_time = route_to_analyze.visits[-1].departure_time - route_to_analyze.visits[0].arrival_time
 
         # 延迟统计
         total_delay = 0.0
-        if route.visits:
-            for visit in route.visits:
+        if route_to_analyze.visits:
+            for visit in route_to_analyze.visits:
                 total_delay += visit.get_delay()
 
         return {
