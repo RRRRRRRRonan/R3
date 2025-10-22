@@ -466,7 +466,8 @@ class MinimalALNS:
             energy_consumed = (distance / 1000.0) * energy_config.consumption_rate
             current_battery -= energy_consumed
 
-            # 检查是否电量不足
+            # 检查是否电量不足（只检查耗尽，不检查临界值）
+            # Week 2注释：初始解生成时允许略微违反临界值，在ALNS优化中自然修复
             if current_battery < 0:
                 return i + 1  # 返回无法到达的节点位置
 
@@ -546,15 +547,17 @@ class MinimalALNS:
 
         return best_station, best_insert_pos
 
-    def _insert_necessary_charging_stations(self, route: Route, max_attempts: int = 5) -> Route:
+    def _insert_necessary_charging_stations(self, route: Route, max_attempts: int = 10) -> Route:
         """
         自动插入必要的充电站（Week 2新增 - 第1.2步）
 
         策略：
-        1. 检查电池可行性
-        2. 如果不可行，找到电量耗尽位置
+        1. 检查电池可行性（包括临界值）
+        2. 如果不可行，找到电量耗尽或临界位置
         3. 在该位置前插入最优充电站
         4. 重复直到路径可行或达到最大尝试次数
+
+        Week 2修复：增加max_attempts到10，更积极地修复
 
         参数:
             route: 当前路径
@@ -566,16 +569,17 @@ class MinimalALNS:
         attempts = 0
 
         while attempts < max_attempts:
-            # 检查电池可行性
+            # Week 2修复：优先检查完整电池可行性（包括临界值）
             if self._check_battery_feasibility(route):
                 return route  # 已经可行
 
-            # 找到电量耗尽位置
+            # 找到电量耗尽或临界位置
             depletion_pos = self._find_battery_depletion_position(route)
 
             if depletion_pos == -1:
-                # 找不到耗尽位置，路径应该是可行的
-                return route
+                # 找不到耗尽位置，但可行性检查失败，可能是临界值问题
+                # 尝试在路径末尾附近插入充电站
+                depletion_pos = len(route.nodes) - 1
 
             # 找到最优充电站
             best_station, best_insert_pos = self._find_best_charging_station(route, depletion_pos)

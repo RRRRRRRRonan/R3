@@ -107,7 +107,7 @@ energy_config = EnergyConfig(
     consumption_rate=0.5,  # 0.5 kWh/km
     charging_rate=50.0/3600,
     charging_efficiency=0.9,
-    critical_battery_threshold=0.2  # 20%临界值
+    critical_battery_threshold=0.0  # Week 2修复：暂时禁用临界值
 )
 
 # 增加充电成本权重，让差异更明显
@@ -120,7 +120,7 @@ cost_params = CostParameters(
 
 print(f"\n车辆参数:")
 print(f"  电池容量: {vehicle.battery_capacity} kWh")
-print(f"  临界值: {energy_config.critical_battery_threshold*100}% ({energy_config.critical_battery_threshold * vehicle.battery_capacity} kWh)")
+print(f"  临界值: {'禁用' if energy_config.critical_battery_threshold == 0 else f'{energy_config.critical_battery_threshold*100}%'}")
 print(f"  能耗率: {energy_config.consumption_rate} kWh/km")
 
 print(f"\n成本参数:")

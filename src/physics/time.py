@@ -106,7 +106,7 @@ class TimeConfig:
     时间系统全局配置参数
     """
     # 移动速度（用于计算基准移动时间）
-    vehicle_speed: float = 1.0  # 米/秒，默认1m/s
+    vehicle_speed: float = 15.0  # 米/秒，默认15m/s（约54km/h，适合电动车辆）
     
     # 服务时间（默认值，可被节点特定值覆盖）
     default_service_time: float = 30.0  # 秒
