@@ -74,13 +74,15 @@ class MinimalALNS:
     """
 
     def __init__(self, distance_matrix: DistanceMatrix, task_pool,
-                 repair_mode='mixed', cost_params: CostParameters = None):
+                 repair_mode='mixed', cost_params: CostParameters = None,
+                 charging_strategy=None):
         """
         参数：
             distance_matrix: 距离矩阵（用于计算成本）
             task_pool: 任务池
-            repair_mode: 修复算子模式 ('greedy', 'regret2', 'mixed')
+            repair_mode: 修复算子模式 ('greedy', 'regret2', 'random', 'mixed')
             cost_params: 成本参数配置
+            charging_strategy: 充电策略对象 (Week 2新增)
         """
         self.distance = distance_matrix
         self.task_pool = task_pool
@@ -88,6 +90,9 @@ class MinimalALNS:
 
         # Week 1: 成本参数
         self.cost_params = cost_params or CostParameters()
+
+        # Week 2: 充电策略
+        self.charging_strategy = charging_strategy
 
         # 模拟退火参数
         self.initial_temp = 100.0
@@ -118,23 +123,32 @@ class MinimalALNS:
         print(f"初始成本: {best_cost:.2f}m")
         print(f"总迭代次数: {max_iterations}")
 
+        # Week 2: 添加random模式统计
+        random_count = 0
+
         for iteration in range(max_iterations):
             destroyed_route, removed_task_ids = self.random_removal(current_route, q=2)
-            
+
             if self.repair_mode == 'greedy':
                 candidate_route = self.greedy_insertion(destroyed_route, removed_task_ids)
                 greedy_count += 1
             elif self.repair_mode == 'regret2':
                 candidate_route = self.regret2_insertion(destroyed_route, removed_task_ids)
                 regret_count += 1
-            else:
+            elif self.repair_mode == 'random':
+                candidate_route = self.random_insertion(destroyed_route, removed_task_ids)
+                random_count += 1
+            else:  # mixed mode
                 repair_choice = random.random()
-                if repair_choice < 0.5:
+                if repair_choice < 0.33:
                     candidate_route = self.greedy_insertion(destroyed_route, removed_task_ids)
                     greedy_count += 1
-                else:
+                elif repair_choice < 0.67:
                     candidate_route = self.regret2_insertion(destroyed_route, removed_task_ids)
                     regret_count += 1
+                else:
+                    candidate_route = self.random_insertion(destroyed_route, removed_task_ids)
+                    random_count += 1
             
             candidate_cost = self.evaluate_cost(candidate_route)
             current_cost = self.evaluate_cost(current_route)
@@ -151,7 +165,7 @@ class MinimalALNS:
             if (iteration + 1) % 50 == 0:
                 print(f"  [进度] 已完成 {iteration+1}/{max_iterations} 次迭代, 当前最优: {best_cost:.2f}m")
         
-        print(f"算子使用统计: Greedy={greedy_count}, Regret-2={regret_count}")
+        print(f"算子使用统计: Greedy={greedy_count}, Regret-2={regret_count}, Random={random_count}")
         print(f"最终最优成本: {best_cost:.2f}m (改进 {self.evaluate_cost(initial_route)-best_cost:.2f}m)")
         return best_route
     
@@ -459,5 +473,65 @@ class MinimalALNS:
                 remaining_tasks.remove(best_task_id)
             else:
                 break
-        
+
+        return repaired_route
+
+    def random_insertion(self, route: Route, removed_task_ids: List[int]) -> Route:
+        """
+        随机插入算子 + 充电支持 (Week 2新增)
+
+        策略：
+        1. 对每个任务，随机选择一个可行的插入位置
+        2. 可行性检查：必须满足充电约束
+        3. 如果没有可行位置，跳过该任务
+        """
+        repaired_route = route.copy()
+
+        if not hasattr(self, 'vehicle') or self.vehicle is None:
+            raise ValueError("必须设置vehicle属性才能进行充电约束规划")
+        if not hasattr(self, 'energy_config') or self.energy_config is None:
+            raise ValueError("必须设置energy_config属性才能进行充电约束规划")
+
+        vehicle = self.vehicle
+        energy_config = self.energy_config
+
+        for task_id in removed_task_ids:
+            task = self.task_pool.get_task(task_id)
+
+            # 收集所有可行的插入位置
+            feasible_insertions = []
+
+            for pickup_pos in range(1, len(repaired_route.nodes)):
+                for delivery_pos in range(pickup_pos + 1, len(repaired_route.nodes) + 1):
+
+                    feasible, charging_plan = repaired_route.check_energy_feasibility_for_insertion(
+                        task,
+                        (pickup_pos, delivery_pos),
+                        vehicle,
+                        self.distance,
+                        energy_config
+                    )
+
+                    if feasible:
+                        feasible_insertions.append({
+                            'position': (pickup_pos, delivery_pos),
+                            'charging_plan': charging_plan
+                        })
+
+            # 如果有可行位置，随机选择一个
+            if feasible_insertions:
+                chosen = random.choice(feasible_insertions)
+                repaired_route.insert_task(task, chosen['position'])
+
+                if chosen['charging_plan']:
+                    sorted_plans = sorted(chosen['charging_plan'],
+                                        key=lambda x: x['position'],
+                                        reverse=True)
+                    for plan in sorted_plans:
+                        repaired_route.insert_charging_visit(
+                            station=plan['station_node'],
+                            position=plan['position'],
+                            charge_amount=plan['amount']
+                        )
+
         return repaired_route
