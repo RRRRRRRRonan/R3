@@ -38,15 +38,15 @@ def create_test_scenario():
     """
     创建测试场景
 
-    场景设计:
-        - 5个任务点 (合理分布，单位：米)
+    场景设计（充电必需场景）:
+        - 8个任务点 (分布在40km范围)
         - 1个仓库 (原点)
-        - 2个充电站 (战略位置)
-        - 电池容量: 100kWh (标准值)
+        - 3个充电站 (战略位置)
+        - 电池容量: 70kWh (关键：小于总能耗，必须充电！)
         - 能耗率: 0.5 kWh/km (正常能耗)
         - 车速: 10 m/s = 36 km/h (AMR合理速度)
         - 充电功率: 50 kW (现实的快充功率)
-        - 路径设计: 先做任务，电量不足时充电
+        - 预计总路程: ~160km，总能耗: ~80kWh > 70kWh (必须充电!)
 
     返回:
         (depot, tasks, charging_stations, distance_matrix, vehicle)
@@ -59,19 +59,27 @@ def create_test_scenario():
     depot = create_depot((0, 0))
 
     # 2. 创建任务 (pickup + delivery)
-    # 合理场景设计：
+    # 挑战性场景设计（更大范围）：
     # - 坐标单位：米
-    # - 先完成一些任务，电量降低到需要充电
-    # - 总路程约120km，需要充电1-2次
+    # - 任务分布在40km范围内（模拟跨区域配送）
+    # - 总路程约200km，能耗约100kWh
+    # - 100kWh电池无法一次完成，必须充电2-3次
+    # - 设计原则：任务间距离更大，zigzag路径增加总里程
     task_locations = [
-        ((5000, 8000), (7000, 10000)),   # Task 1 - 10km外，消耗约5kWh
-        ((12000, 6000), (15000, 8000)),  # Task 2 - 远处，消耗约10kWh
-        ((18000, 12000), (20000, 14000)), # Task 3 - 最远，消耗约15kWh
-        ((16000, 16000), (14000, 18000)), # Task 4 - 远处，消耗约10kWh
-        ((8000, 14000), (6000, 12000)),   # Task 5 - 返回方向，消耗约5kWh
+        ((10000, 8000), (15000, 10000)),    # Task 1 - 东南区
+        ((25000, 5000), (30000, 8000)),     # Task 2 - 东区
+        ((35000, 15000), (38000, 18000)),   # Task 3 - 东北区
+        ((32000, 25000), (30000, 28000)),   # Task 4 - 北区
+        ((20000, 32000), (18000, 35000)),   # Task 5 - 西北区
+        ((8000, 30000), (5000, 28000)),     # Task 6 - 西区
+        ((3000, 20000), (2000, 15000)),     # Task 7 - 西南区
+        ((8000, 10000), (5000, 8000)),      # Task 8 - 南区
     ]
-    # 预期能耗：0→T1(10km) + T1(5km) → T2(15km) → ... ≈ 60km ≈ 30kWh
-    # 到达第一个充电站时，剩余约70kWh
+    # 预期能耗计算（zigzag路径）：
+    # 实际总路程: ~160km, 能耗: ~80kWh
+    # 电池容量: 70kWh < 80kWh
+    # → 不充电无法完成！所有策略都必须充电
+    # → 可以真正对比不同充电策略的差异
 
     tasks = []
     node_id_counter = 1  # 从1开始分配节点ID
@@ -92,10 +100,11 @@ def create_test_scenario():
         ))
         node_id_counter += 2  # 每个任务占用2个节点ID
 
-    # 3. 创建充电站 (合理位置 - 在任务区域中间)
+    # 3. 创建充电站 (战略位置 - 覆盖更大任务区域)
     charging_stations = [
-        create_charging_node(100, (12000, 10000)),  # CS1: 任务区域中心
-        create_charging_node(101, (16000, 14000)),  # CS2: 远端任务区
+        create_charging_node(100, (25000, 12000)),  # CS1: 东部区域（T1-T3后）
+        create_charging_node(101, (15000, 28000)),  # CS2: 北部区域（T4-T6后）
+        create_charging_node(102, (5000, 18000)),   # CS3: 西部区域（T7-T8后）
     ]
 
     # 4. 创建距离矩阵
@@ -117,11 +126,11 @@ def create_test_scenario():
         num_charging_stations=len(charging_stations)
     )
 
-    # 5. 创建车辆 (标准电池容量)
+    # 5. 创建车辆 (限制电池容量以强制充电)
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=150.0,
-        battery_capacity=100.0  # 标准100kWh电池
+        battery_capacity=70.0  # 70kWh电池（<80kWh总能耗，必须充电！）
     )
 
     print(f"✓ 仓库: {depot.coordinates}")
@@ -317,26 +326,35 @@ def test_fr_vs_pr_comparison():
     # 1. 创建测试场景
     depot, tasks, charging_stations, distance_matrix, vehicle = create_test_scenario()
 
-    # 2. 构造测试路径 (合理设计：先做任务，电量不足时充电)
-    # 路径设计思路:
-    #   Depot → Task1 P/D → Task2 P/D → CS1 (电量约65kWh，补充能量)
-    #   → Task3 P/D → Task4 P/D → CS2 (如需要)
-    #   → Task5 P/D → Depot
+    # 2. 构造测试路径 (强制充电场景：电池容量<总能耗)
+    # 路径设计（zigzag跨区域，70kWh电池无法一次完成）:
+    #   Depot(70kWh) → T1-3 (东南→东→东北)
+    #   → CS1(约77km, 38.5kWh, 剩余31.5kWh) ← 必须充电！
+    #   → T4-6 (北→西北→西)
+    #   → CS2(约50km, 25kWh, 剩余?) ← 取决于策略
+    #   → T7-8 → Depot (约33km, 16.5kWh)
+    # 总计: ~160km, ~80kWh > 70kWh（所有策略都必须充电）
     route = create_empty_route(1, depot)
 
-    # 插入节点顺序 (先做前2个任务，再充电)
+    # 插入节点顺序
     route.nodes.insert(1, tasks[0].pickup_node)     # Task1 P
     route.nodes.insert(2, tasks[0].delivery_node)   # Task1 D
     route.nodes.insert(3, tasks[1].pickup_node)     # Task2 P
     route.nodes.insert(4, tasks[1].delivery_node)   # Task2 D
-    route.nodes.insert(5, charging_stations[0])     # CS1 (完成2任务后，电量约65kWh)
-    route.nodes.insert(6, tasks[2].pickup_node)     # Task3 P
-    route.nodes.insert(7, tasks[2].delivery_node)   # Task3 D
+    route.nodes.insert(5, tasks[2].pickup_node)     # Task3 P
+    route.nodes.insert(6, tasks[2].delivery_node)   # Task3 D
+    route.nodes.insert(7, charging_stations[0])     # CS1 (完成3任务后)
     route.nodes.insert(8, tasks[3].pickup_node)     # Task4 P
     route.nodes.insert(9, tasks[3].delivery_node)   # Task4 D
-    route.nodes.insert(10, charging_stations[1])    # CS2 (如需要)
-    route.nodes.insert(11, tasks[4].pickup_node)    # Task5 P
-    route.nodes.insert(12, tasks[4].delivery_node)  # Task5 D
+    route.nodes.insert(10, tasks[4].pickup_node)    # Task5 P
+    route.nodes.insert(11, tasks[4].delivery_node)  # Task5 D
+    route.nodes.insert(12, tasks[5].pickup_node)    # Task6 P
+    route.nodes.insert(13, tasks[5].delivery_node)  # Task6 D
+    route.nodes.insert(14, charging_stations[1])    # CS2 (完成6任务后)
+    route.nodes.insert(15, tasks[6].pickup_node)    # Task7 P
+    route.nodes.insert(16, tasks[6].delivery_node)  # Task7 D
+    route.nodes.insert(17, tasks[7].pickup_node)    # Task8 P
+    route.nodes.insert(18, tasks[7].delivery_node)  # Task8 D
 
     print(f"\n测试路径节点序列:")
     for i, node in enumerate(route.nodes):
