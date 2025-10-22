@@ -146,16 +146,20 @@ def create_test_scenario():
 def simulate_route_with_strategy(route, vehicle, distance_matrix,
                                  charging_strategy, strategy_name):
     """
-    使用指定充电策略模拟路径执行
+    使用指定充电策略模拟路径执行（动态优化版本）
 
     流程:
-        1. 遍历路径节点
-        2. 到达充电站时，使用策略决定充电量
-        3. 计算充电时间和成本
+        1. 预先判断每个充电站是否需要访问
+        2. 如果策略决定不充电，则跳过该充电站
+        3. 基于实际访问的节点计算距离和成本
         4. 记录统计信息
 
+    改进点:
+        - 如果不需要充电，不访问充电站，节省距离和时间成本
+        - 不同策略会产生不同的实际路径和距离成本
+
     参数:
-        route: Route对象 (包含节点序列)
+        route: Route对象 (包含节点序列，可能包含充电站)
         vehicle: 车辆对象
         distance_matrix: 距离矩阵
         charging_strategy: 充电策略对象
@@ -176,7 +180,80 @@ def simulate_route_with_strategy(route, vehicle, distance_matrix,
         vehicle_speed=10.0  # 10 m/s = 36 km/h (AMR合理速度)
     )
 
-    current_battery = vehicle.battery_capacity  # 满电出发
+    # 第一阶段：构建实际访问的路径（跳过不需要的充电站）
+    print(f"\n{'='*60}")
+    print(f"模拟执行: {strategy_name}")
+    print(f"{'='*60}")
+    print(f"初始电量: {vehicle.battery_capacity:.2f} kWh")
+    print(f"\n第一阶段: 规划实际路径")
+
+    actual_path = []
+    simulated_battery = vehicle.battery_capacity
+
+    i = 0
+    while i < len(route.nodes):
+        node = route.nodes[i]
+
+        # 非充电站节点直接加入
+        if not node.is_charging_station():
+            actual_path.append(node)
+            # 更新模拟电量（前进到下一个节点）
+            if i + 1 < len(route.nodes):
+                next_node = route.nodes[i + 1]
+                dist = distance_matrix.get_distance(node.node_id, next_node.node_id)
+                energy = (dist / 1000.0) * energy_config.consumption_rate
+                simulated_battery -= energy
+            i += 1
+        else:
+            # 充电站：判断是否需要访问
+            cs_node = node
+
+            # 计算剩余路径（跳过此充电站）的能量需求
+            remaining_energy_demand = 0.0
+            if i + 1 < len(route.nodes):
+                # 从充电站后的第一个节点开始
+                prev_node = actual_path[-1]  # 上一个访问的节点
+
+                # 直接到充电站后节点的距离
+                next_node = route.nodes[i + 1]
+                dist_skip = distance_matrix.get_distance(prev_node.node_id, next_node.node_id)
+                remaining_energy_demand += (dist_skip / 1000.0) * energy_config.consumption_rate
+
+                # 后续路径的能量需求
+                for j in range(i + 1, len(route.nodes) - 1):
+                    dist_seg = distance_matrix.get_distance(
+                        route.nodes[j].node_id,
+                        route.nodes[j + 1].node_id
+                    )
+                    remaining_energy_demand += (dist_seg / 1000.0) * energy_config.consumption_rate
+
+            # 使用策略判断是否需要充电
+            charge_amount = charging_strategy.determine_charging_amount(
+                current_battery=simulated_battery,
+                remaining_demand=remaining_energy_demand,
+                battery_capacity=vehicle.battery_capacity
+            )
+
+            if charge_amount > 0:
+                # 需要充电，访问此充电站
+                actual_path.append(cs_node)
+                simulated_battery += charge_amount
+                print(f"  → 访问充电站{cs_node.node_id} (需充电{charge_amount:.2f}kWh, 电量{simulated_battery-charge_amount:.1f}→{simulated_battery:.1f}kWh)")
+            else:
+                # 不需要充电，跳过此充电站
+                print(f"  → 跳过充电站{cs_node.node_id} (当前{simulated_battery:.1f}kWh足够)")
+
+            i += 1
+
+    print(f"\n第二阶段: 执行实际路径")
+    print(f"实际访问: {len(actual_path)}个节点 (原计划: {len(route.nodes)}个)")
+
+    skipped_cs = len(route.nodes) - len(actual_path)
+    if skipped_cs > 0:
+        print(f"跳过了 {skipped_cs} 个充电站，节省距离成本")
+
+    # 第二阶段：基于实际路径执行模拟
+    current_battery = vehicle.battery_capacity
     current_load = 0.0
     current_time = 0.0
 
@@ -184,17 +261,11 @@ def simulate_route_with_strategy(route, vehicle, distance_matrix,
     total_charging_amount = 0.0
     total_charging_time = 0.0
     charging_visits = 0
-
     charging_records = []
 
-    print(f"\n{'='*60}")
-    print(f"模拟执行: {strategy_name}")
-    print(f"{'='*60}")
-    print(f"初始电量: {current_battery:.2f} kWh")
-
-    for i in range(len(route.nodes) - 1):
-        current_node = route.nodes[i]
-        next_node = route.nodes[i + 1]
+    for i in range(len(actual_path) - 1):
+        current_node = actual_path[i]
+        next_node = actual_path[i + 1]
 
         # 计算到下一节点的距离和能耗
         distance = distance_matrix.get_distance(
@@ -203,38 +274,33 @@ def simulate_route_with_strategy(route, vehicle, distance_matrix,
         )
         total_distance += distance
 
-        # 简化能耗计算: distance(m) * consumption_rate(kWh/km) / 1000
         energy_consumed = (distance / 1000.0) * energy_config.consumption_rate
-
-        # 移动到下一节点
         current_battery -= energy_consumed
 
         if current_battery < 0:
-            print(f"⚠️  路径不可行: 第{i}段路径电量不足 (需要{energy_consumed:.2f}kWh, 仅剩{current_battery+energy_consumed:.2f}kWh)")
-            print(f"   → 该策略无法完成此路径！")
+            print(f"⚠️  路径不可行: 第{i}段电量不足")
             return {
                 'strategy_name': strategy_name,
                 'feasible': False,
                 'failure_reason': f'第{i}段电量不足',
                 'total_distance': 0,
-                'total_cost': float('inf')  # 不可行解赋予极大成本
+                'total_cost': float('inf')
             }
 
         travel_time = distance / time_config.vehicle_speed
         current_time += travel_time
 
-        # 如果当前节点是充电站，执行充电
-        if current_node.is_charging_station():
-            # 精确计算剩余路径能耗
+        # 如果到达充电站，执行充电
+        if next_node.is_charging_station():
+            # 计算剩余路径能耗
             remaining_distance = 0.0
-            for j in range(i, len(route.nodes) - 1):
+            for j in range(i + 1, len(actual_path) - 1):
                 seg_distance = distance_matrix.get_distance(
-                    route.nodes[j].node_id,
-                    route.nodes[j + 1].node_id
+                    actual_path[j].node_id,
+                    actual_path[j + 1].node_id
                 )
                 remaining_distance += seg_distance
 
-            # 转换为能量需求 (kWh)
             estimated_remaining = (remaining_distance / 1000.0) * energy_config.consumption_rate
 
             # 使用策略决定充电量
@@ -245,7 +311,6 @@ def simulate_route_with_strategy(route, vehicle, distance_matrix,
             )
 
             if charge_amount > 0:
-                # 计算充电时间
                 charge_time = charge_amount / (energy_config.charging_rate * energy_config.charging_efficiency)
 
                 current_battery += charge_amount
@@ -255,22 +320,16 @@ def simulate_route_with_strategy(route, vehicle, distance_matrix,
                 charging_visits += 1
 
                 charging_records.append({
-                    'station_id': current_node.node_id,
-                    'position': i,
+                    'station_id': next_node.node_id,
                     'charge_amount': charge_amount,
                     'charge_time': charge_time,
                     'battery_before': current_battery - charge_amount,
                     'battery_after': current_battery
                 })
 
-                print(f"  充电站{current_node.node_id}: "
+                print(f"  充电站{next_node.node_id}: "
                       f"充{charge_amount:.2f}kWh ({charge_time/60:.1f}min), "
                       f"电量 {current_battery-charge_amount:.2f}→{current_battery:.2f}")
-                print(f"    → 剩余路径需求: {estimated_remaining:.2f}kWh, "
-                      f"剩余距离: {remaining_distance/1000:.1f}km")
-            elif estimated_remaining > 0:
-                print(f"  充电站{current_node.node_id}: 策略决定不充电")
-                print(f"    → 当前电量{current_battery:.2f}kWh已足够剩余路径需求{estimated_remaining:.2f}kWh")
 
         # 更新载重
         if next_node.is_pickup():
