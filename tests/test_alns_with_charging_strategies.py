@@ -266,6 +266,11 @@ def test_alns_with_strategies():
             print(f"  充电次数: {breakdown['num_charging_stops']}")
             print(f"  总时间: {breakdown['total_time']/60:.1f} min")
             print(f"  电池可行: {'✓' if battery_feasible else '✗不可行!'}")
+            print(f"\n成本分解:")
+            print(f"  距离成本: {breakdown['distance_cost']:.2f}")
+            print(f"  充电成本: {breakdown['charging_cost']:.2f}")
+            print(f"  时间成本: {breakdown['time_cost']:.2f}")
+            print(f"  延迟成本: {breakdown['delay_cost']:.2f}")
 
     # 5. 对比分析
     print(f"\n{'='*60}")

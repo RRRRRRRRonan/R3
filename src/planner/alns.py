@@ -269,7 +269,7 @@ class MinimalALNS:
 
         成本组成:
         1. 距离成本 = 总距离 × C_tr
-        2. 充电成本 = 总充电量 × C_ch (从visits推导)
+        2. 充电成本 = 总充电量 × C_ch (从visits推导或电池模拟估算)
         3. 时间成本 = 总时间 × C_time (可选)
         4. 延迟成本 = 总延迟 × C_delay (可选)
         5. 任务丢失惩罚
@@ -283,21 +283,24 @@ class MinimalALNS:
         total_distance = route.calculate_total_distance(self.distance)
         distance_cost = total_distance * self.cost_params.C_tr
 
-        # 2. 充电成本 (从visits推导)
+        # 2. 充电成本和时间成本（优先从visits获取，否则通过电池模拟估算）
         charging_amount = 0.0
+        total_time = 0.0
+
         if route.visits:
+            # 有visits，从visits精确计算
             for visit in route.visits:
                 if visit.node.is_charging_station():
-                    # 充电量 = 离开时电量 - 到达时电量
                     charged = visit.battery_after_service - visit.battery_after_travel
                     charging_amount += max(0.0, charged)
-        charging_cost = charging_amount * self.cost_params.C_ch
+            if len(route.visits) > 0:
+                total_time = route.visits[-1].departure_time - route.visits[0].arrival_time
+        elif hasattr(self, 'vehicle') and hasattr(self, 'energy_config') and self.charging_strategy:
+            # 没有visits，通过电池模拟估算充电量和时间
+            charging_amount, total_time = self._estimate_charging_and_time(route)
 
-        # 3. 时间成本 (可选)
-        time_cost = 0.0
-        if route.visits and len(route.visits) > 0:
-            total_time = route.visits[-1].departure_time - route.visits[0].arrival_time
-            time_cost = total_time * self.cost_params.C_time
+        charging_cost = charging_amount * self.cost_params.C_ch
+        time_cost = total_time * self.cost_params.C_time
 
         # 4. 延迟成本 (可选)
         delay_cost = 0.0
@@ -403,6 +406,80 @@ class MinimalALNS:
             print(f"  ✓ Route feasible, final battery={current_battery:.1f}")
         return True  # 整个路径可行
 
+    def _estimate_charging_and_time(self, route: Route) -> tuple[float, float]:
+        """
+        估算路径的充电量和总时间（当visits不可用时）
+
+        通过模拟电池消耗和充电过程，估算：
+        1. 总充电量 (kWh)
+        2. 总时间 (秒或分钟，取决于time_config)
+
+        返回:
+            tuple: (total_charging_amount, total_time)
+        """
+        if not hasattr(self, 'vehicle') or not hasattr(self, 'energy_config'):
+            return 0.0, 0.0
+
+        vehicle = self.vehicle
+        energy_config = self.energy_config
+        time_config = getattr(self, 'time_config', None)
+
+        current_battery = vehicle.battery_capacity
+        total_charging = 0.0
+        total_time = 0.0
+
+        for i in range(len(route.nodes) - 1):
+            current_node = route.nodes[i]
+            next_node = route.nodes[i + 1]
+
+            # 如果当前节点是充电站，计算充电量和充电时间
+            if current_node.is_charging_station():
+                if self.charging_strategy:
+                    # 计算剩余能耗
+                    remaining_energy_demand = 0.0
+                    for j in range(i, len(route.nodes) - 1):
+                        seg_distance = self.distance.get_distance(
+                            route.nodes[j].node_id,
+                            route.nodes[j + 1].node_id
+                        )
+                        remaining_energy_demand += (seg_distance / 1000.0) * energy_config.consumption_rate
+
+                    # 决定充电量
+                    charge_amount = self.charging_strategy.determine_charging_amount(
+                        current_battery=current_battery,
+                        remaining_demand=remaining_energy_demand,
+                        battery_capacity=vehicle.battery_capacity
+                    )
+
+                    # 累计充电量
+                    total_charging += charge_amount
+
+                    # 计算充电时间
+                    if charge_amount > 0:
+                        charging_time = charge_amount / energy_config.charging_rate
+                        total_time += charging_time
+
+                    # 更新电池
+                    current_battery = min(vehicle.battery_capacity, current_battery + charge_amount)
+
+            # 计算行驶距离和时间
+            distance = self.distance.get_distance(current_node.node_id, next_node.node_id)
+            energy_consumed = (distance / 1000.0) * energy_config.consumption_rate
+
+            # 行驶时间
+            if time_config:
+                travel_time = distance / time_config.speed
+                total_time += travel_time
+
+            # 服务时间（如果是任务节点）
+            if hasattr(current_node, 'service_time') and current_node.service_time > 0:
+                total_time += current_node.service_time
+
+            # 更新电池
+            current_battery -= energy_consumed
+
+        return total_charging, total_time
+
     def get_cost_breakdown(self, route: Route) -> Dict:
         """
         获取成本分解（用于分析和调试）
@@ -458,6 +535,9 @@ class MinimalALNS:
             for visit in route_to_analyze.visits:
                 total_delay += visit.get_delay()
 
+        # 计算总成本（使用executed route以确保包含visits）
+        total_cost_value = self.evaluate_cost(route_to_analyze)
+
         return {
             'total_distance': distance,
             'total_charging': charging_amount,
@@ -468,8 +548,8 @@ class MinimalALNS:
             'charging_cost': charging_amount * self.cost_params.C_ch,
             'time_cost': total_time * self.cost_params.C_time,
             'delay_cost': total_delay * self.cost_params.C_delay,
-            'total_cost': self.evaluate_cost(route),
-            'cost_per_km': self.evaluate_cost(route) / (distance / 1000) if distance > 0 else 0
+            'total_cost': total_cost_value,
+            'cost_per_km': total_cost_value / (distance / 1000) if distance > 0 else 0
         }
     
     def accept_solution(self, 
