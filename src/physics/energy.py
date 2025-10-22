@@ -60,9 +60,12 @@ class EnergyConfig:
     # 约束参数
     max_charging_time: float = 3600.0 # T̄: 单次充电最大时间 (秒)
     max_charging_amount: float = 100.0  # Q̄: 单次充电最大能量
-    
+
     # 电池参数
     battery_capacity: float = 100.0# E^{max}: 电池最大容量
+
+    # Week 2新增：充电临界值（第1.3步）
+    critical_battery_threshold: float = 0.2  # 电池临界值比例（0-1），低于此值必须尽快充电
     
     def __post_init__(self):
         """参数合理性检查"""

@@ -403,6 +403,22 @@ class MinimalALNS:
                     print(f"  ✗ Battery depleted at node {i+1}!")
                 return False  # 电量不足，不可行
 
+            # Week 2新增（第1.3步）：检查是否低于临界值
+            critical_threshold = energy_config.critical_battery_threshold * vehicle.battery_capacity
+            if current_battery < critical_threshold:
+                # 检查前方是否有充电站
+                has_upcoming_cs = False
+                # 检查接下来的几个节点（最多5个）
+                for j in range(i + 1, min(i + 6, len(route.nodes))):
+                    if route.nodes[j].is_charging_station():
+                        has_upcoming_cs = True
+                        break
+
+                if not has_upcoming_cs:
+                    if debug:
+                        print(f"  ⚠️ Battery critical at node {i+1}! ({current_battery:.1f} < {critical_threshold:.1f}) and no upcoming CS")
+                    return False  # 低电量且附近没有充电站，不可行
+
         if debug:
             print(f"  ✓ Route feasible, final battery={current_battery:.1f}")
         return True  # 整个路径可行
