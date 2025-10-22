@@ -169,25 +169,52 @@ class MinimalALNS:
         print(f"最终最优成本: {best_cost:.2f}m (改进 {self.evaluate_cost(initial_route)-best_cost:.2f}m)")
         return best_route
     
-    def random_removal(self, route: Route, q: int = 2) -> Tuple[Route, List[int]]:
+    def random_removal(self, route: Route, q: int = 2, remove_cs_prob: float = 0.3) -> Tuple[Route, List[int]]:
         """
-        Destroy算子：随机移除q个任务
+        Destroy算子：随机移除q个任务 + 可选地移除充电站
+
+        Week 2改进：支持充电站动态优化
+
+        参数:
+            route: 当前路径
+            q: 移除的任务数量
+            remove_cs_prob: 移除充电站的概率 (0.0-1.0)
+
+        返回:
+            (destroyed_route, removed_task_ids)
         """
         task_ids = route.get_served_tasks()
-        
+
         if len(task_ids) < q:
             q = max(1, len(task_ids))
-        
+
         if len(task_ids) == 0:
             return route.copy(), []
-        
+
         removed_task_ids = random.sample(task_ids, q)
-        
+
         destroyed_route = route.copy()
+
+        # 移除任务
         for task_id in removed_task_ids:
             task = self.task_pool.get_task(task_id)
             destroyed_route.remove_task(task)
-        
+
+        # Week 2新增：可选地移除充电站
+        if random.random() < remove_cs_prob:
+            cs_nodes = [n for n in destroyed_route.nodes if n.is_charging_station()]
+
+            if len(cs_nodes) > 0:
+                # 随机决定移除多少个充电站（0-2个）
+                num_to_remove = random.randint(0, min(2, len(cs_nodes)))
+
+                if num_to_remove > 0:
+                    removed_cs = random.sample(cs_nodes, num_to_remove)
+
+                    # 移除充电站
+                    for cs in removed_cs:
+                        destroyed_route.nodes.remove(cs)
+
         return destroyed_route, removed_task_ids
     
     def greedy_insertion(self, route: Route, removed_task_ids: List[int]) -> Route:
