@@ -179,16 +179,21 @@ class MinimalALNS:
         """
         贪心插入算子 + 充电支持
 
+        Week 3改进（步骤2.1）：
+        - 支持pickup/delivery分离插入（可以先集中取货，再集中送货）
+        - 增加容量约束检查，防止超载
+
         策略：
         1. 对每个任务，找到成本最小的插入位置
-        2. 如果需要充电，在总成本中加入充电惩罚
-        3. 插入成本 = 距离增量 + 充电惩罚
+        2. Week 3新增：检查容量可行性（避免超载）
+        3. 如果需要充电，在总成本中加入充电惩罚
+        4. 插入成本 = 距离增量 + 充电惩罚
         """
         from core.vehicle import create_vehicle
         from physics.energy import EnergyConfig
-        
+
         repaired_route = route.copy()
-        
+
         if not hasattr(self, 'vehicle') or self.vehicle is None:
             raise ValueError("必须设置vehicle属性才能进行充电约束规划")
         if not hasattr(self, 'energy_config') or self.energy_config is None:
@@ -196,23 +201,39 @@ class MinimalALNS:
 
         vehicle = self.vehicle
         energy_config = self.energy_config
-        
+
         for task_id in removed_task_ids:
             task = self.task_pool.get_task(task_id)
-            
+
             best_cost = float('inf')
             best_position = None
             best_charging_plan = None
-            
+
+            # Week 3改进：遍历所有pickup和delivery位置组合
+            # 允许pickup和delivery之间有间隔（支持分离插入）
             for pickup_pos in range(1, len(repaired_route.nodes)):
                 for delivery_pos in range(pickup_pos + 1, len(repaired_route.nodes) + 1):
-                    
+
+                    # 创建临时路径测试插入
+                    temp_route = repaired_route.copy()
+                    temp_route.insert_task(task, (pickup_pos, delivery_pos))
+
+                    # Week 3新增：检查容量可行性
+                    capacity_feasible, capacity_error = temp_route.check_capacity_feasibility(
+                        vehicle.capacity,
+                        debug=False
+                    )
+
+                    if not capacity_feasible:
+                        # 容量不可行，跳过此位置
+                        continue
+
                     cost_delta = repaired_route.calculate_insertion_cost_delta(
-                        task, 
+                        task,
                         (pickup_pos, delivery_pos),
                         self.distance
                     )
-                    
+
                     feasible, charging_plan = repaired_route.check_energy_feasibility_for_insertion(
                         task,
                         (pickup_pos, delivery_pos),
@@ -220,20 +241,20 @@ class MinimalALNS:
                         self.distance,
                         energy_config
                     )
-                    
+
                     if not feasible:
                         continue
-                    
+
                     if charging_plan:
                         charging_penalty_per_station = 100.0
                         total_charging_penalty = len(charging_plan) * charging_penalty_per_station
                         cost_delta += total_charging_penalty
-                    
+
                     if cost_delta < best_cost:
                         best_cost = cost_delta
                         best_position = (pickup_pos, delivery_pos)
                         best_charging_plan = charging_plan
-            
+
             if best_position is not None:
                 repaired_route.insert_task(task, best_position)
 
@@ -245,7 +266,7 @@ class MinimalALNS:
                             position=plan['position'],
                             charge_amount=plan['amount']
                         )
-        
+
         return repaired_route
     
     def evaluate_cost(self, route: Route) -> float:

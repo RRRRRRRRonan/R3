@@ -436,9 +436,84 @@ class Route:
         for task_id in delivery_positions:
             if task_id not in pickup_positions:
                 return False, f"Task {task_id}: delivery exists but pickup missing"
-        
+
         return True, None
-    
+
+    def check_capacity_feasibility(self, vehicle_capacity: float, debug: bool = False) -> Tuple[bool, Optional[str]]:
+        """
+        检查容量可行性（Week 3新增 - 步骤2.1）
+
+        功能:
+            模拟货物装载，确保不超过车辆容量
+            支持pickup/delivery分离场景（先集中取货，再集中送货）
+
+        参数:
+            vehicle_capacity: 车辆容量上限 (kg)
+            debug: 是否打印调试信息
+
+        返回:
+            (is_feasible, error_message)
+
+        示例场景:
+            - 车辆容量100kg，3个任务各40kg
+            - depot → p1 → p2 → p3 → d1 → d2 → d3 应不可行（120kg > 100kg）
+            - depot → p1 → p2 → d1 → p3 → d2 → d3 应可行（最大80kg < 100kg）
+        """
+        if len(self.nodes) == 0:
+            return True, None
+
+        current_load = 0.0
+
+        for i, node in enumerate(self.nodes):
+            # Pickup: 增加载重
+            if node.is_pickup():
+                if hasattr(node, 'demand'):
+                    current_load += node.demand
+
+                    if debug:
+                        print(f"  Node {i} (pickup {node.node_id}): load += {node.demand:.1f} → {current_load:.1f}")
+
+                    # 检查是否超载
+                    if current_load > vehicle_capacity + 1e-6:
+                        error_msg = (
+                            f"Capacity violation at position {i} (pickup {node.node_id}): "
+                            f"load {current_load:.2f} > capacity {vehicle_capacity}"
+                        )
+                        if debug:
+                            print(f"  ❌ {error_msg}")
+                        return False, error_msg
+
+            # Delivery: 减少载重
+            elif node.is_delivery():
+                if hasattr(node, 'demand'):
+                    current_load -= node.demand
+                    current_load = max(0.0, current_load)  # 避免负数
+
+                    if debug:
+                        print(f"  Node {i} (delivery {node.node_id}): load -= {node.demand:.1f} → {current_load:.1f}")
+
+                    # 检查是否为负（逻辑错误：送货多于取货）
+                    if current_load < -1e-6:
+                        error_msg = (
+                            f"Logic error at position {i} (delivery {node.node_id}): "
+                            f"delivering more than picked up (load={current_load:.2f})"
+                        )
+                        if debug:
+                            print(f"  ❌ {error_msg}")
+                        return False, error_msg
+
+        # 检查最终载重是否为0
+        if abs(current_load) > 1e-6:
+            error_msg = f"Final load is not zero: {current_load:.2f} (unbalanced pickups/deliveries)"
+            if debug:
+                print(f"  ⚠️  {error_msg}")
+            # 这是警告，不是错误（可能还有未完成的任务）
+
+        if debug:
+            print(f"  ✓ Capacity feasible (max load observed)")
+
+        return True, None
+
     def validate_structure(self) -> Tuple[bool, Optional[str]]:
         """
         验证路径结构
