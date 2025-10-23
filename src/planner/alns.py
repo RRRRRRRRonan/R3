@@ -215,17 +215,151 @@ class MinimalALNS:
                         destroyed_route.nodes.remove(cs)
 
         return destroyed_route, removed_task_ids
-    
+
+    def partial_removal(self, route: Route, q: int = 2) -> Tuple[Route, List[int]]:
+        """
+        Destroy算子：只移除delivery节点（Week 3步骤2.2）
+
+        功能:
+            - 随机选择q个任务
+            - 只移除这些任务的delivery节点
+            - 保留pickup节点在路径中
+            - 允许repair阶段重新选择delivery位置
+
+        返回:
+            (destroyed_route, removed_task_ids)
+            其中removed_task_ids表示需要重新插入delivery的任务
+        """
+        task_ids = route.get_served_tasks()
+
+        if len(task_ids) < q:
+            q = max(1, len(task_ids))
+
+        if len(task_ids) == 0:
+            return route.copy(), []
+
+        # 随机选择要移除delivery的任务
+        selected_task_ids = random.sample(task_ids, q)
+
+        destroyed_route = route.copy()
+        for task_id in selected_task_ids:
+            task = self.task_pool.get_task(task_id)
+
+            # 只移除delivery节点，保留pickup节点
+            # 找到delivery节点并移除
+            delivery_node_id = task.delivery_node.node_id
+            destroyed_route.nodes = [
+                node for node in destroyed_route.nodes
+                if node.node_id != delivery_node_id
+            ]
+
+        return destroyed_route, selected_task_ids
+
+    def pair_exchange(self, route: Route) -> Route:
+        """
+        Local search算子：交换两个任务的位置（Week 3步骤2.3）
+
+        功能:
+            - 随机选择两个任务
+            - 交换它们在路径中的位置
+            - 保持precedence约束（pickup在delivery之前）
+            - 这是一个2-opt类型的local search
+
+        返回:
+            交换后的路径
+        """
+        task_ids = route.get_served_tasks()
+
+        if len(task_ids) < 2:
+            return route.copy()  # 少于2个任务，无法交换
+
+        # 随机选择两个不同的任务
+        task1_id, task2_id = random.sample(task_ids, 2)
+        task1 = self.task_pool.get_task(task1_id)
+        task2 = self.task_pool.get_task(task2_id)
+
+        # 找到两个任务在路径中的位置
+        task1_pickup_pos = None
+        task1_delivery_pos = None
+        task2_pickup_pos = None
+        task2_delivery_pos = None
+
+        for i, node in enumerate(route.nodes):
+            if hasattr(node, 'task_id'):
+                if node.task_id == task1_id:
+                    if node.is_pickup():
+                        task1_pickup_pos = i
+                    elif node.is_delivery():
+                        task1_delivery_pos = i
+                elif node.task_id == task2_id:
+                    if node.is_pickup():
+                        task2_pickup_pos = i
+                    elif node.is_delivery():
+                        task2_delivery_pos = i
+
+        # 检查是否找到所有节点
+        if None in [task1_pickup_pos, task1_delivery_pos, task2_pickup_pos, task2_delivery_pos]:
+            return route.copy()  # 无法找到完整任务，返回原路径
+
+        # 创建新路径进行交换
+        exchanged_route = route.copy()
+
+        # 提取节点
+        task1_pickup = task1.pickup_node
+        task1_delivery = task1.delivery_node
+        task2_pickup = task2.pickup_node
+        task2_delivery = task2.delivery_node
+
+        # 移除所有四个节点（从后往前移除，避免索引变化）
+        positions = sorted([task1_pickup_pos, task1_delivery_pos, task2_pickup_pos, task2_delivery_pos], reverse=True)
+        for pos in positions:
+            exchanged_route.nodes.pop(pos)
+
+        # 重新插入，交换两个任务的相对顺序
+        # 策略：保持pickup-delivery的相对距离，但交换任务顺序
+
+        # 简化策略：将task2插入到task1原来的位置，task1插入到task2原来的位置
+        # 需要确保precedence约束
+
+        # 找到最小和最大位置
+        min_pos = min(task1_pickup_pos, task2_pickup_pos)
+
+        # 按照新顺序插入
+        if task1_pickup_pos < task2_pickup_pos:
+            # 原顺序：task1在前，task2在后
+            # 交换后：task2在前，task1在后
+            # 在min_pos位置插入task2
+            exchanged_route.nodes.insert(min_pos, task2_pickup)
+            exchanged_route.nodes.insert(min_pos + 1, task2_delivery)
+            exchanged_route.nodes.insert(min_pos + 2, task1_pickup)
+            exchanged_route.nodes.insert(min_pos + 3, task1_delivery)
+        else:
+            # 原顺序：task2在前，task1在后
+            # 交换后：task1在前，task2在后
+            exchanged_route.nodes.insert(min_pos, task1_pickup)
+            exchanged_route.nodes.insert(min_pos + 1, task1_delivery)
+            exchanged_route.nodes.insert(min_pos + 2, task2_pickup)
+            exchanged_route.nodes.insert(min_pos + 3, task2_delivery)
+
+        return exchanged_route
+
     def greedy_insertion(self, route: Route, removed_task_ids: List[int]) -> Route:
         """
-        贪心插入算子 + 智能充电站插入（Week 2改进 - 第1.2步）
+        贪心插入算子 + 充电支持
+
+        Week 3改进（步骤2.1）：
+        - 支持pickup/delivery分离插入（可以先集中取货，再集中送货）
+        - 增加容量约束检查，防止超载
 
         策略：
         1. 对每个任务，找到成本最小的插入位置
-        2. 插入任务后，检查电池可行性
-        3. 如果不可行，自动插入必要的充电站
-        4. 插入成本 = 距离增量
+        2. Week 3新增：检查容量可行性（避免超载）
+        3. 如果需要充电，在总成本中加入充电惩罚
+        4. 插入成本 = 距离增量 + 充电惩罚
         """
+        from core.vehicle import create_vehicle
+        from physics.energy import EnergyConfig
+
         repaired_route = route.copy()
 
         if not hasattr(self, 'vehicle') or self.vehicle is None:
@@ -233,33 +367,127 @@ class MinimalALNS:
         if not hasattr(self, 'energy_config') or self.energy_config is None:
             raise ValueError("必须设置energy_config属性才能进行充电约束规划")
 
+        vehicle = self.vehicle
+        energy_config = self.energy_config
+
         for task_id in removed_task_ids:
             task = self.task_pool.get_task(task_id)
 
+            # Week 3步骤2.2：检查pickup是否已在路径中
+            pickup_in_route = False
+            pickup_position = None
+            for i, node in enumerate(repaired_route.nodes):
+                if hasattr(node, 'task_id') and node.task_id == task_id and node.is_pickup():
+                    pickup_in_route = True
+                    pickup_position = i
+                    break
+
             best_cost = float('inf')
             best_position = None
+            best_charging_plan = None
 
-            # 尝试所有可能的插入位置
-            for pickup_pos in range(1, len(repaired_route.nodes)):
-                for delivery_pos in range(pickup_pos + 1, len(repaired_route.nodes) + 1):
+            if pickup_in_route:
+                # 只需要插入delivery节点
+                for delivery_pos in range(pickup_position + 1, len(repaired_route.nodes) + 1):
+                    # 创建临时路径测试插入
+                    temp_route = repaired_route.copy()
+                    temp_route.nodes.insert(delivery_pos, task.delivery_node)
 
-                    # 计算插入成本（只考虑距离）
+                    # Week 3新增：检查容量可行性
+                    capacity_feasible, capacity_error = temp_route.check_capacity_feasibility(
+                        vehicle.capacity,
+                        debug=False
+                    )
+
+                    if not capacity_feasible:
+                        continue
+
+                    # 计算插入delivery的成本增量
+                    if delivery_pos == 0:
+                        cost_delta = 0.0
+                    else:
+                        prev_node = repaired_route.nodes[delivery_pos - 1]
+                        if delivery_pos < len(repaired_route.nodes):
+                            next_node = repaired_route.nodes[delivery_pos]
+                            # 移除原边，添加新边
+                            old_dist = self.distance.get_distance(prev_node.node_id, next_node.node_id)
+                            new_dist = (self.distance.get_distance(prev_node.node_id, task.delivery_node.node_id) +
+                                       self.distance.get_distance(task.delivery_node.node_id, next_node.node_id))
+                            cost_delta = new_dist - old_dist
+                        else:
+                            # 插入到末尾
+                            cost_delta = self.distance.get_distance(prev_node.node_id, task.delivery_node.node_id)
+
+                    if cost_delta < best_cost:
+                        best_cost = cost_delta
+                        best_position = ('delivery_only', delivery_pos)
+            else:
+                # 需要插入完整任务（pickup和delivery）
+                # Week 3改进：遍历所有pickup和delivery位置组合
+                # 允许pickup和delivery之间有间隔（支持分离插入）
+                for pickup_pos in range(1, len(repaired_route.nodes)):
+                    for delivery_pos in range(pickup_pos + 1, len(repaired_route.nodes) + 1):
+
+                        # 创建临时路径测试插入
+                        temp_route = repaired_route.copy()
+                        temp_route.insert_task(task, (pickup_pos, delivery_pos))
+
+                    # Week 3新增：检查容量可行性
+                    capacity_feasible, capacity_error = temp_route.check_capacity_feasibility(
+                        vehicle.capacity,
+                        debug=False
+                    )
+
+                    if not capacity_feasible:
+                        # 容量不可行，跳过此位置
+                        continue
+
                     cost_delta = repaired_route.calculate_insertion_cost_delta(
                         task,
                         (pickup_pos, delivery_pos),
                         self.distance
                     )
 
+                    feasible, charging_plan = repaired_route.check_energy_feasibility_for_insertion(
+                        task,
+                        (pickup_pos, delivery_pos),
+                        vehicle,
+                        self.distance,
+                        energy_config
+                    )
+
+                    if not feasible:
+                        continue
+
+                    if charging_plan:
+                        charging_penalty_per_station = 100.0
+                        total_charging_penalty = len(charging_plan) * charging_penalty_per_station
+                        cost_delta += total_charging_penalty
+
                     if cost_delta < best_cost:
                         best_cost = cost_delta
                         best_position = (pickup_pos, delivery_pos)
+                        best_charging_plan = charging_plan
 
-            # 插入任务
+            # Week 3步骤2.2：根据best_position类型执行不同的插入
             if best_position is not None:
-                repaired_route.insert_task(task, best_position)
+                if isinstance(best_position, tuple) and len(best_position) == 2:
+                    if best_position[0] == 'delivery_only':
+                        # 只插入delivery节点
+                        delivery_pos = best_position[1]
+                        repaired_route.nodes.insert(delivery_pos, task.delivery_node)
+                    else:
+                        # 插入完整任务（pickup和delivery）
+                        repaired_route.insert_task(task, best_position)
 
-                # Week 2新增：插入任务后，自动插入必要的充电站
-                repaired_route = self._insert_necessary_charging_stations(repaired_route)
+                        if best_charging_plan:
+                            sorted_plans = sorted(best_charging_plan, key=lambda x: x['position'], reverse=True)
+                            for plan in sorted_plans:
+                                repaired_route.insert_charging_visit(
+                                    station=plan['station_node'],
+                                    position=plan['position'],
+                                    charge_amount=plan['amount']
+                                )
 
         return repaired_route
     
@@ -757,12 +985,12 @@ class MinimalALNS:
                       route: Route,
                       removed_task_ids: List[int]) -> Route:
         """
-        Regret-2插入算子 + 智能充电站插入（Week 2改进 - 第1.2步）
+        Regret-2插入算子+充电支持（Week 3步骤2.4改进）
 
-        策略：
-        1. 对每个任务，计算最优和次优插入位置
-        2. 选择regret值最大的任务优先插入
-        3. 插入任务后，自动插入必要的充电站
+        Week 3改进：
+        - 支持容量约束检查
+        - 支持partial delivery插入
+        - 更智能的位置评估
         """
         repaired_route = route.copy()
         remaining_tasks = removed_task_ids.copy()
@@ -772,38 +1000,100 @@ class MinimalALNS:
         if not hasattr(self, 'energy_config') or self.energy_config is None:
             raise ValueError("必须设置energy_config属性才能进行充电约束规划")
 
+        vehicle = self.vehicle
+        energy_config = self.energy_config
+
         while remaining_tasks:
             best_regret = -float('inf')
             best_task_id = None
             best_position = None
+            best_charging_plan = None
 
             for task_id in remaining_tasks:
                 task = self.task_pool.get_task(task_id)
 
-                insertion_costs = []
+                # Week 3步骤2.2：检查pickup是否已在路径中
+                pickup_in_route = False
+                pickup_position = None
+                for i, node in enumerate(repaired_route.nodes):
+                    if hasattr(node, 'task_id') and node.task_id == task_id and node.is_pickup():
+                        pickup_in_route = True
+                        pickup_position = i
+                        break
 
-                # 计算所有可能的插入位置及其成本
-                for pickup_pos in range(1, len(repaired_route.nodes)):
-                    for delivery_pos in range(pickup_pos + 1, len(repaired_route.nodes) + 1):
-                        cost_delta = repaired_route.calculate_insertion_cost_delta(
-                            task,
-                            (pickup_pos, delivery_pos),
-                            self.distance
-                        )
+                feasible_insertions = []
 
-                        insertion_costs.append({
+                if pickup_in_route:
+                    # 只需要插入delivery节点
+                    for delivery_pos in range(pickup_position + 1, len(repaired_route.nodes) + 1):
+                        temp_route = repaired_route.copy()
+                        temp_route.nodes.insert(delivery_pos, task.delivery_node)
+
+                        # Week 3新增：检查容量可行性
+                        capacity_feasible, _ = temp_route.check_capacity_feasibility(vehicle.capacity, debug=False)
+                        if not capacity_feasible:
+                            continue
+
+                        # 计算成本增量
+                        prev_node = repaired_route.nodes[delivery_pos - 1]
+                        if delivery_pos < len(repaired_route.nodes):
+                            next_node = repaired_route.nodes[delivery_pos]
+                            old_dist = self.distance.get_distance(prev_node.node_id, next_node.node_id)
+                            new_dist = (self.distance.get_distance(prev_node.node_id, task.delivery_node.node_id) +
+                                       self.distance.get_distance(task.delivery_node.node_id, next_node.node_id))
+                            cost_delta = new_dist - old_dist
+                        else:
+                            cost_delta = self.distance.get_distance(prev_node.node_id, task.delivery_node.node_id)
+
+                        feasible_insertions.append({
                             'cost': cost_delta,
-                            'position': (pickup_pos, delivery_pos)
+                            'position': ('delivery_only', delivery_pos),
+                            'charging_plan': None
                         })
+                else:
+                    # 需要插入完整任务
+                    for pickup_pos in range(1, len(repaired_route.nodes)):
+                        for delivery_pos in range(pickup_pos + 1, len(repaired_route.nodes) + 1):
+                            temp_route = repaired_route.copy()
+                            temp_route.insert_task(task, (pickup_pos, delivery_pos))
 
-                if len(insertion_costs) >= 2:
-                    # 按成本排序
-                    insertion_costs.sort(key=lambda x: x['cost'])
+                            # Week 3新增：检查容量可行性
+                            capacity_feasible, _ = temp_route.check_capacity_feasibility(vehicle.capacity, debug=False)
+                            if not capacity_feasible:
+                                continue
 
-                    best_cost = insertion_costs[0]['cost']
-                    second_best_cost = insertion_costs[1]['cost']
+                            cost_delta = repaired_route.calculate_insertion_cost_delta(
+                                task,
+                                (pickup_pos, delivery_pos),
+                                self.distance
+                            )
 
-                    # 计算regret值
+                            feasible, charging_plan = repaired_route.check_energy_feasibility_for_insertion(
+                                task,
+                                (pickup_pos, delivery_pos),
+                                vehicle,
+                                self.distance,
+                                energy_config
+                            )
+
+                            if not feasible:
+                                continue
+
+                            if charging_plan:
+                                cost_delta += len(charging_plan) * 50.0
+
+                            feasible_insertions.append({
+                                'cost': cost_delta,
+                                'position': (pickup_pos, delivery_pos),
+                                'charging_plan': charging_plan
+                            })
+                
+                if len(feasible_insertions) >= 2:
+                    feasible_insertions.sort(key=lambda x: x['cost'])
+                    
+                    best_cost = feasible_insertions[0]['cost']
+                    second_best_cost = feasible_insertions[1]['cost']
+                    
                     regret = second_best_cost - best_cost
 
                     if regret > best_regret:
@@ -821,10 +1111,27 @@ class MinimalALNS:
             # 插入regret最大的任务
             if best_task_id:
                 task = self.task_pool.get_task(best_task_id)
-                repaired_route.insert_task(task, best_position)
 
-                # Week 2新增：插入任务后，自动插入必要的充电站
-                repaired_route = self._insert_necessary_charging_stations(repaired_route)
+                # Week 3步骤2.2：根据best_position类型执行不同的插入
+                if isinstance(best_position, tuple) and len(best_position) == 2:
+                    if best_position[0] == 'delivery_only':
+                        # 只插入delivery节点
+                        delivery_pos = best_position[1]
+                        repaired_route.nodes.insert(delivery_pos, task.delivery_node)
+                    else:
+                        # 插入完整任务
+                        repaired_route.insert_task(task, best_position)
+
+                        if best_charging_plan:
+                            sorted_plans = sorted(best_charging_plan,
+                                                key=lambda x: x['position'],
+                                                reverse=True)
+                            for plan in sorted_plans:
+                                repaired_route.insert_charging_visit(
+                                    station=plan['station_node'],
+                                    position=plan['position'],
+                                    charge_amount=plan['amount']
+                                )
 
                 remaining_tasks.remove(best_task_id)
             else:
