@@ -432,42 +432,42 @@ class MinimalALNS:
                         temp_route = repaired_route.copy()
                         temp_route.insert_task(task, (pickup_pos, delivery_pos))
 
-                    # Week 3新增：检查容量可行性
-                    capacity_feasible, capacity_error = temp_route.check_capacity_feasibility(
-                        vehicle.capacity,
-                        debug=False
-                    )
+                        # Week 3新增：检查容量可行性
+                        capacity_feasible, capacity_error = temp_route.check_capacity_feasibility(
+                            vehicle.capacity,
+                            debug=False
+                        )
 
-                    if not capacity_feasible:
-                        # 容量不可行，跳过此位置
-                        continue
+                        if not capacity_feasible:
+                            # 容量不可行，跳过此位置
+                            continue
 
-                    cost_delta = repaired_route.calculate_insertion_cost_delta(
-                        task,
-                        (pickup_pos, delivery_pos),
-                        self.distance
-                    )
+                        cost_delta = repaired_route.calculate_insertion_cost_delta(
+                            task,
+                            (pickup_pos, delivery_pos),
+                            self.distance
+                        )
 
-                    feasible, charging_plan = repaired_route.check_energy_feasibility_for_insertion(
-                        task,
-                        (pickup_pos, delivery_pos),
-                        vehicle,
-                        self.distance,
-                        energy_config
-                    )
+                        feasible, charging_plan = repaired_route.check_energy_feasibility_for_insertion(
+                            task,
+                            (pickup_pos, delivery_pos),
+                            vehicle,
+                            self.distance,
+                            energy_config
+                        )
 
-                    if not feasible:
-                        continue
+                        if not feasible:
+                            continue
 
-                    if charging_plan:
-                        charging_penalty_per_station = 100.0
-                        total_charging_penalty = len(charging_plan) * charging_penalty_per_station
-                        cost_delta += total_charging_penalty
+                        if charging_plan:
+                            charging_penalty_per_station = 100.0
+                            total_charging_penalty = len(charging_plan) * charging_penalty_per_station
+                            cost_delta += total_charging_penalty
 
-                    if cost_delta < best_cost:
-                        best_cost = cost_delta
-                        best_position = (pickup_pos, delivery_pos)
-                        best_charging_plan = charging_plan
+                        if cost_delta < best_cost:
+                            best_cost = cost_delta
+                            best_position = (pickup_pos, delivery_pos)
+                            best_charging_plan = charging_plan
 
             # Week 3步骤2.2：根据best_position类型执行不同的插入
             if best_position is not None:
@@ -1099,14 +1099,14 @@ class MinimalALNS:
                     if regret > best_regret:
                         best_regret = regret
                         best_task_id = task_id
-                        best_position = insertion_costs[0]['position']
+                        best_position = feasible_insertions[0]['position']
 
-                elif len(insertion_costs) == 1:
+                elif len(feasible_insertions) == 1:
                     # 只有一个可行位置，regret = inf
                     if best_regret < float('inf'):
                         best_regret = float('inf')
                         best_task_id = task_id
-                        best_position = insertion_costs[0]['position']
+                        best_position = feasible_insertions[0]['position']
 
             # 插入regret最大的任务
             if best_task_id:
