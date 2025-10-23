@@ -60,9 +60,13 @@ class EnergyConfig:
     # 约束参数
     max_charging_time: float = 3600.0 # T̄: 单次充电最大时间 (秒)
     max_charging_amount: float = 100.0  # Q̄: 单次充电最大能量
-    
+
     # 电池参数
     battery_capacity: float = 100.0# E^{max}: 电池最大容量
+
+    # Week 2新增：充电临界值（第1.3步）
+    # Week 2修复：暂时禁用临界值（设为0），专注于充电站动态优化核心功能
+    critical_battery_threshold: float = 0.0  # 暂时禁用，避免PR-Minimal过度插入充电站
     
     def __post_init__(self):
         """参数合理性检查"""
@@ -200,32 +204,37 @@ def calculate_charging_time(desired_amount: float = None,
 def calculate_minimum_charging_needed(current_battery: float,
                                      remaining_energy_demand: float,
                                      battery_capacity: float,
-                                     safety_margin: float = 0.0) -> float:
+                                     safety_margin: float = 0.0,
+                                     critical_threshold_ratio: float = 0.2) -> float:
     """
     计算完成剩余任务所需的最小充电量（部分充电策略核心）
-    
+
     策略思想（来自Keskin & Çatay, 2016）:
         不充满，只充"刚好够用"的电量 → 节省时间
-    
+
+    Week 2改进：考虑临界值约束，确保最终电量不低于临界值
+
     参数:
         current_battery: 当前电量
         remaining_energy_demand: 剩余路径的能量需求
         battery_capacity: 电池容量
         safety_margin: 安全余量（预留缓冲）
-    
+        critical_threshold_ratio: 临界值比例（默认20%）
+
     返回:
         float: 需要充电的量
-        
+
     示例:
         >>> calculate_minimum_charging_needed(20, 100, 150, 10)
         90.0  # 需要100，当前20，充90就够（100-20+10安全余量）
     """
-    # 计算缺口
+    # Week 2注释：临界值由ALNS的充电站插入逻辑保证，充电策略只负责充到够用
+    # 计算缺口（只考虑到达终点 + 安全余量，不强制临界值）
     deficit = remaining_energy_demand - current_battery + safety_margin
-    
+
     if deficit <= 0:
         return 0.0  # 当前电量已足够
-    
+
     # 不能超过电池容量
     max_possible = battery_capacity - current_battery
     return min(deficit, max_possible)

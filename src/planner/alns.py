@@ -73,13 +73,15 @@ class MinimalALNS:
     """
 
     def __init__(self, distance_matrix: DistanceMatrix, task_pool,
-                 repair_mode='mixed', cost_params: CostParameters = None):
+                 repair_mode='mixed', cost_params: CostParameters = None,
+                 charging_strategy=None):
         """
         参数：
             distance_matrix: 距离矩阵（用于计算成本）
             task_pool: 任务池
-            repair_mode: 修复算子模式 ('greedy', 'regret2', 'mixed')
+            repair_mode: 修复算子模式 ('greedy', 'regret2', 'random', 'mixed')
             cost_params: 成本参数配置
+            charging_strategy: 充电策略对象 (Week 2新增)
         """
         self.distance = distance_matrix
         self.task_pool = task_pool
@@ -87,6 +89,9 @@ class MinimalALNS:
 
         # Week 1: 成本参数
         self.cost_params = cost_params or CostParameters()
+
+        # Week 2: 充电策略
+        self.charging_strategy = charging_strategy
 
         # 模拟退火参数
         self.initial_temp = 100.0
@@ -117,23 +122,32 @@ class MinimalALNS:
         print(f"初始成本: {best_cost:.2f}m")
         print(f"总迭代次数: {max_iterations}")
 
+        # Week 2: 添加random模式统计
+        random_count = 0
+
         for iteration in range(max_iterations):
             destroyed_route, removed_task_ids = self.random_removal(current_route, q=2)
-            
+
             if self.repair_mode == 'greedy':
                 candidate_route = self.greedy_insertion(destroyed_route, removed_task_ids)
                 greedy_count += 1
             elif self.repair_mode == 'regret2':
                 candidate_route = self.regret2_insertion(destroyed_route, removed_task_ids)
                 regret_count += 1
-            else:
+            elif self.repair_mode == 'random':
+                candidate_route = self.random_insertion(destroyed_route, removed_task_ids)
+                random_count += 1
+            else:  # mixed mode
                 repair_choice = random.random()
-                if repair_choice < 0.5:
+                if repair_choice < 0.33:
                     candidate_route = self.greedy_insertion(destroyed_route, removed_task_ids)
                     greedy_count += 1
-                else:
+                elif repair_choice < 0.67:
                     candidate_route = self.regret2_insertion(destroyed_route, removed_task_ids)
                     regret_count += 1
+                else:
+                    candidate_route = self.random_insertion(destroyed_route, removed_task_ids)
+                    random_count += 1
             
             candidate_cost = self.evaluate_cost(candidate_route)
             current_cost = self.evaluate_cost(current_route)
@@ -150,29 +164,56 @@ class MinimalALNS:
             if (iteration + 1) % 50 == 0:
                 print(f"  [进度] 已完成 {iteration+1}/{max_iterations} 次迭代, 当前最优: {best_cost:.2f}m")
         
-        print(f"算子使用统计: Greedy={greedy_count}, Regret-2={regret_count}")
+        print(f"算子使用统计: Greedy={greedy_count}, Regret-2={regret_count}, Random={random_count}")
         print(f"最终最优成本: {best_cost:.2f}m (改进 {self.evaluate_cost(initial_route)-best_cost:.2f}m)")
         return best_route
     
-    def random_removal(self, route: Route, q: int = 2) -> Tuple[Route, List[int]]:
+    def random_removal(self, route: Route, q: int = 2, remove_cs_prob: float = 0.3) -> Tuple[Route, List[int]]:
         """
-        Destroy算子：随机移除q个任务
+        Destroy算子：随机移除q个任务 + 可选地移除充电站
+
+        Week 2改进：支持充电站动态优化
+
+        参数:
+            route: 当前路径
+            q: 移除的任务数量
+            remove_cs_prob: 移除充电站的概率 (0.0-1.0)
+
+        返回:
+            (destroyed_route, removed_task_ids)
         """
         task_ids = route.get_served_tasks()
-        
+
         if len(task_ids) < q:
             q = max(1, len(task_ids))
-        
+
         if len(task_ids) == 0:
             return route.copy(), []
-        
+
         removed_task_ids = random.sample(task_ids, q)
-        
+
         destroyed_route = route.copy()
+
+        # 移除任务
         for task_id in removed_task_ids:
             task = self.task_pool.get_task(task_id)
             destroyed_route.remove_task(task)
-        
+
+        # Week 2新增：可选地移除充电站
+        if random.random() < remove_cs_prob:
+            cs_nodes = [n for n in destroyed_route.nodes if n.is_charging_station()]
+
+            if len(cs_nodes) > 0:
+                # 随机决定移除多少个充电站（0-2个）
+                num_to_remove = random.randint(0, min(2, len(cs_nodes)))
+
+                if num_to_remove > 0:
+                    removed_cs = random.sample(cs_nodes, num_to_remove)
+
+                    # 移除充电站
+                    for cs in removed_cs:
+                        destroyed_route.nodes.remove(cs)
+
         return destroyed_route, removed_task_ids
 
     def partial_removal(self, route: Route, q: int = 2) -> Tuple[Route, List[int]]:
@@ -452,15 +493,16 @@ class MinimalALNS:
     
     def evaluate_cost(self, route: Route) -> float:
         """
-        多目标成本评估
+        多目标成本评估（Week 2 改进）
 
         成本组成:
         1. 距离成本 = 总距离 × C_tr
-        2. 充电成本 = 总充电量 × C_ch (从visits推导)
+        2. 充电成本 = 总充电量 × C_ch (从visits推导或电池模拟估算)
         3. 时间成本 = 总时间 × C_time (可选)
         4. 延迟成本 = 总延迟 × C_delay (可选)
         5. 任务丢失惩罚
         6. 不可行解惩罚
+        7. 电池可行性惩罚 (Week 2新增)
 
         返回:
             float: 加权总成本
@@ -469,21 +511,24 @@ class MinimalALNS:
         total_distance = route.calculate_total_distance(self.distance)
         distance_cost = total_distance * self.cost_params.C_tr
 
-        # 2. 充电成本 (从visits推导)
+        # 2. 充电成本和时间成本（优先从visits获取，否则通过电池模拟估算）
         charging_amount = 0.0
+        total_time = 0.0
+
         if route.visits:
+            # 有visits，从visits精确计算
             for visit in route.visits:
                 if visit.node.is_charging_station():
-                    # 充电量 = 离开时电量 - 到达时电量
                     charged = visit.battery_after_service - visit.battery_after_travel
                     charging_amount += max(0.0, charged)
-        charging_cost = charging_amount * self.cost_params.C_ch
+            if len(route.visits) > 0:
+                total_time = route.visits[-1].departure_time - route.visits[0].arrival_time
+        elif hasattr(self, 'vehicle') and hasattr(self, 'energy_config') and self.charging_strategy:
+            # 没有visits，通过电池模拟估算充电量和时间
+            charging_amount, total_time = self._estimate_charging_and_time(route)
 
-        # 3. 时间成本 (可选)
-        time_cost = 0.0
-        if route.visits and len(route.visits) > 0:
-            total_time = route.visits[-1].departure_time - route.visits[0].arrival_time
-            time_cost = total_time * self.cost_params.C_time
+        charging_cost = charging_amount * self.cost_params.C_ch
+        time_cost = total_time * self.cost_params.C_time
 
         # 4. 延迟成本 (可选)
         delay_cost = 0.0
@@ -503,40 +548,411 @@ class MinimalALNS:
         if route.is_feasible is False:
             infeasible_penalty = self.cost_params.C_infeasible
 
+        # 7. Week 2新增：电池可行性检查
+        battery_penalty = 0.0
+        if hasattr(self, 'vehicle') and hasattr(self, 'energy_config'):
+            battery_feasible = self._check_battery_feasibility(route)
+            if not battery_feasible:
+                # 不可行解给予极大惩罚
+                battery_penalty = self.cost_params.C_infeasible * 10.0
+
         total_cost = (distance_cost + charging_cost + time_cost +
-                     delay_cost + missing_penalty + infeasible_penalty)
+                     delay_cost + missing_penalty + infeasible_penalty +
+                     battery_penalty)
 
         return total_cost
+
+    def _check_battery_feasibility(self, route: Route, debug=False) -> bool:
+        """
+        检查路径的电池可行性 (Week 2新增)
+
+        模拟整个路径的电池消耗，检查是否会出现电量不足
+
+        返回:
+            bool: True表示可行，False表示不可行
+        """
+        if not hasattr(self, 'vehicle') or not hasattr(self, 'energy_config'):
+            return True  # 没有约束则认为可行
+
+        vehicle = self.vehicle
+        energy_config = self.energy_config
+
+        # 模拟电池消耗
+        current_battery = vehicle.battery_capacity  # 满电出发
+
+        for i in range(len(route.nodes) - 1):
+            current_node = route.nodes[i]
+            next_node = route.nodes[i + 1]
+
+            # 如果当前节点是充电站，先充电
+            if current_node.is_charging_station():
+                # 使用充电策略决定充电量
+                if self.charging_strategy:
+                    # 计算剩余路径能耗（包括当前到下一节点的距离）
+                    remaining_energy_demand = 0.0
+                    for j in range(i, len(route.nodes) - 1):
+                        seg_distance = self.distance.get_distance(
+                            route.nodes[j].node_id,
+                            route.nodes[j + 1].node_id
+                        )
+                        remaining_energy_demand += (seg_distance / 1000.0) * energy_config.consumption_rate
+
+                    charge_amount = self.charging_strategy.determine_charging_amount(
+                        current_battery=current_battery,
+                        remaining_demand=remaining_energy_demand,
+                        battery_capacity=vehicle.battery_capacity
+                    )
+                    if debug:
+                        print(f"  CS at node {i}: battery={current_battery:.1f}, demand={remaining_energy_demand:.1f}, charge={charge_amount:.1f}")
+                    current_battery = min(vehicle.battery_capacity, current_battery + charge_amount)
+                else:
+                    # 没有充电策略，默认充满
+                    if debug:
+                        print(f"  CS at node {i}: charging to full")
+                    current_battery = vehicle.battery_capacity
+
+            # 计算到下一节点的距离和能耗
+            distance = self.distance.get_distance(
+                current_node.node_id,
+                next_node.node_id
+            )
+            energy_consumed = (distance / 1000.0) * energy_config.consumption_rate
+
+            # 消耗能量前往下一节点
+            current_battery -= energy_consumed
+
+            if debug:
+                print(f"  After move to node {i+1}: battery={current_battery:.1f}, consumed={energy_consumed:.1f}")
+
+            # 检查是否电量不足
+            if current_battery < 0:
+                if debug:
+                    print(f"  ✗ Battery depleted at node {i+1}!")
+                return False  # 电量不足，不可行
+
+            # Week 2新增（第1.3步）：检查是否低于临界值
+            critical_threshold = energy_config.critical_battery_threshold * vehicle.battery_capacity
+            if current_battery < critical_threshold:
+                # 检查前方是否有充电站
+                has_upcoming_cs = False
+                # 检查接下来的几个节点（最多5个）
+                for j in range(i + 1, min(i + 6, len(route.nodes))):
+                    if route.nodes[j].is_charging_station():
+                        has_upcoming_cs = True
+                        break
+
+                if not has_upcoming_cs:
+                    if debug:
+                        print(f"  ⚠️ Battery critical at node {i+1}! ({current_battery:.1f} < {critical_threshold:.1f}) and no upcoming CS")
+                    return False  # 低电量且附近没有充电站，不可行
+
+        if debug:
+            print(f"  ✓ Route feasible, final battery={current_battery:.1f}")
+        return True  # 整个路径可行
+
+    def _find_battery_depletion_position(self, route: Route) -> int:
+        """
+        找到电池耗尽的位置（Week 2新增 - 第1.2步）
+
+        返回第一个电量不足的节点索引
+        如果路径可行，返回-1
+        """
+        if not hasattr(self, 'vehicle') or not hasattr(self, 'energy_config'):
+            return -1
+
+        vehicle = self.vehicle
+        energy_config = self.energy_config
+        current_battery = vehicle.battery_capacity
+
+        for i in range(len(route.nodes) - 1):
+            current_node = route.nodes[i]
+            next_node = route.nodes[i + 1]
+
+            # 如果当前节点是充电站，先充电
+            if current_node.is_charging_station():
+                if self.charging_strategy:
+                    remaining_energy_demand = 0.0
+                    for j in range(i, len(route.nodes) - 1):
+                        seg_distance = self.distance.get_distance(
+                            route.nodes[j].node_id,
+                            route.nodes[j + 1].node_id
+                        )
+                        remaining_energy_demand += (seg_distance / 1000.0) * energy_config.consumption_rate
+
+                    charge_amount = self.charging_strategy.determine_charging_amount(
+                        current_battery=current_battery,
+                        remaining_demand=remaining_energy_demand,
+                        battery_capacity=vehicle.battery_capacity
+                    )
+                    current_battery = min(vehicle.battery_capacity, current_battery + charge_amount)
+                else:
+                    current_battery = vehicle.battery_capacity
+
+            # 计算到下一节点的能耗
+            distance = self.distance.get_distance(current_node.node_id, next_node.node_id)
+            energy_consumed = (distance / 1000.0) * energy_config.consumption_rate
+            current_battery -= energy_consumed
+
+            # 检查是否电量不足（只检查耗尽，不检查临界值）
+            # Week 2注释：初始解生成时允许略微违反临界值，在ALNS优化中自然修复
+            if current_battery < 0:
+                return i + 1  # 返回无法到达的节点位置
+
+        return -1  # 路径可行
+
+    def _get_available_charging_stations(self, route: Route):
+        """
+        获取可用的充电站列表（Week 2新增 - 第1.2步）
+
+        从距离矩阵中获取所有充电站节点
+        排除已经在路径中的充电站
+        """
+        # 获取路径中已有的充电站ID
+        existing_cs_ids = set(n.node_id for n in route.nodes if n.is_charging_station())
+
+        # 从距离矩阵的coordinates中找出所有充电站
+        # 充电站节点ID通常 >= 100
+        available_stations = []
+
+        if hasattr(self.distance, 'coordinates'):
+            for node_id, coords in self.distance.coordinates.items():
+                # 假设充电站ID >= 100，任务节点ID < 100
+                if node_id >= 100 and node_id not in existing_cs_ids:
+                    # 创建充电站节点
+                    from core.node import create_charging_node
+                    cs_node = create_charging_node(node_id=node_id, coordinates=coords)
+                    available_stations.append(cs_node)
+
+        return available_stations
+
+    def _find_best_charging_station(self, route: Route, position: int):
+        """
+        找到最优的充电站插入位置（Week 2新增 - 第1.2步）
+
+        策略：选择绕路成本最小的充电站
+
+        参数:
+            route: 当前路径
+            position: 需要插入充电站的位置
+
+        返回:
+            (best_station, best_insert_pos): 最优充电站和插入位置
+        """
+        available_stations = self._get_available_charging_stations(route)
+
+        if not available_stations:
+            return None, None
+
+        best_detour_cost = float('inf')
+        best_station = None
+        best_insert_pos = None
+
+        # 在position前后尝试插入充电站
+        for insert_pos in range(max(1, position - 2), min(len(route.nodes), position + 2)):
+            if insert_pos <= 0 or insert_pos >= len(route.nodes):
+                continue
+
+            prev_node = route.nodes[insert_pos - 1]
+            next_node = route.nodes[insert_pos]
+
+            # 原始距离
+            original_distance = self.distance.get_distance(prev_node.node_id, next_node.node_id)
+
+            # 尝试每个充电站
+            for station in available_stations:
+                # 绕路距离 = (prev -> station) + (station -> next) - (prev -> next)
+                detour_distance = (
+                    self.distance.get_distance(prev_node.node_id, station.node_id) +
+                    self.distance.get_distance(station.node_id, next_node.node_id) -
+                    original_distance
+                )
+
+                if detour_distance < best_detour_cost:
+                    best_detour_cost = detour_distance
+                    best_station = station
+                    best_insert_pos = insert_pos
+
+        return best_station, best_insert_pos
+
+    def _insert_necessary_charging_stations(self, route: Route, max_attempts: int = 10) -> Route:
+        """
+        自动插入必要的充电站（Week 2新增 - 第1.2步）
+
+        策略：
+        1. 检查电池可行性（包括临界值）
+        2. 如果不可行，找到电量耗尽或临界位置
+        3. 在该位置前插入最优充电站
+        4. 重复直到路径可行或达到最大尝试次数
+
+        Week 2修复：增加max_attempts到10，更积极地修复
+
+        参数:
+            route: 当前路径
+            max_attempts: 最大尝试次数（防止无限循环）
+
+        返回:
+            修复后的路径
+        """
+        attempts = 0
+
+        while attempts < max_attempts:
+            # Week 2修复：优先检查完整电池可行性（包括临界值）
+            if self._check_battery_feasibility(route):
+                return route  # 已经可行
+
+            # 找到电量耗尽或临界位置
+            depletion_pos = self._find_battery_depletion_position(route)
+
+            if depletion_pos == -1:
+                # 找不到耗尽位置，但可行性检查失败，可能是临界值问题
+                # 尝试在路径末尾附近插入充电站
+                depletion_pos = len(route.nodes) - 1
+
+            # 找到最优充电站
+            best_station, best_insert_pos = self._find_best_charging_station(route, depletion_pos)
+
+            if best_station is None or best_insert_pos is None:
+                # 找不到可用的充电站，无法修复
+                return route
+
+            # 插入充电站
+            route.nodes.insert(best_insert_pos, best_station)
+
+            attempts += 1
+
+        return route
+
+    def _estimate_charging_and_time(self, route: Route) -> tuple[float, float]:
+        """
+        估算路径的充电量和总时间（当visits不可用时）
+
+        通过模拟电池消耗和充电过程，估算：
+        1. 总充电量 (kWh)
+        2. 总时间 (秒或分钟，取决于time_config)
+
+        返回:
+            tuple: (total_charging_amount, total_time)
+        """
+        if not hasattr(self, 'vehicle') or not hasattr(self, 'energy_config'):
+            return 0.0, 0.0
+
+        vehicle = self.vehicle
+        energy_config = self.energy_config
+        time_config = getattr(self, 'time_config', None)
+
+        current_battery = vehicle.battery_capacity
+        total_charging = 0.0
+        total_time = 0.0
+
+        for i in range(len(route.nodes) - 1):
+            current_node = route.nodes[i]
+            next_node = route.nodes[i + 1]
+
+            # 如果当前节点是充电站，计算充电量和充电时间
+            if current_node.is_charging_station():
+                if self.charging_strategy:
+                    # 计算剩余能耗
+                    remaining_energy_demand = 0.0
+                    for j in range(i, len(route.nodes) - 1):
+                        seg_distance = self.distance.get_distance(
+                            route.nodes[j].node_id,
+                            route.nodes[j + 1].node_id
+                        )
+                        remaining_energy_demand += (seg_distance / 1000.0) * energy_config.consumption_rate
+
+                    # 决定充电量
+                    charge_amount = self.charging_strategy.determine_charging_amount(
+                        current_battery=current_battery,
+                        remaining_demand=remaining_energy_demand,
+                        battery_capacity=vehicle.battery_capacity
+                    )
+
+                    # 累计充电量
+                    total_charging += charge_amount
+
+                    # 计算充电时间
+                    if charge_amount > 0:
+                        charging_time = charge_amount / energy_config.charging_rate
+                        total_time += charging_time
+
+                    # 更新电池
+                    current_battery = min(vehicle.battery_capacity, current_battery + charge_amount)
+
+            # 计算行驶距离和时间
+            distance = self.distance.get_distance(current_node.node_id, next_node.node_id)
+            energy_consumed = (distance / 1000.0) * energy_config.consumption_rate
+
+            # 行驶时间
+            if time_config:
+                travel_time = distance / time_config.speed
+                total_time += travel_time
+
+            # 服务时间（如果是任务节点）
+            if hasattr(current_node, 'service_time') and current_node.service_time > 0:
+                total_time += current_node.service_time
+
+            # 更新电池
+            current_battery -= energy_consumed
+
+        return total_charging, total_time
 
     def get_cost_breakdown(self, route: Route) -> Dict:
         """
         获取成本分解（用于分析和调试）
 
+        Week 2改进：
+        - 使用RouteExecutor执行路径生成visits
+        - 准确记录充电量和充电次数
+
         返回:
             Dict: 各项成本明细
         """
+        from core.route_executor import RouteExecutor
+
         distance = route.calculate_total_distance(self.distance)
+
+        # Week 2新增：执行路径生成visits（如果有vehicle和energy_config）
+        if hasattr(self, 'vehicle') and hasattr(self, 'energy_config'):
+            executor = RouteExecutor(
+                distance_matrix=self.distance,
+                energy_config=self.energy_config,
+                time_config=getattr(self, 'time_config', None)
+            )
+            # 执行路径并生成visits
+            executed_route = executor.execute(
+                route=route,
+                vehicle=self.vehicle,
+                charging_strategy=self.charging_strategy
+            )
+            # 使用执行后的路径
+            route_to_analyze = executed_route
+        else:
+            route_to_analyze = route
 
         # 充电量统计
         charging_amount = 0.0
         num_charging_stops = 0
-        if route.visits:
-            for visit in route.visits:
+        if route_to_analyze.visits:
+            for visit in route_to_analyze.visits:
                 if visit.node.is_charging_station():
                     charged = visit.battery_after_service - visit.battery_after_travel
-                    charging_amount += max(0.0, charged)
-                    num_charging_stops += 1
+                    if charged > 0.01:  # 只计算实际充电的
+                        charging_amount += charged
+                        num_charging_stops += 1
 
         # 时间统计
         total_time = 0.0
-        if route.visits and len(route.visits) > 0:
-            total_time = route.visits[-1].departure_time - route.visits[0].arrival_time
+        if route_to_analyze.visits and len(route_to_analyze.visits) > 0:
+            total_time = route_to_analyze.visits[-1].departure_time - route_to_analyze.visits[0].arrival_time
 
         # 延迟统计
         total_delay = 0.0
-        if route.visits:
-            for visit in route.visits:
+        if route_to_analyze.visits:
+            for visit in route_to_analyze.visits:
                 total_delay += visit.get_delay()
+
+        # 计算总成本（使用executed route以确保包含visits）
+        total_cost_value = self.evaluate_cost(route_to_analyze)
 
         return {
             'total_distance': distance,
@@ -548,8 +964,8 @@ class MinimalALNS:
             'charging_cost': charging_amount * self.cost_params.C_ch,
             'time_cost': total_time * self.cost_params.C_time,
             'delay_cost': total_delay * self.cost_params.C_delay,
-            'total_cost': self.evaluate_cost(route),
-            'cost_per_km': self.evaluate_cost(route) / (distance / 1000) if distance > 0 else 0
+            'total_cost': total_cost_value,
+            'cost_per_km': total_cost_value / (distance / 1000) if distance > 0 else 0
         }
     
     def accept_solution(self, 
@@ -679,20 +1095,20 @@ class MinimalALNS:
                     second_best_cost = feasible_insertions[1]['cost']
                     
                     regret = second_best_cost - best_cost
-                    
+
                     if regret > best_regret:
                         best_regret = regret
                         best_task_id = task_id
-                        best_position = feasible_insertions[0]['position']
-                        best_charging_plan = feasible_insertions[0]['charging_plan']
-                
-                elif len(feasible_insertions) == 1:
+                        best_position = insertion_costs[0]['position']
+
+                elif len(insertion_costs) == 1:
+                    # 只有一个可行位置，regret = inf
                     if best_regret < float('inf'):
                         best_regret = float('inf')
                         best_task_id = task_id
-                        best_position = feasible_insertions[0]['position']
-                        best_charging_plan = feasible_insertions[0]['charging_plan']
-            
+                        best_position = insertion_costs[0]['position']
+
+            # 插入regret最大的任务
             if best_task_id:
                 task = self.task_pool.get_task(best_task_id)
 
@@ -720,5 +1136,40 @@ class MinimalALNS:
                 remaining_tasks.remove(best_task_id)
             else:
                 break
-        
+
+        return repaired_route
+
+    def random_insertion(self, route: Route, removed_task_ids: List[int]) -> Route:
+        """
+        随机插入算子 + 智能充电站插入 (Week 2改进 - 第1.2步)
+
+        策略：
+        1. 对每个任务，随机选择一个插入位置
+        2. 插入任务后，自动插入必要的充电站
+        """
+        repaired_route = route.copy()
+
+        if not hasattr(self, 'vehicle') or self.vehicle is None:
+            raise ValueError("必须设置vehicle属性才能进行充电约束规划")
+        if not hasattr(self, 'energy_config') or self.energy_config is None:
+            raise ValueError("必须设置energy_config属性才能进行充电约束规划")
+
+        for task_id in removed_task_ids:
+            task = self.task_pool.get_task(task_id)
+
+            # 收集所有可能的插入位置
+            possible_positions = []
+
+            for pickup_pos in range(1, len(repaired_route.nodes)):
+                for delivery_pos in range(pickup_pos + 1, len(repaired_route.nodes) + 1):
+                    possible_positions.append((pickup_pos, delivery_pos))
+
+            # 随机选择一个位置
+            if possible_positions:
+                chosen_position = random.choice(possible_positions)
+                repaired_route.insert_task(task, chosen_position)
+
+                # Week 2新增：插入任务后，自动插入必要的充电站
+                repaired_route = self._insert_necessary_charging_stations(repaired_route)
+
         return repaired_route
