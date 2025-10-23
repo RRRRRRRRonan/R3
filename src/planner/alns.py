@@ -24,8 +24,7 @@ from physics.distance import DistanceMatrix
 class CostParameters:
     """
     多目标成本函数参数配置
-
-    Week 1 改进: 支持距离、充电、时间、延迟多目标优化
+    支持距离、充电、时间、延迟多目标优化
     """
     # 基础成本权重
     C_tr: float = 1.0      # 距离成本 ($/m)
