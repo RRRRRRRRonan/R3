@@ -96,12 +96,12 @@ def create_large_scenario():
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=250.0,
-        battery_capacity=25.0,
-        initial_battery=25.0
+        battery_capacity=12.0,  # 降低电池容量，使其需要充电
+        initial_battery=12.0
     )
 
     energy_config = EnergyConfig(
-        consumption_rate=0.0015,
+        consumption_rate=0.014,  # kWh/秒，确保需要充电
         charging_rate=7.0/3600
     )
 
@@ -285,17 +285,19 @@ def main():
     print("大规模场景ALNS优化效果测试")
     print("="*70)
     print("\n⚠️  警告：此测试可能需要10-30分钟，请耐心等待")
-    print("\n场景配置:")
-    print("  任务数: 50个")
-    print("  充电站: 3个")
-    print("  仓库范围: 150m × 150m")
-    print("  车辆容量: 250kg")
-    print("  电池容量: 25kWh")
 
     # 创建场景
     print("\n创建大规模场景...")
     depot, tasks, charging_stations, distance_matrix, vehicle, energy_config = create_large_scenario()
     print("  ✓ 场景创建完成")
+
+    print("\n场景配置:")
+    print("  任务数: 50个")
+    print("  充电站: 3个")
+    print("  仓库范围: 150m × 150m")
+    print(f"  车辆容量: {vehicle.capacity}kg")
+    print(f"  电池容量: {vehicle.battery_capacity}kWh")
+    print(f"  能耗率: {energy_config.consumption_rate}kWh/m")
 
     # 测试策略（大规模下只测试两种有代表性的）
     strategies = [

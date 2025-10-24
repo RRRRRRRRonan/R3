@@ -93,12 +93,12 @@ def create_medium_scenario():
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=200.0,
-        battery_capacity=18.0,
-        initial_battery=18.0
+        battery_capacity=8.0,  # 降低电池容量，使其需要充电
+        initial_battery=8.0
     )
 
     energy_config = EnergyConfig(
-        consumption_rate=0.0012,
+        consumption_rate=0.015,  # kWh/秒，确保需要充电
         charging_rate=5.0/3600
     )
 
@@ -270,15 +270,17 @@ def main():
     print("="*70)
     print("中规模场景ALNS优化效果测试")
     print("="*70)
+
+    # 创建场景
+    depot, tasks, charging_stations, distance_matrix, vehicle, energy_config = create_medium_scenario()
+
     print("\n场景配置:")
     print("  任务数: 30个")
     print("  充电站: 2个")
     print("  仓库范围: 100m × 100m")
-    print("  车辆容量: 200kg")
-    print("  电池容量: 18kWh")
-
-    # 创建场景
-    depot, tasks, charging_stations, distance_matrix, vehicle, energy_config = create_medium_scenario()
+    print(f"  车辆容量: {vehicle.capacity}kg")
+    print(f"  电池容量: {vehicle.battery_capacity}kWh")
+    print(f"  能耗率: {energy_config.consumption_rate}kWh/m")
 
     # 测试三种充电策略
     strategies = [
