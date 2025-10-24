@@ -237,8 +237,11 @@ def test_optimization_with_strategy(strategy_name, strategy, depot, tasks, dista
     distance_improvement = initial_metrics['total_distance'] - optimized_metrics['total_distance']
     cost_improvement = initial_metrics['total_cost'] - optimized_metrics['total_cost']
 
-    print(f"  距离改进: {distance_improvement:.2f}m ({distance_improvement/initial_metrics['total_distance']*100:.1f}%)")
-    print(f"  成本改进: {cost_improvement:.2f} ({cost_improvement/initial_metrics['total_cost']*100:.1f}%)")
+    distance_pct = (distance_improvement/initial_metrics['total_distance']*100) if initial_metrics['total_distance'] > 0 else 0
+    cost_pct = (cost_improvement/initial_metrics['total_cost']*100) if initial_metrics['total_cost'] > 0 else 0
+
+    print(f"  距离改进: {distance_improvement:.2f}m ({distance_pct:.1f}%)")
+    print(f"  成本改进: {cost_improvement:.2f} ({cost_pct:.1f}%)")
     print(f"  总耗时: {initial_time + optimization_time:.2f}秒")
 
     return {
