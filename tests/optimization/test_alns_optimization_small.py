@@ -40,14 +40,14 @@ def create_small_scenario():
     规模：
     - 10个任务
     - 1个充电站
-    - 仓库范围：60m × 60m
+    - 仓库范围：1000m × 1000m (1km × 1km，更贴近test_strategy_comparison.py)
     """
     depot = DepotNode(coordinates=(0.0, 0.0))
 
     # 创建充电站
     charging_station = ChargingNode(
         node_id=999,
-        coordinates=(30.0, 30.0),
+        coordinates=(500.0, 500.0),  # 中心位置
         node_type=NodeType.CHARGING
     )
 
@@ -56,10 +56,10 @@ def create_small_scenario():
 
     # 创建10个任务（带软时间窗）
     for i in range(1, 11):
-        pickup_x = random.uniform(5, 55)
-        pickup_y = random.uniform(5, 55)
-        delivery_x = random.uniform(5, 55)
-        delivery_y = random.uniform(5, 55)
+        pickup_x = random.uniform(50, 950)  # 1km范围
+        pickup_y = random.uniform(50, 950)
+        delivery_x = random.uniform(50, 950)
+        delivery_y = random.uniform(50, 950)
 
         # 软时间窗
         pickup_tw_start = i * 80
@@ -92,12 +92,12 @@ def create_small_scenario():
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=150.0,
-        battery_capacity=12.0,
-        initial_battery=12.0
+        battery_capacity=2.0,  # 2.0 kWh - 小电池但合理
+        initial_battery=2.0
     )
 
     energy_config = EnergyConfig(
-        consumption_rate=0.0008,
+        consumption_rate=0.5,  # 0.5 kWh/km (实际使用单位，与test_strategy_comparison.py一致)
         charging_rate=3.0/3600
     )
 
@@ -123,8 +123,9 @@ def analyze_route(route, alns, label=""):
         node = route.nodes[i]
         if node.node_type == NodeType.CHARGING:
             num_charging_stops += 1
-            if hasattr(route, 'charging_amounts') and i in route.charging_amounts:
-                total_charging += route.charging_amounts[i]
+            # 充电量存储在节点的charge_amount属性中
+            if hasattr(node, 'charge_amount'):
+                total_charging += node.charge_amount
 
     # 计算总时间和延迟
     total_time = 0.0
@@ -152,8 +153,8 @@ def analyze_route(route, alns, label=""):
 
             # 充电时间
             if next_node.node_type == NodeType.CHARGING:
-                if hasattr(route, 'charging_amounts') and (i+1) in route.charging_amounts:
-                    charging_amount = route.charging_amounts[i+1]
+                if hasattr(next_node, 'charge_amount'):
+                    charging_amount = next_node.charge_amount
                     charging_time = charging_amount / alns.energy_config.charging_rate
                     current_time += charging_time
 
