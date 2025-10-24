@@ -265,15 +265,17 @@ def main():
     print("="*70)
     print("小规模场景ALNS优化效果测试")
     print("="*70)
-    print("\n场景配置:")
-    print("  任务数: 10个")
-    print("  充电站: 1个")
-    print("  仓库范围: 60m × 60m")
-    print("  车辆容量: 150kg")
-    print("  电池容量: 12kWh")
 
     # 创建场景
     depot, tasks, charging_station, distance_matrix, vehicle, energy_config = create_small_scenario()
+
+    print("\n场景配置:")
+    print("  任务数: 10个")
+    print("  充电站: 1个")
+    print("  仓库范围: 1000m × 1000m")
+    print(f"  车辆容量: {vehicle.capacity}kg")
+    print(f"  电池容量: {vehicle.battery_capacity}kWh")
+    print(f"  能耗率: {energy_config.consumption_rate}kWh/km")
 
     # 测试三种充电策略
     strategies = [
