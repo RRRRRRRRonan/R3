@@ -29,6 +29,7 @@ from strategy.charging_strategies import (
     PartialRechargeFixedStrategy,
     PartialRechargeMinimalStrategy
 )
+import copy
 import random
 import time as time_module
 
@@ -100,9 +101,13 @@ def create_large_scenario():
         initial_battery=2.5
     )
 
+    consumption_per_km = 0.5
+    consumption_per_sec = consumption_per_km * (vehicle.speed / 1000.0)
+
     energy_config = EnergyConfig(
-        consumption_rate=0.5,  # 0.5 kWh/km
-        charging_rate=7.0/3600
+        consumption_rate=consumption_per_sec,
+        charging_rate=7.0/3600,
+        battery_capacity=vehicle.battery_capacity
     )
 
     return depot, tasks, charging_stations, distance_matrix, vehicle, energy_config
@@ -199,6 +204,10 @@ def test_optimization_with_strategy(strategy_name, strategy, depot, tasks, dista
     print(f"\n{'='*70}")
     print(f"充电策略: {strategy_name}")
     print(f"{'='*70}")
+
+    vehicle = copy.deepcopy(vehicle)
+    vehicle.reset_to_initial_state()
+    energy_config = copy.deepcopy(energy_config)
 
     # 创建task pool
     task_pool = TaskPool()

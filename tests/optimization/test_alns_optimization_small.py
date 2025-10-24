@@ -27,6 +27,7 @@ from strategy.charging_strategies import (
     PartialRechargeFixedStrategy,
     PartialRechargeMinimalStrategy
 )
+import copy
 import random
 import time as time_module
 
@@ -96,10 +97,16 @@ def create_small_scenario():
         initial_battery=1.5
     )
 
+    # EnergyConfig.consumption_rate 以 kWh/s 计量，需要根据车辆速度把 0.5 kWh/km 转换成 kWh/s
+    # vehicle.speed 默认以 m/s 表示，因此转换公式为:
+    #   consumption_per_sec = consumption_per_km * (speed_m_per_s / 1000)
+    consumption_per_km = 0.5
+    consumption_per_sec = consumption_per_km * (vehicle.speed / 1000.0)
+
     energy_config = EnergyConfig(
-        consumption_rate=0.5,  # 0.5 kWh/km (实际使用单位，与test_strategy_comparison.py一致)
->>>>>>> f789f02c58034df850218a35783ed08ce0b29233
-        charging_rate=3.0/3600
+        consumption_rate=consumption_per_sec,
+        charging_rate=3.0/3600,
+        battery_capacity=vehicle.battery_capacity
     )
 
     return depot, tasks, charging_station, distance_matrix, vehicle, energy_config
@@ -191,6 +198,11 @@ def test_optimization_with_strategy(strategy_name, strategy, depot, tasks, dista
     print(f"\n{'='*70}")
     print(f"充电策略: {strategy_name}")
     print(f"{'='*70}")
+
+    # 为每种策略复制独立的车辆与能量配置，避免互相影响
+    vehicle = copy.deepcopy(vehicle)
+    vehicle.reset_to_initial_state()
+    energy_config = copy.deepcopy(energy_config)
 
     # 创建task pool
     task_pool = TaskPool()
