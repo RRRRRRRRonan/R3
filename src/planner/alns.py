@@ -402,6 +402,12 @@ class MinimalALNS:
                     if not capacity_feasible:
                         continue
 
+                    # Week 3新增：检查时间窗可行性
+                    time_feasible, delay_cost = self._check_time_window_feasibility_fast(temp_route)
+                    if not time_feasible:
+                        # 违反硬时间窗，跳过
+                        continue
+
                     # 计算插入delivery的成本增量
                     if delivery_pos == 0:
                         cost_delta = 0.0
@@ -442,11 +448,20 @@ class MinimalALNS:
                             # 容量不可行，跳过此位置
                             continue
 
+                        # Week 3新增：检查时间窗可行性
+                        time_feasible, delay_cost = self._check_time_window_feasibility_fast(temp_route)
+                        if not time_feasible:
+                            # 违反硬时间窗，跳过
+                            continue
+
                         cost_delta = repaired_route.calculate_insertion_cost_delta(
                             task,
                             (pickup_pos, delivery_pos),
                             self.distance
                         )
+
+                        # 加入时间窗延迟成本
+                        cost_delta += delay_cost
 
                         feasible, charging_plan = repaired_route.check_energy_feasibility_for_insertion(
                             task,
@@ -649,6 +664,69 @@ class MinimalALNS:
         if debug:
             print(f"  ✓ Route feasible, final battery={current_battery:.1f}")
         return True  # 整个路径可行
+
+    def _check_time_window_feasibility_fast(self, temp_route: Route, vehicle_speed: float = 1.5) -> Tuple[bool, float]:
+        """
+        快速检查路径的时间窗可行性（Week 3新增）
+
+        简化版：只检查硬时间窗违反，计算软时间窗延迟成本
+
+        参数:
+            temp_route: 待检查的路径
+            vehicle_speed: 车辆速度 (m/s)，默认1.5m/s
+
+        返回:
+            Tuple[bool, float]: (是否满足硬时间窗, 延迟惩罚成本)
+        """
+        current_time = 0.0
+        total_tardiness = 0.0
+
+        for i in range(len(temp_route.nodes)):
+            node = temp_route.nodes[i]
+
+            # 1. 到达当前节点
+            if i > 0:
+                prev_node = temp_route.nodes[i - 1]
+                distance = self.distance.get_distance(prev_node.node_id, node.node_id)
+                travel_time = distance / vehicle_speed  # 秒
+                current_time += travel_time
+
+            # 2. 检查时间窗
+            if hasattr(node, 'time_window') and node.time_window:
+                tw = node.time_window
+
+                if current_time < tw.earliest:
+                    # 早到，等待
+                    current_time = tw.earliest
+                elif current_time > tw.latest:
+                    # 晚到
+                    tardiness = current_time - tw.latest
+
+                    if tw.is_hard():
+                        # 硬时间窗违反，不可行
+                        return False, float('inf')
+                    else:
+                        # 软时间窗，累计延迟
+                        total_tardiness += tardiness
+
+            # 3. 服务时间
+            service_time = node.service_time if hasattr(node, 'service_time') else 0.0
+            current_time += service_time
+
+            # 4. 充电时间（如果是充电站）
+            if node.is_charging_station():
+                # 简化：假设充电10秒（实际应根据充电量计算）
+                if hasattr(node, 'charge_amount'):
+                    charging_rate = self.energy_config.charging_rate if hasattr(self, 'energy_config') else 0.001
+                    charge_time = node.charge_amount / charging_rate if charging_rate > 0 else 10.0
+                    current_time += charge_time
+                else:
+                    current_time += 10.0  # 默认充电时间
+
+        # 计算延迟惩罚成本
+        delay_cost = total_tardiness * self.cost_params.C_delay
+
+        return True, delay_cost
 
     def _find_battery_depletion_position(self, route: Route) -> int:
         """
@@ -1034,6 +1112,12 @@ class MinimalALNS:
                         if not capacity_feasible:
                             continue
 
+                        # Week 3新增：检查时间窗可行性
+                        time_feasible, delay_cost = self._check_time_window_feasibility_fast(temp_route)
+                        if not time_feasible:
+                            # 违反硬时间窗，跳过
+                            continue
+
                         # 计算成本增量
                         prev_node = repaired_route.nodes[delivery_pos - 1]
                         if delivery_pos < len(repaired_route.nodes):
@@ -1044,6 +1128,9 @@ class MinimalALNS:
                             cost_delta = new_dist - old_dist
                         else:
                             cost_delta = self.distance.get_distance(prev_node.node_id, task.delivery_node.node_id)
+
+                        # 加入时间窗延迟成本
+                        cost_delta += delay_cost
 
                         feasible_insertions.append({
                             'cost': cost_delta,
@@ -1062,11 +1149,20 @@ class MinimalALNS:
                             if not capacity_feasible:
                                 continue
 
+                            # Week 3新增：检查时间窗可行性
+                            time_feasible, delay_cost = self._check_time_window_feasibility_fast(temp_route)
+                            if not time_feasible:
+                                # 违反硬时间窗，跳过
+                                continue
+
                             cost_delta = repaired_route.calculate_insertion_cost_delta(
                                 task,
                                 (pickup_pos, delivery_pos),
                                 self.distance
                             )
+
+                            # 加入时间窗延迟成本
+                            cost_delta += delay_cost
 
                             feasible, charging_plan = repaired_route.check_energy_feasibility_for_insertion(
                                 task,
