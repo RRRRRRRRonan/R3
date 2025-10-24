@@ -92,12 +92,12 @@ def create_small_scenario():
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=150.0,
-        battery_capacity=3.5,  # 适中电池容量
-        initial_battery=3.5
+        battery_capacity=2.5,  # 平衡配置：能完成所有任务但需要充电1-2次
+        initial_battery=2.5
     )
 
     energy_config = EnergyConfig(
-        consumption_rate=0.010,  # kWh/秒（总耗~2.8kWh，接近但不超过太多）
+        consumption_rate=0.011,  # kWh/秒（总耗~3.0kWh，略超电池容量）
         charging_rate=3.0/3600
     )
 
