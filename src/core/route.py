@@ -960,9 +960,13 @@ class Route:
                     current_node.node_id,
                     next_node.node_id
                 )
-                
-                # 简化能量计算：distance(m) * consumption_rate(kWh/km) / 1000
-                energy_needed = (distance / 1000.0) * energy_config.consumption_rate
+
+                # 正确的能量计算：consumption_rate单位是kWh/秒
+                # energy_needed = consumption_rate * travel_time
+                # 假设车速1.5 m/s（标准AMR速度）
+                vehicle_speed = 1.5  # m/s
+                travel_time = distance / vehicle_speed  # 秒
+                energy_needed = energy_config.consumption_rate * travel_time  # kWh
                 
                 # 检查能量是否足够
                 if current_battery < energy_needed:
