@@ -124,8 +124,9 @@ def analyze_route(route, alns, label=""):
         node = route.nodes[i]
         if node.node_type == NodeType.CHARGING:
             num_charging_stops += 1
-            if hasattr(route, 'charging_amounts') and i in route.charging_amounts:
-                total_charging += route.charging_amounts[i]
+            # 充电量存储在节点的charge_amount属性中
+            if hasattr(node, 'charge_amount'):
+                total_charging += node.charge_amount
 
     # 计算总时间和延迟
     total_time = 0.0
@@ -153,8 +154,8 @@ def analyze_route(route, alns, label=""):
 
             # 充电时间
             if next_node.node_type == NodeType.CHARGING:
-                if hasattr(route, 'charging_amounts') and (i+1) in route.charging_amounts:
-                    charging_amount = route.charging_amounts[i+1]
+                if hasattr(next_node, 'charge_amount'):
+                    charging_amount = next_node.charge_amount
                     charging_time = charging_amount / alns.energy_config.charging_rate
                     current_time += charging_time
 

@@ -604,13 +604,16 @@ class MinimalALNS:
                 # 使用充电策略决定充电量
                 if self.charging_strategy:
                     # 计算剩余路径能耗（包括当前到下一节点的距离）
+                    # 正确公式：energy = consumption_rate(kWh/s) * time(s)
+                    vehicle_speed = 1.5  # m/s
                     remaining_energy_demand = 0.0
                     for j in range(i, len(route.nodes) - 1):
                         seg_distance = self.distance.get_distance(
                             route.nodes[j].node_id,
                             route.nodes[j + 1].node_id
                         )
-                        remaining_energy_demand += (seg_distance / 1000.0) * energy_config.consumption_rate
+                        travel_time = seg_distance / vehicle_speed
+                        remaining_energy_demand += energy_config.consumption_rate * travel_time
 
                     charge_amount = self.charging_strategy.determine_charging_amount(
                         current_battery=current_battery,
@@ -627,11 +630,14 @@ class MinimalALNS:
                     current_battery = vehicle.battery_capacity
 
             # 计算到下一节点的距离和能耗
+            # 正确公式：energy = consumption_rate(kWh/s) * time(s)
             distance = self.distance.get_distance(
                 current_node.node_id,
                 next_node.node_id
             )
-            energy_consumed = (distance / 1000.0) * energy_config.consumption_rate
+            vehicle_speed = 1.5  # m/s
+            travel_time = distance / vehicle_speed
+            energy_consumed = energy_config.consumption_rate * travel_time
 
             # 消耗能量前往下一节点
             current_battery -= energy_consumed
@@ -749,13 +755,16 @@ class MinimalALNS:
             # 如果当前节点是充电站，先充电
             if current_node.is_charging_station():
                 if self.charging_strategy:
+                    # 正确公式：energy = consumption_rate(kWh/s) * time(s)
+                    vehicle_speed = 1.5  # m/s
                     remaining_energy_demand = 0.0
                     for j in range(i, len(route.nodes) - 1):
                         seg_distance = self.distance.get_distance(
                             route.nodes[j].node_id,
                             route.nodes[j + 1].node_id
                         )
-                        remaining_energy_demand += (seg_distance / 1000.0) * energy_config.consumption_rate
+                        travel_time = seg_distance / vehicle_speed
+                        remaining_energy_demand += energy_config.consumption_rate * travel_time
 
                     charge_amount = self.charging_strategy.determine_charging_amount(
                         current_battery=current_battery,
@@ -767,8 +776,11 @@ class MinimalALNS:
                     current_battery = vehicle.battery_capacity
 
             # 计算到下一节点的能耗
+            # 正确公式：energy = consumption_rate(kWh/s) * time(s)
             distance = self.distance.get_distance(current_node.node_id, next_node.node_id)
-            energy_consumed = (distance / 1000.0) * energy_config.consumption_rate
+            vehicle_speed = 1.5  # m/s
+            travel_time = distance / vehicle_speed
+            energy_consumed = energy_config.consumption_rate * travel_time
             current_battery -= energy_consumed
 
             # 检查是否电量不足（只检查耗尽，不检查临界值）
@@ -930,13 +942,16 @@ class MinimalALNS:
             if current_node.is_charging_station():
                 if self.charging_strategy:
                     # 计算剩余能耗
+                    # 正确公式：energy = consumption_rate(kWh/s) * time(s)
+                    vehicle_speed = 1.5  # m/s
                     remaining_energy_demand = 0.0
                     for j in range(i, len(route.nodes) - 1):
                         seg_distance = self.distance.get_distance(
                             route.nodes[j].node_id,
                             route.nodes[j + 1].node_id
                         )
-                        remaining_energy_demand += (seg_distance / 1000.0) * energy_config.consumption_rate
+                        travel_time = seg_distance / vehicle_speed
+                        remaining_energy_demand += energy_config.consumption_rate * travel_time
 
                     # 决定充电量
                     charge_amount = self.charging_strategy.determine_charging_amount(
@@ -958,7 +973,10 @@ class MinimalALNS:
 
             # 计算行驶距离和时间
             distance = self.distance.get_distance(current_node.node_id, next_node.node_id)
-            energy_consumed = (distance / 1000.0) * energy_config.consumption_rate
+            # 正确公式：energy = consumption_rate(kWh/s) * time(s)
+            vehicle_speed = 1.5  # m/s
+            travel_time = distance / vehicle_speed
+            energy_consumed = energy_config.consumption_rate * travel_time
 
             # 行驶时间
             if time_config:

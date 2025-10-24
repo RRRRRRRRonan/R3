@@ -92,12 +92,12 @@ def create_small_scenario():
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=150.0,
-        battery_capacity=2.5,  # 小电池确保需要充电
-        initial_battery=2.5
+        battery_capacity=3.5,  # 适中电池容量
+        initial_battery=3.5
     )
 
     energy_config = EnergyConfig(
-        consumption_rate=0.015,  # kWh/秒（总耗~4kWh > 2.5kWh电池）
+        consumption_rate=0.010,  # kWh/秒（总耗~2.8kWh，接近但不超过太多）
         charging_rate=3.0/3600
     )
 
@@ -123,8 +123,9 @@ def analyze_route(route, alns, label=""):
         node = route.nodes[i]
         if node.node_type == NodeType.CHARGING:
             num_charging_stops += 1
-            if hasattr(route, 'charging_amounts') and i in route.charging_amounts:
-                total_charging += route.charging_amounts[i]
+            # 充电量存储在节点的charge_amount属性中
+            if hasattr(node, 'charge_amount'):
+                total_charging += node.charge_amount
 
     # 计算总时间和延迟
     total_time = 0.0
@@ -152,8 +153,8 @@ def analyze_route(route, alns, label=""):
 
             # 充电时间
             if next_node.node_type == NodeType.CHARGING:
-                if hasattr(route, 'charging_amounts') and (i+1) in route.charging_amounts:
-                    charging_amount = route.charging_amounts[i+1]
+                if hasattr(next_node, 'charge_amount'):
+                    charging_amount = next_node.charge_amount
                     charging_time = charging_amount / alns.energy_config.charging_rate
                     current_time += charging_time
 
@@ -274,7 +275,7 @@ def main():
     print("  仓库范围: 60m × 60m")
     print(f"  车辆容量: {vehicle.capacity}kg")
     print(f"  电池容量: {vehicle.battery_capacity}kWh")
-    print(f"  能耗率: {energy_config.consumption_rate}kWh/m")
+    print(f"  能耗率: {energy_config.consumption_rate}kWh/s")
 
     # 测试三种充电策略
     strategies = [
