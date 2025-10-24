@@ -44,10 +44,10 @@ def create_medium_scenario():
     """
     depot = DepotNode(coordinates=(0.0, 0.0))
 
-    # 创建2个充电站
+    # 创建2个充电站 (ID必须遵循NodeIDHelper约定: 2*num_tasks + 1, 2*num_tasks + 2 = 61, 62)
     charging_stations = [
-        ChargingNode(node_id=997, coordinates=(700.0, 700.0), node_type=NodeType.CHARGING),
-        ChargingNode(node_id=998, coordinates=(1300.0, 1300.0), node_type=NodeType.CHARGING)
+        ChargingNode(node_id=61, coordinates=(700.0, 700.0), node_type=NodeType.CHARGING),  # 30任务 → 充电站从61开始
+        ChargingNode(node_id=62, coordinates=(1300.0, 1300.0), node_type=NodeType.CHARGING)
     ]
 
     tasks = []
@@ -93,8 +93,8 @@ def create_medium_scenario():
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=200.0,
-        battery_capacity=0.4,  # 0.4 kWh - 确保需要充电
-        initial_battery=0.4
+        battery_capacity=1.5,  # 1.5 kWh - 确保需要充电
+        initial_battery=1.5
     )
 
     energy_config = EnergyConfig(
