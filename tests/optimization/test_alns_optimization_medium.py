@@ -40,14 +40,14 @@ def create_medium_scenario():
     规模：
     - 30个任务
     - 2个充电站
-    - 仓库范围：100m × 100m
+    - 仓库范围：2000m × 2000m (2km × 2km)
     """
     depot = DepotNode(coordinates=(0.0, 0.0))
 
-    # 创建2个充电站
+    # 创建2个充电站 (ID必须遵循NodeIDHelper约定: 2*num_tasks + 1, 2*num_tasks + 2 = 61, 62)
     charging_stations = [
-        ChargingNode(node_id=997, coordinates=(33.0, 33.0), node_type=NodeType.CHARGING),
-        ChargingNode(node_id=998, coordinates=(66.0, 66.0), node_type=NodeType.CHARGING)
+        ChargingNode(node_id=61, coordinates=(700.0, 700.0), node_type=NodeType.CHARGING),  # 30任务 → 充电站从61开始
+        ChargingNode(node_id=62, coordinates=(1300.0, 1300.0), node_type=NodeType.CHARGING)
     ]
 
     tasks = []
@@ -55,12 +55,12 @@ def create_medium_scenario():
     for cs in charging_stations:
         coordinates[cs.node_id] = cs.coordinates
 
-    # 创建30个任务
+    # 创建30个任务（2km × 2km范围）
     for i in range(1, 31):
-        pickup_x = random.uniform(5, 95)
-        pickup_y = random.uniform(5, 95)
-        delivery_x = random.uniform(5, 95)
-        delivery_y = random.uniform(5, 95)
+        pickup_x = random.uniform(100, 1900)
+        pickup_y = random.uniform(100, 1900)
+        delivery_x = random.uniform(100, 1900)
+        delivery_y = random.uniform(100, 1900)
 
         # 软时间窗
         pickup_tw_start = i * 60
@@ -93,8 +93,8 @@ def create_medium_scenario():
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=200.0,
-        battery_capacity=0.4,  # 0.4 kWh - 确保需要充电
-        initial_battery=0.4
+        battery_capacity=1.5,  # 1.5 kWh - 确保需要充电
+        initial_battery=1.5
     )
 
     energy_config = EnergyConfig(
@@ -278,10 +278,10 @@ def main():
     print("\n场景配置:")
     print("  任务数: 30个")
     print("  充电站: 2个")
-    print("  仓库范围: 100m × 100m")
+    print("  仓库范围: 2000m × 2000m")
     print(f"  车辆容量: {vehicle.capacity}kg")
     print(f"  电池容量: {vehicle.battery_capacity}kWh")
-    print(f"  能耗率: {energy_config.consumption_rate}kWh/m")
+    print(f"  能耗率: {energy_config.consumption_rate}kWh/km")
 
     # 测试三种充电策略
     strategies = [

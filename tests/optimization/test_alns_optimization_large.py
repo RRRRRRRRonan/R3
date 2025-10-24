@@ -42,15 +42,15 @@ def create_large_scenario():
     规模：
     - 50个任务
     - 3个充电站
-    - 仓库范围：150m × 150m
+    - 仓库范围：3000m × 3000m (3km × 3km)
     """
     depot = DepotNode(coordinates=(0.0, 0.0))
 
-    # 创建3个充电站（分布在不同区域）
+    # 创建3个充电站（ID必须遵循NodeIDHelper约定: 2*num_tasks + 1/2/3 = 101, 102, 103）
     charging_stations = [
-        ChargingNode(node_id=995, coordinates=(50.0, 50.0), node_type=NodeType.CHARGING),
-        ChargingNode(node_id=996, coordinates=(75.0, 100.0), node_type=NodeType.CHARGING),
-        ChargingNode(node_id=997, coordinates=(100.0, 75.0), node_type=NodeType.CHARGING)
+        ChargingNode(node_id=101, coordinates=(1000.0, 1000.0), node_type=NodeType.CHARGING),  # 50任务 → 充电站从101开始
+        ChargingNode(node_id=102, coordinates=(2000.0, 1000.0), node_type=NodeType.CHARGING),
+        ChargingNode(node_id=103, coordinates=(1500.0, 2000.0), node_type=NodeType.CHARGING)
     ]
 
     tasks = []
@@ -58,12 +58,12 @@ def create_large_scenario():
     for cs in charging_stations:
         coordinates[cs.node_id] = cs.coordinates
 
-    # 创建50个任务
+    # 创建50个任务（3km × 3km范围）
     for i in range(1, 51):
-        pickup_x = random.uniform(10, 140)
-        pickup_y = random.uniform(10, 140)
-        delivery_x = random.uniform(10, 140)
-        delivery_y = random.uniform(10, 140)
+        pickup_x = random.uniform(200, 2800)
+        pickup_y = random.uniform(200, 2800)
+        delivery_x = random.uniform(200, 2800)
+        delivery_y = random.uniform(200, 2800)
 
         # 软时间窗
         pickup_tw_start = i * 50
@@ -96,8 +96,8 @@ def create_large_scenario():
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=250.0,
-        battery_capacity=0.6,  # 0.6 kWh - 确保需要充电
-        initial_battery=0.6
+        battery_capacity=2.5,  # 2.5 kWh - 确保需要充电
+        initial_battery=2.5
     )
 
     energy_config = EnergyConfig(
@@ -295,10 +295,10 @@ def main():
     print("\n场景配置:")
     print("  任务数: 50个")
     print("  充电站: 3个")
-    print("  仓库范围: 150m × 150m")
+    print("  仓库范围: 3000m × 3000m")
     print(f"  车辆容量: {vehicle.capacity}kg")
     print(f"  电池容量: {vehicle.battery_capacity}kWh")
-    print(f"  能耗率: {energy_config.consumption_rate}kWh/m")
+    print(f"  能耗率: {energy_config.consumption_rate}kWh/km")
 
     # 测试策略（大规模下只测试两种有代表性的）
     strategies = [
