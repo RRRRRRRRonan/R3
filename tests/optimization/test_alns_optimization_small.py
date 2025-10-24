@@ -40,14 +40,14 @@ def create_small_scenario():
     规模：
     - 10个任务
     - 1个充电站
-    - 仓库范围：60m × 60m
+    - 仓库范围：1000m × 1000m (1km × 1km，更贴近test_strategy_comparison.py)
     """
     depot = DepotNode(coordinates=(0.0, 0.0))
 
     # 创建充电站
     charging_station = ChargingNode(
         node_id=999,
-        coordinates=(30.0, 30.0),
+        coordinates=(500.0, 500.0),  # 中心位置
         node_type=NodeType.CHARGING
     )
 
@@ -56,10 +56,10 @@ def create_small_scenario():
 
     # 创建10个任务（带软时间窗）
     for i in range(1, 11):
-        pickup_x = random.uniform(5, 55)
-        pickup_y = random.uniform(5, 55)
-        delivery_x = random.uniform(5, 55)
-        delivery_y = random.uniform(5, 55)
+        pickup_x = random.uniform(50, 950)  # 1km范围
+        pickup_y = random.uniform(50, 950)
+        delivery_x = random.uniform(50, 950)
+        delivery_y = random.uniform(50, 950)
 
         # 软时间窗
         pickup_tw_start = i * 80
@@ -92,12 +92,21 @@ def create_small_scenario():
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=150.0,
+<<<<<<< HEAD
         battery_capacity=2.5,  # 平衡配置：能完成所有任务但需要充电1-2次
         initial_battery=2.5
     )
 
     energy_config = EnergyConfig(
         consumption_rate=0.011,  # kWh/秒（总耗~3.0kWh，略超电池容量）
+=======
+        battery_capacity=2.0,  # 2.0 kWh - 小电池但合理
+        initial_battery=2.0
+    )
+
+    energy_config = EnergyConfig(
+        consumption_rate=0.5,  # 0.5 kWh/km (实际使用单位，与test_strategy_comparison.py一致)
+>>>>>>> f789f02c58034df850218a35783ed08ce0b29233
         charging_rate=3.0/3600
     )
 
