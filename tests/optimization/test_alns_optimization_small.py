@@ -92,12 +92,12 @@ def create_small_scenario():
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=150.0,
-        battery_capacity=3.0,  # 较小电池，但能耗率适中
-        initial_battery=3.0
+        battery_capacity=2.5,  # 小电池确保需要充电
+        initial_battery=2.5
     )
 
     energy_config = EnergyConfig(
-        consumption_rate=0.012,  # kWh/秒（总耗~3.3kWh），在优化时可能需要充电
+        consumption_rate=0.015,  # kWh/秒（总耗~4kWh > 2.5kWh电池）
         charging_rate=3.0/3600
     )
 

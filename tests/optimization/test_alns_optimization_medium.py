@@ -93,12 +93,12 @@ def create_medium_scenario():
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=200.0,
-        battery_capacity=8.0,  # 降低电池容量，使其需要充电
-        initial_battery=8.0
+        battery_capacity=6.0,  # 降低电池容量，使其需要充电
+        initial_battery=6.0
     )
 
     energy_config = EnergyConfig(
-        consumption_rate=0.015,  # kWh/秒，确保需要充电
+        consumption_rate=0.018,  # kWh/秒，确保需要充电
         charging_rate=5.0/3600
     )
 

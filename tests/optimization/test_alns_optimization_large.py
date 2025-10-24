@@ -96,12 +96,12 @@ def create_large_scenario():
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=250.0,
-        battery_capacity=12.0,  # 降低电池容量，使其需要充电
-        initial_battery=12.0
+        battery_capacity=10.0,  # 降低电池容量，使其需要充电
+        initial_battery=10.0
     )
 
     energy_config = EnergyConfig(
-        consumption_rate=0.014,  # kWh/秒，确保需要充电
+        consumption_rate=0.016,  # kWh/秒，确保需要充电
         charging_rate=7.0/3600
     )
 
