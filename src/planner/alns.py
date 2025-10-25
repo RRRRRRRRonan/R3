@@ -229,16 +229,24 @@ class MinimalALNS:
         # Week 2: 充电策略
         self.charging_strategy = charging_strategy
 
-        # Week 4: 自适应算子选择
+        # Week 4: 自适应算子选择（Repair算子）
         self.use_adaptive = use_adaptive or repair_mode == 'adaptive'
         if self.use_adaptive:
-            self.adaptive_selector = AdaptiveOperatorSelector(
+            # Repair算子自适应选择器
+            self.adaptive_repair_selector = AdaptiveOperatorSelector(
                 operators=['greedy', 'regret2', 'random'],
                 initial_weight=1.0,
                 decay_factor=0.8
             )
+            # Destroy算子自适应选择器（新增）
+            self.adaptive_destroy_selector = AdaptiveOperatorSelector(
+                operators=['random_removal', 'partial_removal'],
+                initial_weight=1.0,
+                decay_factor=0.8
+            )
         else:
-            self.adaptive_selector = None
+            self.adaptive_repair_selector = None
+            self.adaptive_destroy_selector = None
 
         # 模拟退火参数
         self.initial_temp = 100.0
@@ -263,29 +271,47 @@ class MinimalALNS:
 
         temperature = self.initial_temp
 
-        # 算子使用统计
+        # 算子使用统计（Repair）
         greedy_count = 0
         regret_count = 0
         random_count = 0
 
+        # 算子使用统计（Destroy）
+        random_removal_count = 0
+        partial_removal_count = 0
+
         print(f"初始成本: {best_cost:.2f}m")
         print(f"总迭代次数: {max_iterations}")
         if self.use_adaptive:
-            print("使用自适应算子选择 ✓")
+            print("使用自适应算子选择 ✓ (Destroy + Repair)")
 
         for iteration in range(max_iterations):
-            # Destroy阶段
-            destroyed_route, removed_task_ids = self.random_removal(current_route, q=2)
+            # Destroy阶段 - 使用自适应选择或固定模式
+            if self.use_adaptive:
+                # 自适应选择destroy算子
+                selected_destroy = self.adaptive_destroy_selector.select_operator()
+
+                if selected_destroy == 'random_removal':
+                    destroyed_route, removed_task_ids = self.random_removal(current_route, q=2)
+                    random_removal_count += 1
+                else:  # partial_removal
+                    destroyed_route, removed_task_ids = self.partial_removal(current_route, q=2)
+                    partial_removal_count += 1
+            else:
+                # 默认使用random_removal
+                destroyed_route, removed_task_ids = self.random_removal(current_route, q=2)
+                selected_destroy = 'random_removal'
+                random_removal_count += 1
 
             # Repair阶段 - 使用自适应选择或固定模式
             if self.use_adaptive:
-                # 自适应选择算子
-                selected_operator = self.adaptive_selector.select_operator()
+                # 自适应选择repair算子
+                selected_repair = self.adaptive_repair_selector.select_operator()
 
-                if selected_operator == 'greedy':
+                if selected_repair == 'greedy':
                     candidate_route = self.greedy_insertion(destroyed_route, removed_task_ids)
                     greedy_count += 1
-                elif selected_operator == 'regret2':
+                elif selected_repair == 'regret2':
                     candidate_route = self.regret2_insertion(destroyed_route, removed_task_ids)
                     regret_count += 1
                 else:  # random
@@ -296,29 +322,29 @@ class MinimalALNS:
                 if self.repair_mode == 'greedy':
                     candidate_route = self.greedy_insertion(destroyed_route, removed_task_ids)
                     greedy_count += 1
-                    selected_operator = 'greedy'
+                    selected_repair = 'greedy'
                 elif self.repair_mode == 'regret2':
                     candidate_route = self.regret2_insertion(destroyed_route, removed_task_ids)
                     regret_count += 1
-                    selected_operator = 'regret2'
+                    selected_repair = 'regret2'
                 elif self.repair_mode == 'random':
                     candidate_route = self.random_insertion(destroyed_route, removed_task_ids)
                     random_count += 1
-                    selected_operator = 'random'
+                    selected_repair = 'random'
                 else:  # mixed mode
                     repair_choice = random.random()
                     if repair_choice < 0.33:
                         candidate_route = self.greedy_insertion(destroyed_route, removed_task_ids)
                         greedy_count += 1
-                        selected_operator = 'greedy'
+                        selected_repair = 'greedy'
                     elif repair_choice < 0.67:
                         candidate_route = self.regret2_insertion(destroyed_route, removed_task_ids)
                         regret_count += 1
-                        selected_operator = 'regret2'
+                        selected_repair = 'regret2'
                     else:
                         candidate_route = self.random_insertion(destroyed_route, removed_task_ids)
                         random_count += 1
-                        selected_operator = 'random'
+                        selected_repair = 'random'
 
             # 评估成本
             candidate_cost = self.evaluate_cost(candidate_route)
@@ -341,8 +367,16 @@ class MinimalALNS:
 
             # 更新自适应权重
             if self.use_adaptive:
-                self.adaptive_selector.update_weights(
-                    operator=selected_operator,
+                # 更新repair算子权重
+                self.adaptive_repair_selector.update_weights(
+                    operator=selected_repair,
+                    improvement=improvement,
+                    is_new_best=is_new_best,
+                    is_accepted=is_accepted
+                )
+                # 更新destroy算子权重
+                self.adaptive_destroy_selector.update_weights(
+                    operator=selected_destroy,
                     improvement=improvement,
                     is_new_best=is_new_best,
                     is_accepted=is_accepted
@@ -356,12 +390,22 @@ class MinimalALNS:
                 print(f"  [进度] 已完成 {iteration+1}/{max_iterations} 次迭代, 当前最优: {best_cost:.2f}m")
 
         # 最终统计
-        print(f"\n算子使用统计: Greedy={greedy_count}, Regret-2={regret_count}, Random={random_count}")
+        print(f"\n算子使用统计:")
+        print(f"  Repair: Greedy={greedy_count}, Regret-2={regret_count}, Random={random_count}")
+        print(f"  Destroy: Random-Removal={random_removal_count}, Partial-Removal={partial_removal_count}")
         print(f"最终最优成本: {best_cost:.2f}m (改进 {self.evaluate_cost(initial_route)-best_cost:.2f}m)")
 
         # 打印自适应统计
         if self.use_adaptive:
-            self.adaptive_selector.print_statistics()
+            print("\n" + "="*70)
+            print("Repair算子自适应统计")
+            print("="*70)
+            self.adaptive_repair_selector.print_statistics()
+
+            print("\n" + "="*70)
+            print("Destroy算子自适应统计")
+            print("="*70)
+            self.adaptive_destroy_selector.print_statistics()
 
         return best_route
     
