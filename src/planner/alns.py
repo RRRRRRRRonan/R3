@@ -287,7 +287,7 @@ class MinimalALNS:
 
         for iteration in range(max_iterations):
             # Destroy阶段 - 使用自适应选择或固定模式
-            if self.use_adaptive:
+            if self.use_adaptive and self.adaptive_destroy_selector is not None:
                 # 自适应选择destroy算子
                 selected_destroy = self.adaptive_destroy_selector.select_operator()
 
@@ -304,7 +304,7 @@ class MinimalALNS:
                 random_removal_count += 1
 
             # Repair阶段 - 使用自适应选择或固定模式
-            if self.use_adaptive:
+            if self.use_adaptive and self.adaptive_repair_selector is not None:
                 # 自适应选择repair算子
                 selected_repair = self.adaptive_repair_selector.select_operator()
 
@@ -375,12 +375,13 @@ class MinimalALNS:
                     is_accepted=is_accepted
                 )
                 # 更新destroy算子权重
-                self.adaptive_destroy_selector.update_weights(
-                    operator=selected_destroy,
-                    improvement=improvement,
-                    is_new_best=is_new_best,
-                    is_accepted=is_accepted
-                )
+                if self.adaptive_destroy_selector is not None:
+                    self.adaptive_destroy_selector.update_weights(
+                        operator=selected_destroy,
+                        improvement=improvement,
+                        is_new_best=is_new_best,
+                        is_accepted=is_accepted
+                    )
 
             # 降温
             temperature *= self.cooling_rate
@@ -402,10 +403,11 @@ class MinimalALNS:
             print("="*70)
             self.adaptive_repair_selector.print_statistics()
 
-            print("\n" + "="*70)
-            print("Destroy算子自适应统计")
-            print("="*70)
-            self.adaptive_destroy_selector.print_statistics()
+            if self.adaptive_destroy_selector is not None:
+                print("\n" + "="*70)
+                print("Destroy算子自适应统计")
+                print("="*70)
+                self.adaptive_destroy_selector.print_statistics()
 
         return best_route
     
