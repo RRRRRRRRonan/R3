@@ -206,18 +206,19 @@ def test_optimization_with_strategy(strategy_name, strategy, depot, tasks, dista
     for task in tasks:
         task_pool.add_task(task)
 
-    # 创建ALNS优化器
+    # 创建ALNS优化器（使用自适应算子选择）
     alns = MinimalALNS(
         distance_matrix=distance_matrix,
         task_pool=task_pool,
-        repair_mode='mixed',
+        repair_mode='adaptive',  # 使用自适应算子选择
         cost_params=CostParameters(
             C_tr=1.0,
             C_ch=0.6,
             C_delay=2.0,
             C_time=0.1
         ),
-        charging_strategy=strategy
+        charging_strategy=strategy,
+        use_adaptive=True  # 启用自适应算子选择
     )
     alns.vehicle = vehicle
     alns.energy_config = energy_config
