@@ -651,21 +651,71 @@ class MinimalALNS:
                     print(f"  ✗ Battery depleted at node {i+1}!")
                 return False  # 电量不足，不可行
 
-            # Week 2新增（第1.3步）：检查是否低于临界值
-            critical_threshold = energy_config.critical_battery_threshold * vehicle.battery_capacity
-            if current_battery < critical_threshold:
-                # 检查前方是否有充电站
-                has_upcoming_cs = False
-                # 检查接下来的几个节点（最多5个）
-                for j in range(i + 1, min(i + 6, len(route.nodes))):
-                    if route.nodes[j].is_charging_station():
-                        has_upcoming_cs = True
-                        break
+            # Week 4改进：策略感知的分层临界值检查（软约束）
+            # 安全层：绝对最低电量（5%），硬约束
+            safety_threshold = energy_config.safety_threshold * vehicle.battery_capacity
+            if current_battery < safety_threshold:
+                if debug:
+                    print(f"  ✗ Safety threshold violated at node {i+1}! ({current_battery:.1f} < {safety_threshold:.1f})")
+                return False  # 低于安全层，绝对不可行
 
-                if not has_upcoming_cs:
-                    if debug:
-                        print(f"  ⚠️ Battery critical at node {i+1}! ({current_battery:.1f} < {critical_threshold:.1f}) and no upcoming CS")
-                    return False  # 低电量且附近没有充电站，不可行
+            # 警告层：策略感知的建议充电阈值（软约束+前瞻性检查）
+            if self.charging_strategy:
+                warning_threshold_ratio = self.charging_strategy.get_warning_threshold()
+                warning_threshold = warning_threshold_ratio * vehicle.battery_capacity
+
+                if current_battery < warning_threshold:
+                    # 低于警告阈值，进行前瞻性检查
+                    # 检查接下来是否有充电站，以及能否安全到达
+                    next_cs_index = -1
+                    energy_to_next_cs = 0.0
+
+                    # 查找前方5个节点内的充电站
+                    for j in range(i + 2, min(i + 7, len(route.nodes))):
+                        if route.nodes[j].is_charging_station():
+                            next_cs_index = j
+                            break
+
+                    if next_cs_index != -1:
+                        # 计算到达下一个充电站需要的能量
+                        for j in range(i + 1, next_cs_index):
+                            seg_distance = self.distance.get_distance(
+                                route.nodes[j].node_id,
+                                route.nodes[j + 1].node_id
+                            )
+                            travel_time = seg_distance / vehicle_speed
+                            energy_to_next_cs += energy_config.consumption_rate * travel_time
+
+                        # 预估到达充电站时的电量
+                        predicted_battery_at_cs = current_battery - energy_to_next_cs
+
+                        # 如果预估电量低于安全层，认为不可行
+                        if predicted_battery_at_cs < safety_threshold:
+                            if debug:
+                                print(f"  ⚠️ Warning threshold triggered at node {i+1}!")
+                                print(f"     Current: {current_battery:.1f}, Warning: {warning_threshold:.1f}")
+                                print(f"     Predicted at next CS: {predicted_battery_at_cs:.1f} < Safety: {safety_threshold:.1f}")
+                            return False  # 无法安全到达下一个充电站
+                    else:
+                        # 前方没有充电站，检查能否到达终点
+                        remaining_energy_to_depot = 0.0
+                        for j in range(i + 1, len(route.nodes) - 1):
+                            seg_distance = self.distance.get_distance(
+                                route.nodes[j].node_id,
+                                route.nodes[j + 1].node_id
+                            )
+                            travel_time = seg_distance / vehicle_speed
+                            remaining_energy_to_depot += energy_config.consumption_rate * travel_time
+
+                        predicted_battery_at_depot = current_battery - remaining_energy_to_depot
+
+                        # 如果无法安全到达终点，不可行
+                        if predicted_battery_at_depot < safety_threshold:
+                            if debug:
+                                print(f"  ⚠️ Warning threshold triggered at node {i+1}!")
+                                print(f"     Current: {current_battery:.1f}, Warning: {warning_threshold:.1f}")
+                                print(f"     No upcoming CS, predicted at depot: {predicted_battery_at_depot:.1f}")
+                            return False  # 需要充电站但前方没有
 
         if debug:
             print(f"  ✓ Route feasible, final battery={current_battery:.1f}")

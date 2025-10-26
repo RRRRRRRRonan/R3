@@ -53,6 +53,22 @@ class ChargingStrategy(ABC):
         """返回策略名称"""
         pass
 
+    def get_warning_threshold(self) -> float:
+        """
+        获取策略感知的警告阈值（相对于电池容量的比例）
+
+        Week 4新增：每个充电策略根据自身特性返回合适的警告阈值
+
+        返回:
+            float: 警告阈值比例 (0-1)，低于此值建议充电
+
+        设计思想:
+            - FR策略: 低阈值(10%)，因为充满后续航长
+            - PR-Fixed策略: 中等阈值(10-12%)，根据充电比例调整
+            - PR-Minimal策略: 高阈值(15%)，因为每次只充刚好够用
+        """
+        return 0.15  # 默认值：15%
+
 
 class FullRechargeStrategy(ChargingStrategy):
     """
@@ -85,6 +101,14 @@ class FullRechargeStrategy(ChargingStrategy):
 
     def get_strategy_name(self) -> str:
         return "Full Recharge (FR)"
+
+    def get_warning_threshold(self) -> float:
+        """
+        FR策略：低警告阈值(10%)
+
+        原因: 每次充满电，续航时间长，可以容忍较低的电量
+        """
+        return 0.10
 
 
 class PartialRechargeFixedStrategy(ChargingStrategy):
@@ -140,6 +164,19 @@ class PartialRechargeFixedStrategy(ChargingStrategy):
 
     def get_strategy_name(self) -> str:
         return f"Partial Recharge Fixed (PR-Fixed {self.charge_ratio*100:.0f}%)"
+
+    def get_warning_threshold(self) -> float:
+        """
+        PR-Fixed策略：动态警告阈值
+
+        根据充电比例调整:
+            - 充电比例高(80%) → 低阈值(10%)，因为每次充电多
+            - 充电比例低(30%) → 高阈值(12%)，因为每次充电少
+
+        计算公式: 基础10% + (1 - 充电比例) * 5%
+        """
+        # 充电比例越低，阈值越高
+        return 0.10 + (1.0 - self.charge_ratio) * 0.05
 
 
 class PartialRechargeMinimalStrategy(ChargingStrategy):
@@ -200,6 +237,19 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
 
     def get_strategy_name(self) -> str:
         return f"Partial Recharge Minimal (PR-Minimal {self.safety_margin*100:.0f}%)"
+
+    def get_warning_threshold(self) -> float:
+        """
+        PR-Minimal策略：高警告阈值(15%)
+
+        原因:
+            - 每次只充刚好够用的电量，没有太多余量
+            - 需要更早触发充电站插入，避免电量不足
+            - 需要较高的安全余量以应对能量预测误差
+
+        计算: 基础15% + 安全余量的一半
+        """
+        return 0.15 + self.safety_margin * 0.5
 
 
 # ========== 便捷工厂函数 ==========
