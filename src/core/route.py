@@ -917,7 +917,7 @@ class Route:
         """
         from core.node import ChargingNode, NodeType
         from copy import deepcopy
-        
+
         pickup_pos, delivery_pos = insert_position
         
         # 构建临时路径
@@ -983,6 +983,7 @@ class Route:
                             remaining_demand=target_energy_demand,
                             battery_capacity=vehicle.battery_capacity
                         )
+
                         requested_charge = max(0.0, charge_amount)
                         current_battery = min(
                             vehicle.battery_capacity,
@@ -1009,6 +1010,7 @@ class Route:
                         break
 
                     if current_battery < min_departure_energy:
+
                         target_departure = min(vehicle.battery_capacity, min_departure_energy)
                         extra_needed = max(0.0, target_departure - current_battery)
                         current_battery += extra_needed

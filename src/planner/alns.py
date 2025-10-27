@@ -971,6 +971,7 @@ class MinimalALNS:
 
                         # 如果预估电量为负，说明无法抵达下一个充电站
                         if predicted_battery_at_cs < 0:
+
                             return False  # 无法安全到达下一个充电站
                     else:
                         # 前方没有充电站，检查能否到达终点
@@ -987,6 +988,7 @@ class MinimalALNS:
 
                         # 如果无法安全到达终点，不可行
                         if predicted_battery_at_depot < 0:
+
                             return False  # 需要充电站但前方没有
 
         return True  # 整个路径可行
