@@ -64,9 +64,14 @@ class EnergyConfig:
     # 电池参数
     battery_capacity: float = 100.0# E^{max}: 电池最大容量
 
-    # Week 2新增：充电临界值（第1.3步）
-    # Week 2修复：暂时禁用临界值（设为0），专注于充电站动态优化核心功能
-    critical_battery_threshold: float = 0.0  # 暂时禁用，避免PR-Minimal过度插入充电站
+    # Week 4新增：分层充电临界值机制（策略感知的自适应阈值）
+    # 设计思想：避免Week 2的硬约束失败，使用软约束和策略感知
+    safety_threshold: float = 0.05      # 安全层：5%，绝对最低电量
+    warning_threshold: float = 0.15     # 警告层：15%，建议充电（策略可重写）
+    comfort_threshold: float = 0.25     # 舒适层：25%，理想充电触发点
+
+    # Week 2遗留（保持向后兼容）
+    critical_battery_threshold: float = 0.0  # 已废弃，使用上述分层阈值替代
     
     def __post_init__(self):
         """参数合理性检查"""

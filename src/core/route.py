@@ -913,6 +913,7 @@ class Route:
                                             vehicle: Vehicle,
                                             distance_matrix: DistanceMatrix,
                                             energy_config: EnergyConfig,
+                                            charging_strategy=None,
                                             debug: bool = False) -> Tuple[bool, Optional[List]]:
         """
         检查插入任务后的能量可行性（修复版）
@@ -923,6 +924,7 @@ class Route:
             vehicle: 车辆对象
             distance_matrix: 距离矩阵
             energy_config: 能量配置
+            charging_strategy: 当前使用的充电策略（可选）
             debug: 是否打印调试信息
         
         返回:
@@ -938,7 +940,7 @@ class Route:
         temp_nodes.insert(delivery_pos, task.delivery_node)
         
         charging_plan = []
-        MAX_ITERATIONS = 5
+        MAX_ITERATIONS = 10
         
         for iteration in range(MAX_ITERATIONS):
             current_battery = vehicle.battery_capacity  # 满电出发
@@ -951,31 +953,105 @@ class Route:
                 current_node = temp_nodes[i]
                 next_node = temp_nodes[i + 1]
                 
-                # 在充电站充满电
-                if current_node.is_charging_station():
-                    current_battery = vehicle.battery_capacity
-                
-                # 计算距离和能耗
+                vehicle_speed = 1.5  # m/s
                 distance = distance_matrix.get_distance(
                     current_node.node_id,
                     next_node.node_id
                 )
-
-                # 正确的能量计算：consumption_rate单位是kWh/秒
-                # energy_needed = consumption_rate * travel_time
-                # 假设车速1.5 m/s（标准AMR速度）
-                vehicle_speed = 1.5  # m/s
                 travel_time = distance / vehicle_speed  # 秒
                 energy_needed = energy_config.consumption_rate * travel_time  # kWh
-                
+                safety_threshold_value = energy_config.safety_threshold * vehicle.battery_capacity
+
+                # 在充电站补能
+                if current_node.is_charging_station():
+                    if charging_strategy:
+                        # 估算剩余路径能耗，策略根据需求决定补能量
+                        remaining_energy_demand = 0.0
+                        energy_to_next_stop = 0.0
+                        next_stop_is_cs = False
+                        for j in range(i, len(temp_nodes) - 1):
+                            seg_distance = distance_matrix.get_distance(
+                                temp_nodes[j].node_id,
+                                temp_nodes[j + 1].node_id
+                            )
+                            travel_time = seg_distance / vehicle_speed
+                            seg_energy = energy_config.consumption_rate * travel_time
+                            remaining_energy_demand += seg_energy
+                            energy_to_next_stop += seg_energy
+                            if temp_nodes[j + 1].is_charging_station() and j >= i:
+                                next_stop_is_cs = True
+                                break
+
+                        if not next_stop_is_cs:
+                            energy_to_next_stop = remaining_energy_demand
+
+                        charge_amount = charging_strategy.determine_charging_amount(
+                            current_battery=current_battery,
+                            remaining_demand=remaining_energy_demand,
+                            battery_capacity=vehicle.battery_capacity
+                        )
+                        if debug:
+                            print(f"  [check] CS at index {i}: battery={current_battery:.3f}, remaining_demand={remaining_energy_demand:.3f}, charge={charge_amount:.3f}")
+
+                        current_battery = min(
+                            vehicle.battery_capacity,
+                            current_battery + max(0.0, charge_amount)
+                        )
+                    else:
+                        if debug:
+                            print(f"  [check] CS at index {i}: charging to full")
+                        current_battery = vehicle.battery_capacity
+
+                    min_departure_energy = energy_needed
+                    if not next_node.is_charging_station():
+                        min_departure_energy += safety_threshold_value
+
+                    if charging_strategy:
+                        required_for_next_stop = energy_to_next_stop
+                        if not next_stop_is_cs:
+                            required_for_next_stop += safety_threshold_value
+                        min_departure_energy = max(min_departure_energy, required_for_next_stop)
+
+                    if min_departure_energy > vehicle.battery_capacity:
+                        if debug:
+                            print(f"    -> segment demand {min_departure_energy:.3f} exceeds capacity {vehicle.battery_capacity:.3f}")
+                        critical_position = i + 1
+                        critical_node = current_node
+                        break
+
+                    if current_battery < min_departure_energy:
+                        if debug:
+                            print(f"    -> top-up to {min_departure_energy:.3f} for next leg")
+                        current_battery = min(vehicle.battery_capacity, min_departure_energy)
+
                 # 检查能量是否足够
+                if debug:
+                    print(f"  [check] leg {i}->{i+1}: need={energy_needed:.3f}, battery_before={current_battery:.3f}")
                 if current_battery < energy_needed:
+                    if debug:
+                        print(f"    -> energy shortfall before node {i+1} (id={next_node.node_id})")
                     critical_position = i + 1
                     critical_node = current_node
                     break
                 
                 # 消耗能量
                 current_battery -= energy_needed
+
+                if debug:
+                    print(f"    battery_after={current_battery:.3f}")
+
+                # 如果下一节点是充电站，到站后再进行补能检查
+                if next_node.is_charging_station():
+                    continue
+
+                # 安全阈值检查，避免部分充电后立即跌破安全余量
+                safety_threshold = energy_config.safety_threshold * vehicle.battery_capacity
+                if current_battery < safety_threshold:
+                    if debug:
+                        print(f"    -> safety threshold violated before node {i+1} (id={next_node.node_id}), battery={current_battery:.3f} < {safety_threshold:.3f}")
+                    critical_position = i + 1
+                    critical_node = current_node
+                    break
                 
                 # 更新载重
                 if next_node.is_pickup() and hasattr(next_node, 'demand'):

@@ -711,7 +711,8 @@ class MinimalALNS:
                             (pickup_pos, delivery_pos),
                             vehicle,
                             self.distance,
-                            energy_config
+                            energy_config, 
+                            charging_strategy=self.charging_strategy
                         )
 
                         if not feasible:
@@ -841,22 +842,40 @@ class MinimalALNS:
         for i in range(len(route.nodes) - 1):
             current_node = route.nodes[i]
             next_node = route.nodes[i + 1]
-
+            vehicle_speed = 1.5  # m/s
+            distance = self.distance.get_distance(
+                current_node.node_id,
+                next_node.node_id
+            )
+            travel_time = distance / vehicle_speed
+            energy_consumed = energy_config.consumption_rate * travel_time
+            safety_threshold_value = energy_config.safety_threshold * vehicle.battery_capacity
             # 如果当前节点是充电站，先充电
             if current_node.is_charging_station():
                 # 使用充电策略决定充电量
                 if self.charging_strategy:
                     # 计算剩余路径能耗（包括当前到下一节点的距离）
                     # 正确公式：energy = consumption_rate(kWh/s) * time(s)
-                    vehicle_speed = 1.5  # m/s
                     remaining_energy_demand = 0.0
+                    energy_to_next_stop = 0.0
+                    next_stop_is_cs = False
                     for j in range(i, len(route.nodes) - 1):
                         seg_distance = self.distance.get_distance(
                             route.nodes[j].node_id,
                             route.nodes[j + 1].node_id
                         )
                         travel_time = seg_distance / vehicle_speed
-                        remaining_energy_demand += energy_config.consumption_rate * travel_time
+                        seg_energy = energy_config.consumption_rate * travel_time
+                        remaining_energy_demand += seg_energy
+                        energy_to_next_stop += seg_energy
+
+                        if route.nodes[j + 1].is_charging_station() and j >= i:
+                            next_stop_is_cs = True
+                            break
+
+                    if not next_stop_is_cs:
+                        # 继续累加剩余路径以便返回仓库
+                        energy_to_next_stop = remaining_energy_demand
 
                     charge_amount = self.charging_strategy.determine_charging_amount(
                         current_battery=current_battery,
@@ -865,23 +884,38 @@ class MinimalALNS:
                     )
                     if debug:
                         print(f"  CS at node {i}: battery={current_battery:.1f}, demand={remaining_energy_demand:.1f}, charge={charge_amount:.1f}")
-                    current_battery = min(vehicle.battery_capacity, current_battery + charge_amount)
+                    current_battery = min(
+                        vehicle.battery_capacity,
+                        current_battery + max(0.0, charge_amount)
+                    )
                 else:
                     # 没有充电策略，默认充满
                     if debug:
                         print(f"  CS at node {i}: charging to full")
                     current_battery = vehicle.battery_capacity
+                # 根据下一段行程的能量需求，确保最低出发电量
+                min_departure_energy = energy_consumed
+                if not next_node.is_charging_station():
+                    min_departure_energy += safety_threshold_value
+
+                # 确保具备到达下一充电站或终点的能量
+                if self.charging_strategy and current_node.is_charging_station():
+                    required_for_next_stop = energy_to_next_stop
+                    if not next_stop_is_cs:
+                        required_for_next_stop += safety_threshold_value
+                    min_departure_energy = max(min_departure_energy, required_for_next_stop)
+
+                if min_departure_energy > vehicle.battery_capacity:
+                    if debug:
+                        print(f"  ✗ Segment from node {i} requires {min_departure_energy:.1f} > capacity {vehicle.battery_capacity:.1f}")
+                    return False
+
+                if current_battery < min_departure_energy:
+                    if debug:
+                        print(f"  ↻ Top-up at node {i}: raising battery from {current_battery:.1f} to {min_departure_energy:.1f} to cover next leg")
+                    current_battery = min(vehicle.battery_capacity, min_departure_energy)
 
             # 计算到下一节点的距离和能耗
-            # 正确公式：energy = consumption_rate(kWh/s) * time(s)
-            distance = self.distance.get_distance(
-                current_node.node_id,
-                next_node.node_id
-            )
-            vehicle_speed = 1.5  # m/s
-            travel_time = distance / vehicle_speed
-            energy_consumed = energy_config.consumption_rate * travel_time
-
             # 消耗能量前往下一节点
             current_battery -= energy_consumed
 
@@ -893,22 +927,81 @@ class MinimalALNS:
                 if debug:
                     print(f"  ✗ Battery depleted at node {i+1}!")
                 return False  # 电量不足，不可行
+            
+            # Week 4修复：如果刚到达充电站，应允许先充电再检查阈值
+            # 之前的逻辑会在到站前执行阈值检查，导致即使成功抵达充电站
+            #（电量>=0）也会因为低于警告/安全阈值被判为不可行
+            # 这会让大量候选解被提前否决，使优化率显著下降。
+            if next_node.is_charging_station():
+                # 到达充电站后，下一轮循环会触发充电逻辑
+                # 因此这里无需再进行阈值检查
+                continue
 
-            # Week 2新增（第1.3步）：检查是否低于临界值
-            critical_threshold = energy_config.critical_battery_threshold * vehicle.battery_capacity
-            if current_battery < critical_threshold:
-                # 检查前方是否有充电站
-                has_upcoming_cs = False
-                # 检查接下来的几个节点（最多5个）
-                for j in range(i + 1, min(i + 6, len(route.nodes))):
-                    if route.nodes[j].is_charging_station():
-                        has_upcoming_cs = True
-                        break
+            # Week 4改进：策略感知的分层临界值检查（软约束）
+            # 安全层：绝对最低电量（5%），硬约束
+            safety_threshold = energy_config.safety_threshold * vehicle.battery_capacity
+            if current_battery < safety_threshold:
+                if debug:
+                    print(f"  ✗ Safety threshold violated at node {i+1}! ({current_battery:.1f} < {safety_threshold:.1f})")
+                return False  # 低于安全层，绝对不可行
 
-                if not has_upcoming_cs:
-                    if debug:
-                        print(f"  ⚠️ Battery critical at node {i+1}! ({current_battery:.1f} < {critical_threshold:.1f}) and no upcoming CS")
-                    return False  # 低电量且附近没有充电站，不可行
+            # 警告层：策略感知的建议充电阈值（软约束+前瞻性检查）
+            if self.charging_strategy:
+                warning_threshold_ratio = self.charging_strategy.get_warning_threshold()
+                warning_threshold = warning_threshold_ratio * vehicle.battery_capacity
+
+                if current_battery < warning_threshold:
+                    # 低于警告阈值，进行前瞻性检查
+                    # 检查接下来是否有充电站，以及能否安全到达
+                    next_cs_index = -1
+                    energy_to_next_cs = 0.0
+
+                    # 查找前方5个节点内的充电站
+                    for j in range(i + 2, min(i + 7, len(route.nodes))):
+                        if route.nodes[j].is_charging_station():
+                            next_cs_index = j
+                            break
+
+                    if next_cs_index != -1:
+                        # 计算到达下一个充电站需要的能量
+                        for j in range(i + 1, next_cs_index):
+                            seg_distance = self.distance.get_distance(
+                                route.nodes[j].node_id,
+                                route.nodes[j + 1].node_id
+                            )
+                            travel_time = seg_distance / vehicle_speed
+                            energy_to_next_cs += energy_config.consumption_rate * travel_time
+
+                        # 预估到达充电站时的电量
+                        predicted_battery_at_cs = current_battery - energy_to_next_cs
+
+                        # 如果预估电量低于安全层，认为不可行
+                        if predicted_battery_at_cs < safety_threshold:
+                            if debug:
+                                print(f"  ⚠️ Warning threshold triggered at node {i+1}!")
+                                print(f"     Current: {current_battery:.1f}, Warning: {warning_threshold:.1f}")
+                                print(f"     Predicted at next CS: {predicted_battery_at_cs:.1f} < Safety: {safety_threshold:.1f}")
+                            return False  # 无法安全到达下一个充电站
+                    else:
+                        # 前方没有充电站，检查能否到达终点
+                        remaining_energy_to_depot = 0.0
+                        for j in range(i + 1, len(route.nodes) - 1):
+                            seg_distance = self.distance.get_distance(
+                                route.nodes[j].node_id,
+                                route.nodes[j + 1].node_id
+                            )
+                            travel_time = seg_distance / vehicle_speed
+                            remaining_energy_to_depot += energy_config.consumption_rate * travel_time
+
+                        predicted_battery_at_depot = current_battery - remaining_energy_to_depot
+
+                        # 如果无法安全到达终点，不可行
+                        if predicted_battery_at_depot < safety_threshold:
+                            if debug:
+                                print(f"  ⚠️ Warning threshold triggered at node {i+1}!")
+                                print(f"     Current: {current_battery:.1f}, Warning: {warning_threshold:.1f}")
+                                print(f"     No upcoming CS, predicted at depot: {predicted_battery_at_depot:.1f}")
+                            return False  # 需要充电站但前方没有
 
         if debug:
             print(f"  ✓ Route feasible, final battery={current_battery:.1f}")
@@ -1430,7 +1523,8 @@ class MinimalALNS:
                                 (pickup_pos, delivery_pos),
                                 vehicle,
                                 self.distance,
-                                energy_config
+                                energy_config, 
+                                charging_strategy=self.charging_strategy
                             )
 
                             if not feasible:
