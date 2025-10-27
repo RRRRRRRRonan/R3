@@ -312,14 +312,14 @@ def main():
 
     # 测试策略（大规模下只测试两种有代表性的）
     strategies = [
-        ("完全充电 (FR)", FullRechargeStrategy()),
-        ("最小充电 (PR-Minimal)", PartialRechargeMinimalStrategy(safety_margin=0.2))
+        ("完全充电 (FR)", FullRechargeStrategy(), 40),
+        ("最小充电 (PR-Minimal)", PartialRechargeMinimalStrategy(safety_margin=0.08, min_margin=0.0), 80)
     ]
 
     results = []
     total_start = time_module.time()
 
-    for idx, (strategy_name, strategy) in enumerate(strategies):
+    for idx, (strategy_name, strategy, iterations) in enumerate(strategies):
         print(f"\n{'='*70}")
         print(f"测试进度: {idx+1}/{len(strategies)}")
         print(f"{'='*70}")
@@ -327,7 +327,7 @@ def main():
         result = test_optimization_with_strategy(
             strategy_name, strategy, depot, tasks,
             distance_matrix, vehicle, energy_config,
-            max_iterations=50  # 大规模场景减少迭代次数
+            max_iterations=iterations
         )
         results.append(result)
 

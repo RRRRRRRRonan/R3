@@ -193,9 +193,10 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
         - 适合已知路径的静态规划
 
     参数:
-        safety_margin: 安全余量比例 (0-1)
-            - 0.1: 额外充10%作为缓冲
-            - 0.2: 额外充20%作为缓冲
+        safety_margin: 基础安全余量比例 (0-1)
+            - 作为动态余量的上限，结合剩余需求自动缩放
+        min_margin: 自适应最小安全余量比例
+        max_margin: 自适应最大安全余量比例
 
     示例:
         当前电量: 20kWh
@@ -204,17 +205,25 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
         → 充电量 = 80 - 20 + 10 = 70kWh
     """
 
-    def __init__(self, safety_margin: float = 0.1):
+    def __init__(self, safety_margin: float = 0.1,
+                 min_margin: float = 0.015,
+                 max_margin: float = 0.18):
         """
         初始化
 
         参数:
-            safety_margin: 安全余量比例，默认0.1 (10%)
+            safety_margin: 基础安全余量比例，默认0.1 (10%)
+            min_margin: 自适应最小安全余量（默认1.5%）
+            max_margin: 自适应最大安全余量（默认18%）
         """
         if not 0 <= safety_margin < 1.0:
             raise ValueError(f"safety_margin必须在[0, 1)范围内，当前值: {safety_margin}")
+        if min_margin < 0 or max_margin <= 0 or min_margin >= max_margin:
+            raise ValueError("min_margin/max_margin必须满足 0 ≤ min < max")
 
-        self.safety_margin = safety_margin
+        self.base_margin = safety_margin
+        self.min_margin = min_margin
+        self.max_margin = max(max_margin, safety_margin)
 
     def determine_charging_amount(self,
                                   current_battery: float,
@@ -226,7 +235,13 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
         使用physics.energy模块的计算函数
         """
         # 计算安全余量（基于电池容量的百分比）
-        margin = battery_capacity * self.safety_margin
+        demand_ratio = 0.0 if battery_capacity <= 0 else remaining_demand / battery_capacity
+        demand_ratio = max(0.0, min(1.0, demand_ratio))
+
+        adaptive_ratio = self.base_margin * (0.5 + 0.5 * demand_ratio)
+        adaptive_ratio = max(self.min_margin, min(self.max_margin, adaptive_ratio))
+
+        margin = battery_capacity * adaptive_ratio
 
         return calculate_minimum_charging_needed(
             current_battery=current_battery,
@@ -236,7 +251,7 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
         )
 
     def get_strategy_name(self) -> str:
-        return f"Partial Recharge Minimal (PR-Minimal {self.safety_margin*100:.0f}%)"
+        return f"Partial Recharge Minimal (PR-Minimal {self.base_margin*100:.0f}%)"
 
     def get_warning_threshold(self) -> float:
         """
@@ -249,7 +264,7 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
 
         计算: 基础15% + 安全余量的一半
         """
-        return 0.15 + self.safety_margin * 0.5
+        return max(0.05, min(0.16, self.base_margin * 0.3 + 0.05))
 
 
 # ========== 便捷工厂函数 ==========

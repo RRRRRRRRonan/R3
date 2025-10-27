@@ -13,7 +13,7 @@
 import sys
 sys.path.append('src')
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from core.route import Route, RouteNodeVisit
 from core.node import Node
 from core.vehicle import Vehicle
@@ -81,7 +81,7 @@ class RouteExecutor:
                 prev_node = executed_route.nodes[i-1]
                 distance = self.distance.get_distance(prev_node.node_id, node.node_id)
                 travel_time = distance / self.time_config.vehicle_speed
-                energy_consumed = (distance / 1000.0) * self.energy_config.consumption_rate
+                energy_consumed = self.energy_config.consumption_rate * travel_time
 
                 arrival_time = current_time + travel_time
                 battery_after_travel = current_battery - energy_consumed
@@ -94,14 +94,16 @@ class RouteExecutor:
             if node.is_charging_station():
                 if charging_strategy:
                     # 计算剩余路径能量需求
-                    remaining_demand = self._calculate_remaining_demand(
+                    remaining_demand, demand_to_next_cs, has_next_cs = self._calculate_remaining_demand(
                         executed_route, i, self.energy_config
                     )
+
+                    target_demand = demand_to_next_cs if has_next_cs else remaining_demand
 
                     # 使用充电策略决定充电量
                     charge_amount = charging_strategy.determine_charging_amount(
                         current_battery=battery_after_travel,
-                        remaining_demand=remaining_demand,
+                        remaining_demand=target_demand,
                         battery_capacity=vehicle.battery_capacity
                     )
 
@@ -158,7 +160,7 @@ class RouteExecutor:
     def _calculate_remaining_demand(self,
                                     route: Route,
                                     current_index: int,
-                                    energy_config: EnergyConfig) -> float:
+                                    energy_config: EnergyConfig) -> Tuple[float, float, bool]:
         """
         计算从当前位置到终点的剩余能量需求
 
@@ -168,16 +170,30 @@ class RouteExecutor:
             energy_config: 能量配置
 
         返回:
-            float: 剩余能量需求（kWh）
+            Tuple[float, float, bool]: (剩余能量需求, 到下一充电站的能量需求, 是否存在后续充电站)
         """
-        remaining_distance = 0.0
+        total_remaining_energy = 0.0
+        energy_to_next_station = 0.0
+        next_station_found = False
 
         for j in range(current_index, len(route.nodes) - 1):
             distance = self.distance.get_distance(
                 route.nodes[j].node_id,
                 route.nodes[j+1].node_id
             )
-            remaining_distance += distance
+            travel_time = distance / self.time_config.vehicle_speed
+            segment_energy = energy_config.consumption_rate * travel_time
 
-        remaining_energy = (remaining_distance / 1000.0) * energy_config.consumption_rate
-        return remaining_energy
+            total_remaining_energy += segment_energy
+
+            if not next_station_found:
+                energy_to_next_station += segment_energy
+
+            if route.nodes[j+1].is_charging_station() and j >= current_index:
+                next_station_found = True
+                break
+
+        if not next_station_found:
+            energy_to_next_station = total_remaining_energy
+
+        return total_remaining_energy, energy_to_next_station, next_station_found
