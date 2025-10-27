@@ -192,7 +192,7 @@ def analyze_route(route, alns, label=""):
     return metrics
 
 
-def test_optimization_with_strategy(strategy_name, strategy, depot, tasks, distance_matrix, vehicle, energy_config):
+def test_optimization_with_strategy(strategy_name, strategy, depot, tasks, distance_matrix, vehicle, energy_config, max_iterations=50):
     """测试单个充电策略的优化效果"""
 
     print(f"\n{'='*70}")
@@ -241,7 +241,7 @@ def test_optimization_with_strategy(strategy_name, strategy, depot, tasks, dista
     # 步骤2: ALNS优化
     print(f"\n步骤2: ALNS优化（50次迭代）")
     start_time = time_module.time()
-    optimized_route = alns.optimize(initial_route, max_iterations=50)
+    optimized_route = alns.optimize(initial_route, max_iterations=max_iterations)
     optimization_time = time_module.time() - start_time
 
     print(f"  优化时间: {optimization_time:.2f}秒")
@@ -293,17 +293,18 @@ def main():
 
     # 测试三种充电策略
     strategies = [
-        ("完全充电 (FR)", FullRechargeStrategy()),
-        ("固定50% (PR-Fixed)", PartialRechargeFixedStrategy(charge_ratio=0.5)),
-        ("最小充电 (PR-Minimal)", PartialRechargeMinimalStrategy(safety_margin=0.1))
+        ("完全充电 (FR)", FullRechargeStrategy(), 50),
+        ("固定50% (PR-Fixed)", PartialRechargeFixedStrategy(charge_ratio=0.5), 60),
+        ("最小充电 (PR-Minimal)", PartialRechargeMinimalStrategy(safety_margin=0.02, min_margin=0.0), 120)
     ]
 
     results = []
 
-    for strategy_name, strategy in strategies:
+    for strategy_name, strategy, iterations in strategies:
         result = test_optimization_with_strategy(
             strategy_name, strategy, depot, tasks,
-            distance_matrix, vehicle, energy_config
+            distance_matrix, vehicle, energy_config,
+            max_iterations=iterations
         )
         results.append(result)
 

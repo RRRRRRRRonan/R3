@@ -470,17 +470,12 @@ class Route:
                 if hasattr(node, 'demand'):
                     current_load += node.demand
 
-                    if debug:
-                        print(f"  Node {i} (pickup {node.node_id}): load += {node.demand:.1f} → {current_load:.1f}")
-
                     # 检查是否超载
                     if current_load > vehicle_capacity + 1e-6:
                         error_msg = (
                             f"Capacity violation at position {i} (pickup {node.node_id}): "
                             f"load {current_load:.2f} > capacity {vehicle_capacity}"
                         )
-                        if debug:
-                            print(f"  ❌ {error_msg}")
                         return False, error_msg
 
             # Delivery: 减少载重
@@ -489,28 +484,18 @@ class Route:
                     current_load -= node.demand
                     current_load = max(0.0, current_load)  # 避免负数
 
-                    if debug:
-                        print(f"  Node {i} (delivery {node.node_id}): load -= {node.demand:.1f} → {current_load:.1f}")
-
                     # 检查是否为负（逻辑错误：送货多于取货）
                     if current_load < -1e-6:
                         error_msg = (
                             f"Logic error at position {i} (delivery {node.node_id}): "
                             f"delivering more than picked up (load={current_load:.2f})"
                         )
-                        if debug:
-                            print(f"  ❌ {error_msg}")
                         return False, error_msg
 
         # 检查最终载重是否为0
         if abs(current_load) > 1e-6:
             error_msg = f"Final load is not zero: {current_load:.2f} (unbalanced pickups/deliveries)"
-            if debug:
-                print(f"  ⚠️  {error_msg}")
             # 这是警告，不是错误（可能还有未完成的任务）
-
-        if debug:
-            print(f"  ✓ Capacity feasible (max load observed)")
 
         return True, None
 
@@ -992,14 +977,12 @@ class Route:
                         target_energy_demand = (energy_to_next_stop
                                                 if next_stop_is_cs
                                                 else remaining_energy_demand)
-                        
+
                         charge_amount = charging_strategy.determine_charging_amount(
                             current_battery=current_battery,
                             remaining_demand=target_energy_demand,
                             battery_capacity=vehicle.battery_capacity
                         )
-                        if debug:
-                            print(f"  [check] CS at index {i}: battery={current_battery:.3f}, remaining_demand={remaining_energy_demand:.3f}, charge={charge_amount:.3f}")
 
                         requested_charge = max(0.0, charge_amount)
                         current_battery = min(
@@ -1008,31 +991,26 @@ class Route:
                         )
                         applied_charge = current_battery - battery_before_charge
                     else:
-                        if debug:
-                            print(f"  [check] CS at index {i}: charging to full")
                         current_battery = vehicle.battery_capacity
                         applied_charge = current_battery - battery_before_charge
 
                     min_departure_energy = energy_needed
-                    if not next_node.is_charging_station():
-                        min_departure_energy += safety_threshold_value
 
                     if charging_strategy:
                         required_for_next_stop = energy_to_next_stop
                         if not next_stop_is_cs:
                             required_for_next_stop += safety_threshold_value
                         min_departure_energy = max(min_departure_energy, required_for_next_stop)
+                    elif not next_node.is_charging_station():
+                        min_departure_energy += safety_threshold_value
 
                     if min_departure_energy > vehicle.battery_capacity:
-                        if debug:
-                            print(f"    -> segment demand {min_departure_energy:.3f} exceeds capacity {vehicle.battery_capacity:.3f}")
                         critical_position = i + 1
                         critical_node = current_node
                         break
 
                     if current_battery < min_departure_energy:
-                        if debug:
-                            print(f"    -> top-up to {min_departure_energy:.3f} for next leg")
+
                         target_departure = min(vehicle.battery_capacity, min_departure_energy)
                         extra_needed = max(0.0, target_departure - current_battery)
                         current_battery += extra_needed
@@ -1044,20 +1022,13 @@ class Route:
                         plan_entry_map[id(current_node)]['amount'] = max(0.0, applied_charge)
 
                 # 检查能量是否足够
-                if debug:
-                    print(f"  [check] leg {i}->{i+1}: need={energy_needed:.3f}, battery_before={current_battery:.3f}")
                 if current_battery < energy_needed:
-                    if debug:
-                        print(f"    -> energy shortfall before node {i+1} (id={next_node.node_id})")
                     critical_position = i + 1
                     critical_node = current_node
                     break
-                
+
                 # 消耗能量
                 current_battery -= energy_needed
-
-                if debug:
-                    print(f"    battery_after={current_battery:.3f}")
 
                 # 如果下一节点是充电站，到站后再进行补能检查
                 if next_node.is_charging_station():
@@ -1066,8 +1037,6 @@ class Route:
                 # 安全阈值检查，避免部分充电后立即跌破安全余量
                 safety_threshold = energy_config.safety_threshold * vehicle.battery_capacity
                 if current_battery < safety_threshold:
-                    if debug:
-                        print(f"    -> safety threshold violated before node {i+1} (id={next_node.node_id}), battery={current_battery:.3f} < {safety_threshold:.3f}")
                     critical_position = i + 1
                     critical_node = current_node
                     break
@@ -1103,10 +1072,10 @@ class Route:
                 node_type=NodeType.CHARGING,
                 charge_amount=0.0
             )
-            
+
             # 插入充电站
             temp_nodes.insert(critical_position, charging_node)
-            
+
             # 记录充电计划
             for existing_entry in charging_plan:
                 if existing_entry['position'] >= critical_position:

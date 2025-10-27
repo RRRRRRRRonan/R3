@@ -886,21 +886,15 @@ class MinimalALNS:
                         remaining_demand=target_energy_demand,
                         battery_capacity=vehicle.battery_capacity
                     )
-                    if debug:
-                        print(f"  CS at node {i}: battery={current_battery:.1f}, demand={remaining_energy_demand:.1f}, charge={charge_amount:.1f}")
                     current_battery = min(
                         vehicle.battery_capacity,
                         current_battery + max(0.0, charge_amount)
                     )
                 else:
                     # 没有充电策略，默认充满
-                    if debug:
-                        print(f"  CS at node {i}: charging to full")
                     current_battery = vehicle.battery_capacity
                 # 根据下一段行程的能量需求，确保最低出发电量
                 min_departure_energy = energy_consumed
-                if not next_node.is_charging_station():
-                    min_departure_energy += safety_threshold_value
 
                 # 确保具备到达下一充电站或终点的能量
                 if self.charging_strategy and current_node.is_charging_station():
@@ -908,28 +902,22 @@ class MinimalALNS:
                     if not next_stop_is_cs:
                         required_for_next_stop += safety_threshold_value
                     min_departure_energy = max(min_departure_energy, required_for_next_stop)
+                elif not next_node.is_charging_station():
+                    min_departure_energy += safety_threshold_value
 
                 if min_departure_energy > vehicle.battery_capacity:
-                    if debug:
-                        print(f"  ✗ Segment from node {i} requires {min_departure_energy:.1f} > capacity {vehicle.battery_capacity:.1f}")
                     return False
 
                 if current_battery < min_departure_energy:
-                    if debug:
-                        print(f"  ↻ Top-up at node {i}: raising battery from {current_battery:.1f} to {min_departure_energy:.1f} to cover next leg")
                     current_battery = min(vehicle.battery_capacity, min_departure_energy)
 
             # 计算到下一节点的距离和能耗
             # 消耗能量前往下一节点
             current_battery -= energy_consumed
 
-            if debug:
-                print(f"  After move to node {i+1}: battery={current_battery:.1f}, consumed={energy_consumed:.1f}")
 
             # 检查是否电量不足
             if current_battery < 0:
-                if debug:
-                    print(f"  ✗ Battery depleted at node {i+1}!")
                 return False  # 电量不足，不可行
             
             # Week 4修复：如果刚到达充电站，应允许先充电再检查阈值
@@ -983,10 +971,7 @@ class MinimalALNS:
 
                         # 如果预估电量为负，说明无法抵达下一个充电站
                         if predicted_battery_at_cs < 0:
-                            if debug:
-                                print(f"  ⚠️ Warning threshold triggered at node {i+1}!")
-                                print(f"     Current: {current_battery:.1f}, Warning: {warning_threshold:.1f}")
-                                print(f"     Predicted at next CS: {predicted_battery_at_cs:.1f} < 0")
+
                             return False  # 无法安全到达下一个充电站
                     else:
                         # 前方没有充电站，检查能否到达终点
@@ -1003,14 +988,9 @@ class MinimalALNS:
 
                         # 如果无法安全到达终点，不可行
                         if predicted_battery_at_depot < 0:
-                            if debug:
-                                print(f"  ⚠️ Warning threshold triggered at node {i+1}!")
-                                print(f"     Current: {current_battery:.1f}, Warning: {warning_threshold:.1f}")
-                                print(f"     No upcoming CS, predicted at depot: {predicted_battery_at_depot:.1f} < 0")
+
                             return False  # 需要充电站但前方没有
 
-        if debug:
-            print(f"  ✓ Route feasible, final battery={current_battery:.1f}")
         return True  # 整个路径可行
 
     def _check_time_window_feasibility_fast(self, temp_route: Route, vehicle_speed: float = 1.5) -> Tuple[bool, float]:
