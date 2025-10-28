@@ -180,87 +180,59 @@ pickup, delivery = create_task_node_pair(
 
 ---
 
-## ✅ 已实现功能
+## ✅ 能力概览
 
-### Week 1
-- ✅ 基础ALNS框架（Destroy + Repair）
-- ✅ 多目标成本函数
-- ✅ Greedy/Regret-2插入
+- 🔁 自适应Destroy/Repair算子组合
+- 🔋 能量约束与多种充电策略联动
+- ⏱️ 时间窗、容量与顺序多重约束
+- 📉 多目标成本评估（距离/时间/充电/延迟）
 
-### Week 2
-- ✅ 充电站动态优化
-- ✅ 三种充电策略（FR/PR-Fixed/PR-Minimal）
-- ✅ 能量约束检查
-- ✅ 充电站插入/移除算子
+----
 
-### Week 3
-- ✅ Pickup/Delivery分离优化
-- ✅ Partial removal算子
-- ✅ Pair exchange算子
-- ✅ 容量约束检查
-- ✅ 时间窗约束集成
+## 🚧 后续方向
 
----
+1. 启用电量临界值机制（`EnergyConfig.critical_battery_threshold`）
+2. 扩展至多车辆调度
+3. 支持动态任务到达
 
-## 🚧 未实现/未启用
-
-1. **充电临界值机制** (Week 4-5建议)
-   - 端口已预留：`EnergyConfig.critical_battery_threshold`
-   - 当前设置为0（禁用）
-   - 建议在ALNS稳定后启用
-
-2. **多车辆优化** (扩展功能)
-
-3. **动态任务到达** (扩展功能)
-
----
+----
 
 ## 📁 关键文件
 
-### 核心算法
-- `src/planner/alns.py` - ALNS主算法（1200行）
+- `src/planner/alns.py` — ALNS主循环与算子实现
+- `src/planner/operators.py` — 算子选择与权重更新工具
+- `tests/week3/*.py` — 核心流程回归测试
+- `tests/charging/test_strategy_comparison.py` — 充电策略对比
 
-### 测试
-- `tests/week3/test_integrated_features.py` - **综合功能测试**（推荐）
-- `tests/week3/test_week3_comprehensive.py` - Week 3算子测试
-- `tests/week3/test_week3_small_scale.py` - 小规模场景
-- `tests/week3/test_week3_medium_scale.py` - 中规模场景
-- `tests/week3/test_week3_large_scale.py` - 大规模场景
-
-### 充电策略测试
-- `tests/charging/test_strategy_comparison.py` - 策略对比
-- `tests/charging/test_alns_with_charging_strategies.py` - ALNS+策略集成
-
----
+----
 
 ## 🔬 运行测试
 
 ```bash
-# 综合功能测试（推荐）
+# 核心回归（推荐）
 python tests/week3/test_integrated_features.py
 
-# Week 3完整测试套件
-python tests/week3/test_week3_comprehensive.py
+# 按规模拆分
 python tests/week3/test_week3_small_scale.py
 python tests/week3/test_week3_medium_scale.py
-python tests/week3/test_week3_large_scale.py  # 注意：需要10-30分钟
+python tests/week3/test_week3_large_scale.py
 
-# 充电策略对比
+# 策略对比
 python tests/charging/test_strategy_comparison.py
 ```
 
----
+----
 
-## 📞 扩展开发
+## 🗓️ 开发里程碑
 
-如需添加新功能，建议顺序：
+| 阶段 | 重点 | 状态 |
+|------|------|------|
+| Phase 1 | 构建ALNS核心、Destroy/Repair算子 | ✅ 完成 |
+| Phase 2 | 集成充电策略与能量约束 | ✅ 完成 |
+| Phase 3 | 时间窗、容量、多目标成本联调 | ✅ 完成 |
+| 未来 | 电量临界值、多车辆、动态任务 | 🚧 规划中 |
 
-1. **Week 4-5**: 启用充电临界值机制
-2. **Week 6**: 性能优化（降低Regret-2复杂度）
-3. **Week 7**: 多车辆扩展
-4. **Week 8**: 动态任务
+----
 
----
-
-*最后更新：Week 3完成*
-*版本：1.0*
+*最后更新：Phase 3 完成*
+*版本：1.1*

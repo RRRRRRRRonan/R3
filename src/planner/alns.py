@@ -4,154 +4,18 @@ ALNS (Adaptive Large Neighborhood Search) 优化器
 用于单AMR路径规划 + 局部充电优化
 """
 
-import random
+from collections import Counter
 import math
-import time
-from typing import List, Tuple, Dict
+import random
 from dataclasses import dataclass
-import sys
-sys.path.append('src')
+from typing import Dict, List, Optional, Tuple
 
 from core.route import Route
 from core.task import Task
 from core.vehicle import Vehicle, create_vehicle
-from physics.energy import EnergyConfig
 from physics.distance import DistanceMatrix
-
-
-# ========== 自适应算子选择器 ==========
-class AdaptiveOperatorSelector:
-    """
-    自适应算子选择器
-
-    功能：
-    - 跟踪每个算子的历史表现（成功率、平均改进）
-    - 根据表现动态调整选择概率
-    - 使用轮盘赌选择机制
-
-    实现参考：
-    Ropke & Pisinger (2006) - An adaptive large neighborhood search heuristic
-    """
-
-    def __init__(self, operators: List[str], initial_weight: float = 1.0,
-                 decay_factor: float = 0.8):
-        """
-        初始化自适应算子选择器
-
-        参数:
-            operators: 算子名称列表，如 ['greedy', 'regret2', 'random']
-            initial_weight: 初始权重
-            decay_factor: 权重衰减因子（历史表现的影响衰减速度）
-        """
-        self.operators = operators
-        self.decay_factor = decay_factor
-
-        # 权重（影响选择概率）
-        self.weights = {op: initial_weight for op in operators}
-
-        # 统计信息
-        self.usage_count = {op: 0 for op in operators}  # 使用次数
-        self.success_count = {op: 0 for op in operators}  # 成功次数（找到更好解）
-        self.total_improvement = {op: 0.0 for op in operators}  # 累计改进
-
-        # 奖励分数（用于调整权重）
-        self.sigma1 = 33  # 找到新的全局最优解
-        self.sigma2 = 9   # 接受的解但不是全局最优
-        self.sigma3 = 13  # 找到更好的解（即使没接受）
-
-    def select_operator(self) -> str:
-        """
-        使用轮盘赌方法选择算子
-
-        返回:
-            选中的算子名称
-        """
-        # 计算总权重
-        total_weight = sum(self.weights.values())
-
-        if total_weight == 0:
-            # 如果所有权重都是0，均匀选择
-            return random.choice(self.operators)
-
-        # 轮盘赌选择
-        rand_val = random.random() * total_weight
-        cumulative = 0.0
-
-        for op in self.operators:
-            cumulative += self.weights[op]
-            if rand_val <= cumulative:
-                self.usage_count[op] += 1
-                return op
-
-        # 理论上不应该到达这里，但作为后备
-        return self.operators[-1]
-
-    def update_weights(self, operator: str, improvement: float,
-                       is_new_best: bool, is_accepted: bool):
-        """
-        根据算子表现更新权重
-
-        参数:
-            operator: 算子名称
-            improvement: 成本改进量（正值表示改进）
-            is_new_best: 是否找到新的全局最优解
-            is_accepted: 解是否被接受
-        """
-        # 确定奖励分数
-        if is_new_best:
-            score = self.sigma1  # 最高奖励
-        elif is_accepted:
-            score = self.sigma2  # 中等奖励
-        elif improvement > 0:
-            score = self.sigma3  # 找到改进但未接受
-        else:
-            score = 0  # 没有改进
-
-        # 更新统计
-        if improvement > 0:
-            self.success_count[operator] += 1
-            self.total_improvement[operator] += improvement
-
-        # 更新权重（带衰减）
-        # 新权重 = 旧权重 * decay + 当前分数
-        self.weights[operator] = (self.weights[operator] * self.decay_factor +
-                                  score * (1 - self.decay_factor))
-
-    def get_statistics(self) -> Dict[str, Dict]:
-        """
-        获取算子统计信息
-
-        返回:
-            包含每个算子统计数据的字典
-        """
-        stats = {}
-        for op in self.operators:
-            usage = self.usage_count[op]
-            success = self.success_count[op]
-            stats[op] = {
-                'usage_count': usage,
-                'success_count': success,
-                'success_rate': success / usage if usage > 0 else 0.0,
-                'avg_improvement': (self.total_improvement[op] / success
-                                   if success > 0 else 0.0),
-                'weight': self.weights[op]
-            }
-        return stats
-
-    def print_statistics(self):
-        """打印算子统计信息"""
-        print("\n" + "=" * 70)
-        print("自适应算子选择统计")
-        print("=" * 70)
-        print(f"{'算子':<15} {'使用次数':<10} {'成功次数':<10} {'成功率':<10} {'平均改进':<12} {'当前权重':<10}")
-        print("-" * 70)
-
-        stats = self.get_statistics()
-        for op, data in stats.items():
-            print(f"{op:<15} {data['usage_count']:<10} {data['success_count']:<10} "
-                  f"{data['success_rate']:<10.2%} {data['avg_improvement']:<12.2f} "
-                  f"{data['weight']:<10.2f}")
-        print("=" * 70)
+from physics.energy import EnergyConfig
+from planner.operators import AdaptiveOperatorSelector
 
 
 # ========== 成本参数配置 ==========
@@ -208,8 +72,9 @@ class MinimalALNS:
     """
 
     def __init__(self, distance_matrix: DistanceMatrix, task_pool,
-                 repair_mode='mixed', cost_params: CostParameters = None,
-                 charging_strategy=None, use_adaptive: bool = True):
+                 repair_mode='mixed', cost_params: Optional[CostParameters] = None,
+                 charging_strategy=None, use_adaptive: bool = True,
+                 *, verbose: bool = True):
         """
         参数：
             distance_matrix: 距离矩阵（用于计算成本）
@@ -222,6 +87,7 @@ class MinimalALNS:
         self.distance = distance_matrix
         self.task_pool = task_pool
         self.repair_mode = repair_mode
+        self.verbose = verbose
 
         # Week 1: 成本参数
         self.cost_params = cost_params or CostParameters()
@@ -251,8 +117,78 @@ class MinimalALNS:
         # 模拟退火参数
         self.initial_temp = 100.0
         self.cooling_rate = 0.995
+
+    def _log(self, message: str) -> None:
+        if self.verbose:
+            print(message)
+
+    def _apply_destroy_operator(self, route: Route) -> Tuple[str, Route, List[int]]:
+        if self.use_adaptive and self.adaptive_destroy_selector is not None:
+            operator = self.adaptive_destroy_selector.select()
+        else:
+            operator = 'random_removal'
+
+        if operator == 'partial_removal':
+            destroyed_route, removed_tasks = self.partial_removal(route, q=2)
+        else:
+            operator = 'random_removal'
+            destroyed_route, removed_tasks = self.random_removal(route, q=2)
+
+        return operator, destroyed_route, removed_tasks
+
+    def _apply_repair_operator(self, route: Route, removed_task_ids: List[int]) -> Tuple[str, Route]:
+        if self.use_adaptive and self.adaptive_repair_selector is not None:
+            operator = self.adaptive_repair_selector.select()
+        else:
+            operator = self._deterministic_repair_choice()
+
+        repaired_route = self._execute_repair_operator(operator, route, removed_task_ids)
+        return operator, repaired_route
+
+    def _deterministic_repair_choice(self) -> str:
+        if self.repair_mode in {'greedy', 'regret2', 'random'}:
+            return self.repair_mode
+        if self.repair_mode == 'mixed':
+            roll = random.random()
+            if roll < 0.33:
+                return 'greedy'
+            if roll < 0.67:
+                return 'regret2'
+            return 'random'
+        return 'greedy'
+
+    def _execute_repair_operator(self, operator: str, route: Route, removed_task_ids: List[int]) -> Route:
+        if operator == 'greedy':
+            return self.greedy_insertion(route, removed_task_ids)
+        if operator == 'regret2':
+            return self.regret2_insertion(route, removed_task_ids)
+        return self.random_insertion(route, removed_task_ids)
+
+    def _update_adaptive_weights(
+        self,
+        *,
+        repair_operator: str,
+        destroy_operator: str,
+        improvement: float,
+        is_new_best: bool,
+        is_accepted: bool,
+    ) -> None:
+        self.adaptive_repair_selector.update(
+            operator=repair_operator,
+            improvement=improvement,
+            is_new_best=is_new_best,
+            is_accepted=is_accepted,
+        )
+
+        if self.adaptive_destroy_selector is not None:
+            self.adaptive_destroy_selector.update(
+                operator=destroy_operator,
+                improvement=improvement,
+                is_new_best=is_new_best,
+                is_accepted=is_accepted,
+            )
     
-    def optimize(self, 
+    def optimize(self,
                  initial_route: Route,
                  max_iterations: int = 100) -> Route:
         """
@@ -271,80 +207,20 @@ class MinimalALNS:
 
         temperature = self.initial_temp
 
-        # 算子使用统计（Repair）
-        greedy_count = 0
-        regret_count = 0
-        random_count = 0
+        repair_usage: Counter[str] = Counter()
+        destroy_usage: Counter[str] = Counter()
 
-        # 算子使用统计（Destroy）
-        random_removal_count = 0
-        partial_removal_count = 0
-
-        print(f"初始成本: {best_cost:.2f}m")
-        print(f"总迭代次数: {max_iterations}")
+        self._log(f"初始成本: {best_cost:.2f}m")
+        self._log(f"总迭代次数: {max_iterations}")
         if self.use_adaptive:
-            print("使用自适应算子选择 ✓ (Destroy + Repair)")
+            self._log("使用自适应算子选择 ✓ (Destroy + Repair)")
 
         for iteration in range(max_iterations):
-            # Destroy阶段 - 使用自适应选择或固定模式
-            if self.use_adaptive and self.adaptive_destroy_selector is not None:
-                # 自适应选择destroy算子
-                selected_destroy = self.adaptive_destroy_selector.select_operator()
+            destroy_operator, destroyed_route, removed_task_ids = self._apply_destroy_operator(current_route)
+            destroy_usage[destroy_operator] += 1
 
-                if selected_destroy == 'random_removal':
-                    destroyed_route, removed_task_ids = self.random_removal(current_route, q=2)
-                    random_removal_count += 1
-                else:  # partial_removal
-                    destroyed_route, removed_task_ids = self.partial_removal(current_route, q=2)
-                    partial_removal_count += 1
-            else:
-                # 默认使用random_removal
-                destroyed_route, removed_task_ids = self.random_removal(current_route, q=2)
-                selected_destroy = 'random_removal'
-                random_removal_count += 1
-
-            # Repair阶段 - 使用自适应选择或固定模式
-            if self.use_adaptive and self.adaptive_repair_selector is not None:
-                # 自适应选择repair算子
-                selected_repair = self.adaptive_repair_selector.select_operator()
-
-                if selected_repair == 'greedy':
-                    candidate_route = self.greedy_insertion(destroyed_route, removed_task_ids)
-                    greedy_count += 1
-                elif selected_repair == 'regret2':
-                    candidate_route = self.regret2_insertion(destroyed_route, removed_task_ids)
-                    regret_count += 1
-                else:  # random
-                    candidate_route = self.random_insertion(destroyed_route, removed_task_ids)
-                    random_count += 1
-            else:
-                # 固定模式选择
-                if self.repair_mode == 'greedy':
-                    candidate_route = self.greedy_insertion(destroyed_route, removed_task_ids)
-                    greedy_count += 1
-                    selected_repair = 'greedy'
-                elif self.repair_mode == 'regret2':
-                    candidate_route = self.regret2_insertion(destroyed_route, removed_task_ids)
-                    regret_count += 1
-                    selected_repair = 'regret2'
-                elif self.repair_mode == 'random':
-                    candidate_route = self.random_insertion(destroyed_route, removed_task_ids)
-                    random_count += 1
-                    selected_repair = 'random'
-                else:  # mixed mode
-                    repair_choice = random.random()
-                    if repair_choice < 0.33:
-                        candidate_route = self.greedy_insertion(destroyed_route, removed_task_ids)
-                        greedy_count += 1
-                        selected_repair = 'greedy'
-                    elif repair_choice < 0.67:
-                        candidate_route = self.regret2_insertion(destroyed_route, removed_task_ids)
-                        regret_count += 1
-                        selected_repair = 'regret2'
-                    else:
-                        candidate_route = self.random_insertion(destroyed_route, removed_task_ids)
-                        random_count += 1
-                        selected_repair = 'random'
+            repair_operator, candidate_route = self._apply_repair_operator(destroyed_route, removed_task_ids)
+            repair_usage[repair_operator] += 1
 
             # 评估成本
             candidate_cost = self.evaluate_cost(candidate_route)
@@ -367,47 +243,44 @@ class MinimalALNS:
 
             # 更新自适应权重
             if self.use_adaptive:
-                # 更新repair算子权重
-                self.adaptive_repair_selector.update_weights(
-                    operator=selected_repair,
+                self._update_adaptive_weights(
+                    repair_operator=repair_operator,
+                    destroy_operator=destroy_operator,
                     improvement=improvement,
                     is_new_best=is_new_best,
-                    is_accepted=is_accepted
+                    is_accepted=is_accepted,
                 )
-                # 更新destroy算子权重
-                if self.adaptive_destroy_selector is not None:
-                    self.adaptive_destroy_selector.update_weights(
-                        operator=selected_destroy,
-                        improvement=improvement,
-                        is_new_best=is_new_best,
-                        is_accepted=is_accepted
-                    )
 
             # 降温
             temperature *= self.cooling_rate
 
             # 进度报告
             if (iteration + 1) % 50 == 0:
-                print(f"  [进度] 已完成 {iteration+1}/{max_iterations} 次迭代, 当前最优: {best_cost:.2f}m")
+                self._log(f"  [进度] 已完成 {iteration+1}/{max_iterations} 次迭代, 当前最优: {best_cost:.2f}m")
 
-        # 最终统计
-        print(f"\n算子使用统计:")
-        print(f"  Repair: Greedy={greedy_count}, Regret-2={regret_count}, Random={random_count}")
-        print(f"  Destroy: Random-Removal={random_removal_count}, Partial-Removal={partial_removal_count}")
-        print(f"最终最优成本: {best_cost:.2f}m (改进 {self.evaluate_cost(initial_route)-best_cost:.2f}m)")
+        repair_summary = ", ".join(
+            f"{op}={repair_usage[op]}" for op in ('greedy', 'regret2', 'random')
+        )
+        destroy_summary = ", ".join(
+            f"{op}={destroy_usage[op]}" for op in ('random_removal', 'partial_removal')
+        )
 
-        # 打印自适应统计
-        if self.use_adaptive:
-            print("\n" + "="*70)
-            print("Repair算子自适应统计")
-            print("="*70)
-            self.adaptive_repair_selector.print_statistics()
+        self._log("\n算子使用统计:")
+        self._log(f"  Repair: {repair_summary}")
+        self._log(f"  Destroy: {destroy_summary}")
+        self._log(f"最终最优成本: {best_cost:.2f}m (改进 {self.evaluate_cost(initial_route)-best_cost:.2f}m)")
+
+        if self.use_adaptive and self.verbose:
+            self._log("\n" + "=" * 70)
+            self._log("Repair算子自适应统计")
+            self._log("=" * 70)
+            self._log(self.adaptive_repair_selector.format_statistics())
 
             if self.adaptive_destroy_selector is not None:
-                print("\n" + "="*70)
-                print("Destroy算子自适应统计")
-                print("="*70)
-                self.adaptive_destroy_selector.print_statistics()
+                self._log("\n" + "=" * 70)
+                self._log("Destroy算子自适应统计")
+                self._log("=" * 70)
+                self._log(self.adaptive_destroy_selector.format_statistics())
 
         return best_route
     
