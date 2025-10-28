@@ -19,6 +19,7 @@ from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
 from physics.time import TimeWindow, TimeWindowType
 from planner.alns import CostParameters, MinimalALNS
+from planner.fleet import FleetPlanner
 
 
 @dataclass
@@ -32,6 +33,7 @@ class ScenarioConfig:
     battery_capacity: float
     consumption_per_km: float
     charging_rate: float
+    num_vehicles: int = 1
     seed: int = 42
     service_time: float = 45.0
     pickup_tw_width: float = 120.0
@@ -45,13 +47,16 @@ class Scenario:
     depot: DepotNode
     tasks: List[Task]
     distance: DistanceMatrix
-    vehicle: Vehicle
+    vehicles: List[Vehicle]
     energy: EnergyConfig
 
     def create_task_pool(self) -> TaskPool:
         pool = TaskPool()
         pool.add_tasks(self.tasks)
         return pool
+
+    def create_vehicles(self) -> List[Vehicle]:
+        return [deepcopy(vehicle) for vehicle in self.vehicles]
 
 
 def build_scenario(config: ScenarioConfig) -> Scenario:
@@ -128,16 +133,24 @@ def build_scenario(config: ScenarioConfig) -> Scenario:
         num_charging_stations=config.num_charging,
     )
 
-    vehicle = create_vehicle(
-        vehicle_id=1,
-        capacity=config.vehicle_capacity,
-        battery_capacity=config.battery_capacity,
-        initial_battery=config.battery_capacity,
-    )
-    vehicle.speed = 1.5
+    if config.num_vehicles <= 0:
+        raise ValueError("ScenarioConfig.num_vehicles must be at least 1")
+
+    vehicles: List[Vehicle] = []
+    for idx in range(config.num_vehicles):
+        vehicle = create_vehicle(
+            vehicle_id=idx + 1,
+            capacity=config.vehicle_capacity,
+            battery_capacity=config.battery_capacity,
+            initial_battery=config.battery_capacity,
+        )
+        vehicle.speed = 1.5
+        vehicles.append(vehicle)
+
+    reference_vehicle = vehicles[0]
 
     energy = EnergyConfig(
-        consumption_rate=config.consumption_per_km / 1000.0 * vehicle.speed,
+        consumption_rate=config.consumption_per_km / 1000.0 * reference_vehicle.speed,
         charging_rate=config.charging_rate,
         battery_capacity=config.battery_capacity,
     )
@@ -146,7 +159,7 @@ def build_scenario(config: ScenarioConfig) -> Scenario:
         depot=depot,
         tasks=tasks,
         distance=distance,
-        vehicle=vehicle,
+        vehicles=vehicles,
         energy=energy,
     )
 
@@ -166,24 +179,42 @@ def run_alns_trial(
     random.setstate(rng.getstate())
     try:
         task_pool = scenario.create_task_pool()
-        alns = MinimalALNS(
+
+        if len(scenario.vehicles) == 1:
+            alns = MinimalALNS(
+                distance_matrix=scenario.distance,
+                task_pool=task_pool,
+                repair_mode="adaptive",
+                cost_params=cost_params or CostParameters(),
+                charging_strategy=strategy,
+                use_adaptive=True,
+                verbose=False,
+            )
+            alns.vehicle = deepcopy(scenario.vehicles[0])
+            alns.energy_config = deepcopy(scenario.energy)
+
+            initial_route = create_empty_route(vehicle_id=1, depot_node=scenario.depot)
+            removed_task_ids = [task.task_id for task in scenario.tasks]
+            baseline = alns.greedy_insertion(initial_route, removed_task_ids)
+            optimized = alns.optimize(baseline, max_iterations=iterations)
+
+            return alns.evaluate_cost(baseline), alns.evaluate_cost(optimized)
+
+        planner = FleetPlanner(
             distance_matrix=scenario.distance,
+            depot=scenario.depot,
+            vehicles=scenario.create_vehicles(),
             task_pool=task_pool,
-            repair_mode="adaptive",
-            cost_params=cost_params or CostParameters(),
+            energy_config=deepcopy(scenario.energy),
+            cost_params=cost_params,
             charging_strategy=strategy,
+            repair_mode="adaptive",
             use_adaptive=True,
             verbose=False,
         )
-        alns.vehicle = deepcopy(scenario.vehicle)
-        alns.energy_config = deepcopy(scenario.energy)
+        result = planner.plan_routes(max_iterations=iterations)
 
-        initial_route = create_empty_route(vehicle_id=1, depot_node=scenario.depot)
-        removed_task_ids = [task.task_id for task in scenario.tasks]
-        baseline = alns.greedy_insertion(initial_route, removed_task_ids)
-        optimized = alns.optimize(baseline, max_iterations=iterations)
-
-        return alns.evaluate_cost(baseline), alns.evaluate_cost(optimized)
+        return result.initial_cost, result.optimised_cost
     finally:
         random.setstate(state)
 
