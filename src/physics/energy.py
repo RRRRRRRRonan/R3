@@ -10,6 +10,8 @@ uses consistent power units and feasibility checks.
 from typing import Tuple, Optional, List
 from dataclasses import dataclass
 
+from config import DEFAULT_ENERGY_SYSTEM
+
 
 @dataclass
 class EnergyConfig:
@@ -20,27 +22,27 @@ class EnergyConfig:
     """
 
     # 移动能耗参数
-    consumption_rate: float = 0.5  # κ: 能耗率 (能量单位/秒)
-    
+    consumption_rate: float = DEFAULT_ENERGY_SYSTEM.consumption_rate  # κ: 能耗率 (能量单位/秒)
+
     # 充电参数
-    charging_rate: float = 50.0     # g: 充电速率 (能量单位/秒)
-    charging_efficiency: float = 0.9 # η: 充电效率 (0, 1]
-    
+    charging_rate: float = DEFAULT_ENERGY_SYSTEM.charging_rate     # g: 充电速率 (能量单位/秒)
+    charging_efficiency: float = DEFAULT_ENERGY_SYSTEM.charging_efficiency  # η: 充电效率 (0, 1]
+
     # 约束参数
-    max_charging_time: float = 3600.0 # T̄: 单次充电最大时间 (秒)
-    max_charging_amount: float = 100.0  # Q̄: 单次充电最大能量
+    max_charging_time: float = DEFAULT_ENERGY_SYSTEM.max_charging_time_s  # T̄: 单次充电最大时间 (秒)
+    max_charging_amount: float = DEFAULT_ENERGY_SYSTEM.max_charging_amount  # Q̄: 单次充电最大能量
 
     # 电池参数
-    battery_capacity: float = 100.0# E^{max}: 电池最大容量
+    battery_capacity: float = DEFAULT_ENERGY_SYSTEM.battery_capacity_kwh  # E^{max}: 电池最大容量
 
     # Week 4新增：分层充电临界值机制（策略感知的自适应阈值）
     # 设计思想：避免Week 2的硬约束失败，使用软约束和策略感知
-    safety_threshold: float = 0.05      # 安全层：5%，绝对最低电量
-    warning_threshold: float = 0.15     # 警告层：15%，建议充电（策略可重写）
-    comfort_threshold: float = 0.25     # 舒适层：25%，理想充电触发点
+    safety_threshold: float = DEFAULT_ENERGY_SYSTEM.safety_threshold      # 安全层：5%，绝对最低电量
+    warning_threshold: float = DEFAULT_ENERGY_SYSTEM.warning_threshold     # 警告层：15%，建议充电（策略可重写）
+    comfort_threshold: float = DEFAULT_ENERGY_SYSTEM.comfort_threshold     # 舒适层：25%，理想充电触发点
 
     # Week 2遗留（保持向后兼容）
-    critical_battery_threshold: float = 0.0  # 已废弃，使用上述分层阈值替代
+    critical_battery_threshold: float = DEFAULT_ENERGY_SYSTEM.critical_battery_threshold  # 已废弃，使用上述分层阈值替代
     
     def __post_init__(self):
         """参数合理性检查"""

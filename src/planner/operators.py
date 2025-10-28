@@ -11,7 +11,9 @@ from __future__ import annotations
 import random
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Optional
+
+from config import AdaptiveSelectorParams, DEFAULT_ADAPTIVE_SELECTOR_PARAMS
 
 
 @dataclass
@@ -28,10 +30,22 @@ class OperatorStats:
 class AdaptiveOperatorSelector:
     """Adaptive roulette-wheel selector used by the ALNS optimizer."""
 
-    def __init__(self, operators: Iterable[str], initial_weight: float = 1.0, decay_factor: float = 0.8) -> None:
+    def __init__(
+        self,
+        operators: Iterable[str],
+        initial_weight: Optional[float] = None,
+        decay_factor: Optional[float] = None,
+        params: Optional[AdaptiveSelectorParams] = None,
+    ) -> None:
         self.operators: List[str] = list(operators)
         if not self.operators:
             raise ValueError("operators must contain at least one entry")
+
+        self.params = params or DEFAULT_ADAPTIVE_SELECTOR_PARAMS
+        if initial_weight is None:
+            initial_weight = self.params.initial_weight
+        if decay_factor is None:
+            decay_factor = self.params.decay_factor
 
         self.decay_factor = decay_factor
         self.weights = defaultdict(lambda: initial_weight)
@@ -40,9 +54,9 @@ class AdaptiveOperatorSelector:
         self.total_improvement = defaultdict(float)
 
         # Reward configuration inspired by Ropke & Pisinger (2006)
-        self.sigma_best = 33
-        self.sigma_accept = 9
-        self.sigma_improve = 13
+        self.sigma_best = self.params.sigma_best
+        self.sigma_accept = self.params.sigma_accept
+        self.sigma_improve = self.params.sigma_improve
 
     def select(self) -> str:
         """Select an operator using roulette-wheel sampling."""

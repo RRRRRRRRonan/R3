@@ -18,7 +18,7 @@ from strategy.charging_strategies import (
     PartialRechargeFixedStrategy,
     PartialRechargeMinimalStrategy
 )
-from planner.alns import CostParameters
+from config import CostParameters
 
 
 # ========== 测试场景构造 ==========

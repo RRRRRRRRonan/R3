@@ -11,6 +11,8 @@ from typing import Tuple, List, Optional, Dict
 from dataclasses import dataclass
 from enum import Enum
 
+from config import DEFAULT_TIME_SYSTEM
+
 class TimeWindowType(Enum):
     """时间窗约束类型"""
     HARD = "hard"  # 硬约束：绝对不能违反
@@ -74,18 +76,18 @@ class TimeWindow:
     
 # 时间参数配置
 @dataclass
-class TimeConfig: 
+class TimeConfig:
     """
     时间系统全局配置参数
     """
     # 移动速度（用于计算基准移动时间）
-    vehicle_speed: float = 15.0  # 米/秒，默认15m/s（约54km/h，适合电动车辆）
-    
+    vehicle_speed: float = DEFAULT_TIME_SYSTEM.vehicle_speed_m_s  # 米/秒，默认15m/s（约54km/h，适合电动车辆）
+
     # 服务时间（默认值，可被节点特定值覆盖）
-    default_service_time: float = 30.0  # 秒
-    
+    default_service_time: float = DEFAULT_TIME_SYSTEM.default_service_time_s  # 秒
+
     # 延迟惩罚系数（用于目标函数）
-    tardiness_penalty: float = 1.0  # C^{delay}
+    tardiness_penalty: float = DEFAULT_TIME_SYSTEM.tardiness_penalty  # C^{delay}
 
 # 核心时间计算函数
 def calculate_travel_time(distance: float, speed: float) -> float:

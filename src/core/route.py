@@ -12,6 +12,7 @@ from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass, field
 from copy import deepcopy
 
+from config import DEFAULT_VEHICLE_DYNAMICS
 from core.node import Node, DepotNode, TaskNode, ChargingNode, NodeType
 from core.task import Task
 from physics.distance import DistanceMatrix
@@ -901,9 +902,10 @@ class Route:
         
         charging_plan = []
         plan_entry_map = {}
-        MAX_ITERATIONS = 10
-        
-        for iteration in range(MAX_ITERATIONS):
+        vehicle_defaults = DEFAULT_VEHICLE_DYNAMICS
+        max_iterations = vehicle_defaults.max_energy_adjustment_iterations
+
+        for iteration in range(max_iterations):
             current_battery = vehicle.battery_capacity  # 满电出发
             current_load = 0.0
             critical_position = -1
@@ -914,7 +916,7 @@ class Route:
                 current_node = temp_nodes[i]
                 next_node = temp_nodes[i + 1]
                 
-                vehicle_speed = 1.5  # m/s
+                vehicle_speed = vehicle_defaults.cruise_speed_m_s
                 distance = distance_matrix.get_distance(
                     current_node.node_id,
                     next_node.node_id
