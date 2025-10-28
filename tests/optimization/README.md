@@ -21,7 +21,9 @@ search reduces the weighted cost from the greedy baseline solution.
 Run a specific scale with:
 
 ```bash
-pytest tests/optimization/test_alns_optimization_small.py -q
+python -m pytest tests/optimization/test_alns_optimization_small.py
+python -m pytest tests/optimization/test_alns_optimization_medium.py
+python -m pytest tests/optimization/test_alns_optimization_large.py
 ```
 
 The large-scale scenario may take a few minutes. When iterating on the ALNS
