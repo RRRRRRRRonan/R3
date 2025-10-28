@@ -13,7 +13,8 @@ from core.route import Route, create_empty_route
 from core.vehicle import create_vehicle
 from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
-from planner.alns import MinimalALNS, CostParameters
+from config import CostParameters
+from planner.alns import MinimalALNS
 
 from warehouse_test_config import (
     SMALL_WAREHOUSE_5_TASKS,
