@@ -1,31 +1,19 @@
-#NodeType(DEPOT, PICKUP, DELIVERY, CHARGING), Node（基类，所有结点的基础）, DepotNode(仓库节点), 
-#TaskNode(任务节点，pickup/delivery), ChargingNode
+"""Node definitions used across the routing and simulation stack.
 
-"""
-节点数据结构模块
-================
-定义仓库环境中的所有节点类型
-
-节点ID编号约定（与数学模型一致）:
-    0: Depot节点
-    1 ~ n: Pickup节点
-    n+1 ~ 2n: Delivery节点（pickup i 对应 delivery i+n）
-    2n+1 ~ 2n+m: Charging站节点
-
-设计模式:
-    使用继承体系：基类定义共有属性，子类添加特定属性
+The module captures depot, task, and charging nodes with immutable dataclasses
+that mirror the mathematical formulation.  They expose helpers for identifying
+node roles, pairing pickups and deliveries, and validating time windows so the
+planner, simulator, and optimisation tests share a consistent representation of
+the warehouse graph.
 """
 
 from typing import Tuple, Optional
 from enum import Enum
 from dataclasses import dataclass
-import sys
-sys.path.append('.')
 
 from physics.time import TimeWindow, TimeWindowType
 
 
-# ========== 节点类型枚举 ==========
 
 class NodeType(Enum):
     """节点类型枚举"""
@@ -35,7 +23,6 @@ class NodeType(Enum):
     CHARGING = "charging"
 
 
-# ========== 节点基类 ==========
 
 @dataclass(frozen=True)  # frozen=True 使对象不可变
 class Node:
@@ -84,7 +71,6 @@ class Node:
         return f"{self.__class__.__name__}(id={self.node_id}, pos={self.coordinates})"
 
 
-# ========== 子类：Depot节点 ==========
 
 @dataclass(frozen=True)
 class DepotNode(Node):
@@ -112,7 +98,6 @@ class DepotNode(Node):
         object.__setattr__(self, 'node_type', NodeType.DEPOT)
 
 
-# ========== 子类：任务节点（Pickup/Delivery）==========
 
 @dataclass(frozen=True)
 class TaskNode(Node):
@@ -182,7 +167,6 @@ class TaskNode(Node):
             return self.node_id - num_tasks
 
 
-# ========== 子类：充电站节点 ==========
 
 @dataclass(frozen=True)
 class ChargingNode(Node):
@@ -215,7 +199,6 @@ class ChargingNode(Node):
         return f"Charging{self.node_id}"
 
 
-# ========== 便捷构造函数 ==========
 
 def create_depot(coordinates: Tuple[float, float] = (0, 0)) -> DepotNode:
     """

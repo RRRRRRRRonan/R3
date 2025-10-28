@@ -1,16 +1,10 @@
-"""
-Week 3 综合测试：取送货分离优化
-====================================
+"""Comprehensive regression of the Week 3 optimisation operators.
 
-测试所有Week 3实现的功能：
-- 步骤2.1: 容量约束检查 + Pickup/Delivery分离插入
-- 步骤2.2: Delivery节点独立移除
-- 步骤2.3: Pair-exchange operator
-- 步骤2.4: Regret-2插入（改进版）
+The tests build a tractable three-task instance and assert that the improved
+destroy/repair operators—delivery removal, pair exchange, regret-2 insertion,
+and capacity-aware feasibility checks—work together to reduce total cost while
+respecting constraints.
 """
-
-import sys
-sys.path.append('src')
 
 from core.node import DepotNode, create_task_node_pair
 from core.task import Task, TaskPool

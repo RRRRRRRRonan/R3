@@ -1,18 +1,10 @@
-#TaskStatus (PENDING, ASSIGNED, IN_PROGRESS, COMPLETED), Task (paired with pickup and delivery),
-#TaskPool (Manages all tasks)
-"""
-任务数据结构模块
-================
-定义任务（Task）及任务池（TaskPool）管理
+"""Task domain objects and helpers shared by the entire planner.
 
-任务定义:
-    每个任务包含一对配对的pickup和delivery节点
-    对应数学模型中的 r ∈ R (request/task)
-
-设计要点:
-    - Task本身是不可变的（任务属性创建后不变）
-    - TaskStatus跟踪任务的执行状态
-    - TaskPool管理所有任务的集合
+The module models pickup–delivery requests, enumerates their lifecycle states,
+tracks execution progress, and groups them inside a ``TaskPool`` that offers
+fast lookups for the ALNS destroy/repair operators.  It keeps the logical
+representation close to the mathematical formulation while exposing ergonomic
+accessors for higher level modules.
 """
 
 from typing import List, Dict, Optional, Set
@@ -23,7 +15,6 @@ from datetime import datetime
 from core.node import TaskNode, NodeType
 
 
-# ========== 任务状态枚举 ==========
 
 class TaskStatus(Enum):
     """
@@ -42,7 +33,6 @@ class TaskStatus(Enum):
     CANCELLED = "cancelled"       # 已取消（客户取消）
 
 
-# ========== 任务类 ==========
 
 @dataclass(frozen=True)
 class Task:
@@ -150,7 +140,6 @@ class Task:
                 f"demand={self.demand})")
 
 
-# ========== 任务状态跟踪器 ==========
 
 @dataclass
 class TaskStateTracker:
@@ -208,7 +197,6 @@ class TaskStateTracker:
         return None
 
 
-# ========== 任务池管理器 ==========
 
 class TaskPool:
     """
@@ -360,7 +348,6 @@ class TaskPool:
                 f"completed={stats['completed']})")
 
 
-# ========== 便捷构造函数 ==========
 
 def create_task(task_id: int,
                pickup_node: TaskNode,

@@ -1,49 +1,18 @@
-"""
- energy.py        # 能量管理
-     ├─ calculate_energy_consumption()  # 行驶能耗
-     ├─ calculate_charging_time()       # 充电时间
-     ├─ calculate_charging_amount()     # 充电量
-     └─ is_energy_feasible()            # 电量可行性检查
+"""Energy accounting helpers that translate charging strategy decisions.
 
-实现AMR电池能量的假设, 充电计算, 对应数学模型中的能量约束
-
-数学模型映射:
-    约束(9):  q_i^a = g · t_i^{ch,a}
-    约束(10): B_{arr,j}^a = B_{dep,i}^a - κ·t_{move,(i,j)}^a
-    约束(11): B_{dep,i}^a = B_{arr,i}^a + η·q_i^a·y_i^a
-    约束(13): 0 ≤ B_{arr,i}^a, B_{dep,i}^a ≤ E_a^{max}
-
-采用恒定功率假设：
-1. AMR在移动时保持恒定速度(匀速运动)
-2. 电机功率P = κ (常数，单位：能量/秒)
-3. 总能耗 = 功率 * 时间 = κ * t
-4. 充电站支持部分充电(Partial Recharge)
-以上内容在约束(10)中有所体现。
-
-需要在energy.py中实现约束10和11: 
-1. 计算行驶能耗（基于时间）
-2. 计算充电量（基于时间和效率）
-
-参数说明:
-    κ (kappa): 移动时能耗率，单位：能量单位/秒
-    g: 充电速率，单位：能量单位/秒  
-    η (eta): 充电效率，0 < η ≤ 1
-    E^{max}: 电池最大容量
-    T̄: 单次充电最大允许时间
-    Q̄: 单次充电最大允许能量
+The functions encapsulate the physics simplifications used throughout the
+planner: constant consumption rates tied to travel time, capped partial
+recharges, and the three-threshold battery model.  They are shared between the
+route evaluator, charging strategies, and optimisation tests so every component
+uses consistent power units and feasibility checks.
 """
 
 from typing import Tuple, Optional, List
 from dataclasses import dataclass
 
+
 @dataclass
-
-#自动生成 __init__
-#自动生成 __repr__（方便调试）
-#类型提示清晰
-#适合存储配置参数
-
-class EnergyConfig: 
+class EnergyConfig:
     """
     能量系统全局配置参数
 

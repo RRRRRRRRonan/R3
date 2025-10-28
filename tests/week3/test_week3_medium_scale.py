@@ -1,18 +1,9 @@
+"""Regression tests for the mid-sized Week 3 scenario range.
+
+These cases cover 20–30 tasks with moderate warehouse dimensions and ensure the
+planner maintains feasibility, latency, and improvement guarantees when demand
+grows beyond the small baseline.
 """
-Week 3 中规模测试：仓库机器人场景（20-30任务）
-====================================
-
-验证Week 3功能在实际复杂场景下的表现和稳定性。
-
-场景：
-- 仓库大小：100-120m × 100-120m
-- 任务数量：20-30个
-- 机器人：MiR250类型（200-250kg载重，18-22kWh电池）
-- 充电站：1-2个
-"""
-
-import sys
-sys.path.append('src')
 
 import random
 import time

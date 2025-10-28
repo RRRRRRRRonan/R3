@@ -1,18 +1,9 @@
+"""Regression tests for the compact Week 3 warehouse scenario.
+
+The suite synthesises a 5–10 task environment with realistic warehouse
+distances, generates grid layouts, and ensures the ALNS planner plus charging
+constraints deliver feasible low-cost routes for each seed configuration.
 """
-Week 3 小规模测试：仓库机器人场景（5-10任务）
-====================================
-
-基于真实仓库机器人参数的小规模测试。
-验证Week 3功能在实际场景下的正确性。
-
-场景：
-- 仓库大小：50-60m × 50-60m
-- 任务数量：5-10个
-- 机器人：MiR100类型（100-150kg载重，8-12kWh电池）
-"""
-
-import sys
-sys.path.append('src')
 
 import random
 from typing import List, Tuple

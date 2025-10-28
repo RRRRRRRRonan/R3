@@ -1,19 +1,10 @@
-"""
-AMR（车辆）数据结构模块
-========================
-定义AMR的状态、属性和行为
+"""Vehicle abstraction for connecting planning and execution layers.
 
-设计要点:
-    - Vehicle存储静态属性（初始配置）和动态属性（执行状态）
-    - 静态属性用于planning阶段（ALNS、ADP决策）
-    - 动态属性用于execution阶段（CBS仿真、实际执行）
-    - Vehicle拥有Route（组合关系）
-
-对应数学模型:
-    k ∈ K: AMR编号
-    Q_k: AMR k的容量
-    B_k: AMR k的电池容量
-    v_k: AMR k的速度
+``Vehicle`` stores both immutable physical capabilities and mutable execution
+state so the tactical planner, charging simulator, and route executor all refer
+to the same representation.  It wraps the lifecycle status enum, initial
+conditions, and helpers for cloning baseline configurations when generating
+scenario fixtures.
 """
 
 from typing import Optional, Tuple, TYPE_CHECKING
@@ -24,7 +15,6 @@ if TYPE_CHECKING:
     from core.route import Route
 
 
-# ========== AMR状态枚举 ==========
 
 class VehicleStatus(Enum):
     """
@@ -43,7 +33,6 @@ class VehicleStatus(Enum):
     COMPLETED = "completed"     # 完成所有任务（回到depot）
 
 
-# ========== AMR类 ==========
 
 @dataclass
 class Vehicle:
@@ -122,7 +111,6 @@ class Vehicle:
         if self.current_load == 0.0 and self.initial_load != 0.0:
             self.current_load = self.initial_load
     
-    # ========== 状态查询方法 ==========
     
     def is_idle(self) -> bool:
         """是否空闲"""
@@ -152,7 +140,6 @@ class Vehicle:
         """获取剩余电量"""
         return self.current_battery
     
-    # ========== 状态更新方法（execution阶段使用）==========
     
     def reset_to_initial_state(self):
         """
@@ -298,7 +285,6 @@ class Vehicle:
         self.status = VehicleStatus.COMPLETED
         # 注意: 不清空route，保留用于记录和分析
     
-    # ========== 验证方法 ==========
     
     def can_pickup(self, demand: float) -> bool:
         """
@@ -324,7 +310,6 @@ class Vehicle:
         """
         return self.current_battery >= required_energy - 1e-6
     
-    # ========== 字符串表示 ==========
     
     def __str__(self) -> str:
         """简洁字符串表示"""
@@ -362,7 +347,6 @@ class Vehicle:
         return self.current_battery
 
 
-# ========== 车队管理器 ==========
 
 class VehicleFleet:
     """
@@ -466,7 +450,6 @@ class VehicleFleet:
         )
 
 
-# ========== 便捷构造函数 ==========
 
 def create_vehicle(vehicle_id: int,
                   capacity: float = 150.0,

@@ -1,4 +1,6 @@
-# greedy_estimator.py
-#     ├─ GreedyInsertion          # 贪婪插入算法
-#     ├─ OpportunityCharging      # 局部充电决策
-#     └─ CostEstimator            # 快速成本估算
+"""Placeholder for the historical greedy estimator module.
+
+The project previously exposed heuristic estimators here; the file persists so
+future refactors can reintroduce the functionality without breaking imports.
+"""
+

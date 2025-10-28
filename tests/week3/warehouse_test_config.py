@@ -1,14 +1,8 @@
-"""
-仓库机器人场景测试配置
-====================================
+"""Shared configuration objects for the warehouse regression scenarios.
 
-基于真实仓库机器人参数设计的测试场景配置。
-适用于Week 3及后续测试的小、中、大规模场景。
-
-参考机器人：
-- Amazon Kiva: 340kg载重, 1.7m/s, 20-30kWh
-- MiR250: 250kg载重, 2.0m/s, 10-20kWh
-- MiR100: 100kg载重, 1.5m/s, 5-10kWh
+These dataclasses encode physical layouts, robot capabilities, and energy
+parameters for the small, medium, and large Week 3 scenarios so tests can build
+consistent environments without duplicating constants.
 """
 
 from dataclasses import dataclass

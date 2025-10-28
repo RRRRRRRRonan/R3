@@ -1,30 +1,9 @@
-# distance.py      # 距离计算
-#     ├─ manhattan_distance()     # 曼哈顿距离
-#     ├─ euclidean_distance()     # 欧几里得距离
-#     └─ DistanceMatrix           # 距离矩阵（预计算优化）
+"""Distance helpers shared by the routing, energy, and optimisation layers.
 
-"""
-距离计算模块
-=============
-实现节点间距离计算，对应数学模型中的 d_{(i,j)}
-
-设计说明:
----------
-本模块采用纯函数设计，只处理坐标点之间的距离计算。
-系统中的Depot被视为一个特殊坐标点，通常为 (0, 0)。
-
-数学模型映射:
-- d_{(i,j)} → get_distance(i, j)
-- 欧几里得平面 → euclidean_distance()
-
-四大核心功能：
-1. 计算路径总距离：total_dist = dist_matrix.total_distance([0, 1, 3, 2, 4, 0])。评估ALNS算法生成的路径质量
-2. 寻找最近的充电站：station_id, distance = dist_matrix.get_nearest_charging_station(current_node)。贪婪充电站插入
-3. 评估插入/移除成本：
-insertion_cost = calculate_insertion_cost(i, j, k, dist_matrix)
-removal_savings = calculate_removal_savings(i, k, j, dist_matrix)
-ALNS的破坏-修复算子
-4. 验证pickup在delivery之前：is_valid = dist_matrix.validate_route_precedence(route)。检查约束（6）
+It provides both Manhattan and Euclidean metrics plus a precomputed
+``DistanceMatrix`` that caches all pairwise distances, exposes nearest charging
+station queries, and measures incremental route deltas for destroy/repair
+operators.
 """
 
 from typing import Tuple, List, Dict, Optional, Set

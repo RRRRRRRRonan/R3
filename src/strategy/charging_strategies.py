@@ -1,24 +1,13 @@
-"""
-充电策略模块 (Week 1)
-===================
-实现基准充电策略用于对比研究
+"""Charging policies used by the ALNS planner and simulator benchmarks.
 
-基准策略:
-    1. FR (Full Recharge): 完全充电策略 - 每次充满100%
-    2. PR-Fixed (Partial Recharge Fixed): 固定比例局部充电 - 充到固定百分比
-    3. PR-Minimal (Partial Recharge Minimal): 最小充电策略 - 只充刚好够用的电量
-
-参考文献:
-    Keskin & Çatay (2016) - Partial recharge strategies for E-VRP
-
-用途:
-    - 对比不同充电策略对成本的影响
-    - 评估局部充电 vs 完全充电的权衡
+The module defines three baseline strategies—full recharge, fixed-ratio partial
+recharge, and minimum feasible recharge—each exposing a unified interface for
+charging amount selection and warning threshold feedback.  Optimisation tests
+and documentation rely on these implementations to compare how strategy choice
+impacts route cost, charging frequency, and robustness.
 """
 
 from abc import ABC, abstractmethod
-import sys
-sys.path.append('src')
 
 from physics.energy import calculate_minimum_charging_needed
 
