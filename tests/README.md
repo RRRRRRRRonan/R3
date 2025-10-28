@@ -53,8 +53,13 @@ python tests/charging/test_strategy_comparison.py
 运行示例：
 
 ```bash
-pytest tests/optimization/test_alns_optimization_small.py -q
+python -m pytest tests/optimization/test_alns_optimization_small.py -q
 ```
+
+> ⚠️ **命令不可用？**
+>
+> - 若提示 `pytest` 不是可执行文件，说明当前环境尚未安装该工具，请执行 `python -m pip install pytest`（或使用项目统一的依赖安装命令）。
+> - Windows PowerShell 默认不会解析 `pytest` 入口，使用上面展示的 `python -m pytest …` 形式即可跨平台运行。
 
 大规模测试可能耗时数分钟，可在调试阶段临时降低测试文件内的迭代次数。
 
