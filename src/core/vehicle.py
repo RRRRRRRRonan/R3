@@ -11,9 +11,16 @@ from typing import Optional, Tuple, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
 
+from config import DEFAULT_VEHICLE_DEFAULTS
+
 if TYPE_CHECKING:
     from core.route import Route
 
+
+_DEFAULT_INITIAL_BATTERY = (
+    DEFAULT_VEHICLE_DEFAULTS.battery_capacity_kwh
+    * DEFAULT_VEHICLE_DEFAULTS.initial_battery_ratio
+)
 
 
 class VehicleStatus(Enum):
@@ -80,19 +87,21 @@ class Vehicle:
     vehicle_id: int
     
     # === 物理属性 ===
-    capacity: float = 150.0         # 最大载重 (kg)
-    battery_capacity: float = 100.0  # 电池容量 (kWh)
-    speed: float = 2.0              # 移动速度 (m/s)
-    
+    capacity: float = DEFAULT_VEHICLE_DEFAULTS.capacity_kg         # 最大载重 (kg)
+    battery_capacity: float = DEFAULT_VEHICLE_DEFAULTS.battery_capacity_kwh  # 电池容量 (kWh)
+    speed: float = DEFAULT_VEHICLE_DEFAULTS.cruise_speed_m_s              # 移动速度 (m/s)
+
     # === 静态状态（用于planning） ===
-    initial_location: Tuple[float, float] = (0.0, 0.0)  # 默认在depot
-    initial_battery: float = 100.0   # 默认满电
-    initial_load: float = 0.0        # 默认空载
-    
+    initial_location: Tuple[float, float] = DEFAULT_VEHICLE_DEFAULTS.depot_location  # 默认在depot
+    initial_battery: float = _DEFAULT_INITIAL_BATTERY   # 默认满电
+    initial_load: float = DEFAULT_VEHICLE_DEFAULTS.initial_load_kg        # 默认空载
+
     # === 动态状态（用于execution） ===
-    current_location: Tuple[float, float] = field(default_factory=lambda: (0.0, 0.0))
-    current_battery: float = 100.0
-    current_load: float = 0.0
+    current_location: Tuple[float, float] = field(
+        default_factory=lambda: DEFAULT_VEHICLE_DEFAULTS.depot_location
+    )
+    current_battery: float = _DEFAULT_INITIAL_BATTERY
+    current_load: float = DEFAULT_VEHICLE_DEFAULTS.initial_load_kg
     current_time: float = 0.0
     status: VehicleStatus = VehicleStatus.IDLE
     
@@ -102,13 +111,22 @@ class Vehicle:
     def __post_init__(self):
         """初始化后处理：设置动态状态等于静态状态"""
         # 将动态状态初始化为静态状态
-        if self.current_location == (0.0, 0.0) and self.initial_location != (0.0, 0.0):
+        if (
+            self.current_location == DEFAULT_VEHICLE_DEFAULTS.depot_location
+            and self.initial_location != DEFAULT_VEHICLE_DEFAULTS.depot_location
+        ):
             self.current_location = self.initial_location
-        
-        if self.current_battery == 100.0 and self.initial_battery != 100.0:
+
+        if (
+            self.current_battery == _DEFAULT_INITIAL_BATTERY
+            and self.initial_battery != _DEFAULT_INITIAL_BATTERY
+        ):
             self.current_battery = self.initial_battery
-        
-        if self.current_load == 0.0 and self.initial_load != 0.0:
+
+        if (
+            self.current_load == DEFAULT_VEHICLE_DEFAULTS.initial_load_kg
+            and self.initial_load != DEFAULT_VEHICLE_DEFAULTS.initial_load_kg
+        ):
             self.current_load = self.initial_load
     
     
@@ -452,12 +470,12 @@ class VehicleFleet:
 
 
 def create_vehicle(vehicle_id: int,
-                  capacity: float = 150.0,
-                  battery_capacity: float = 100.0,
-                  speed: float = 2.0,
-                  initial_location: Tuple[float, float] = (0.0, 0.0),
+                  capacity: Optional[float] = None,
+                  battery_capacity: Optional[float] = None,
+                  speed: Optional[float] = None,
+                  initial_location: Optional[Tuple[float, float]] = None,
                   initial_battery: Optional[float] = None,
-                  initial_load: float = 0.0) -> Vehicle:
+                  initial_load: Optional[float] = None) -> Vehicle:
     """
     创建AMR的便捷函数
     
@@ -480,8 +498,21 @@ def create_vehicle(vehicle_id: int,
         # 创建电量80%的AMR
         amr2 = create_vehicle(2, initial_battery=80.0)
     """
+    defaults = DEFAULT_VEHICLE_DEFAULTS
+
+    if capacity is None:
+        capacity = defaults.capacity_kg
+    if battery_capacity is None:
+        battery_capacity = defaults.battery_capacity_kwh
+    if speed is None:
+        speed = defaults.cruise_speed_m_s
+    if initial_location is None:
+        initial_location = defaults.depot_location
+    if initial_load is None:
+        initial_load = defaults.initial_load_kg
+
     if initial_battery is None:
-        initial_battery = battery_capacity
+        initial_battery = battery_capacity * defaults.initial_battery_ratio
     
     return Vehicle(
         vehicle_id=vehicle_id,
@@ -495,10 +526,10 @@ def create_vehicle(vehicle_id: int,
 
 
 def create_homogeneous_fleet(num_vehicles: int,
-                             capacity: float = 150.0,
-                             battery_capacity: float = 100.0,
-                             speed: float = 2.0,
-                             depot_location: Tuple[float, float] = (0.0, 0.0)) -> VehicleFleet:
+                             capacity: Optional[float] = None,
+                             battery_capacity: Optional[float] = None,
+                             speed: Optional[float] = None,
+                             depot_location: Optional[Tuple[float, float]] = None) -> VehicleFleet:
     """
     创建同质车队（所有AMR属性相同）
     
@@ -515,6 +546,16 @@ def create_homogeneous_fleet(num_vehicles: int,
     示例:
         fleet = create_homogeneous_fleet(5, capacity=200.0)
     """
+    defaults = DEFAULT_VEHICLE_DEFAULTS
+    if capacity is None:
+        capacity = defaults.capacity_kg
+    if battery_capacity is None:
+        battery_capacity = defaults.battery_capacity_kwh
+    if speed is None:
+        speed = defaults.cruise_speed_m_s
+    if depot_location is None:
+        depot_location = defaults.depot_location
+
     fleet = VehicleFleet()
     for i in range(1, num_vehicles + 1):
         vehicle = create_vehicle(

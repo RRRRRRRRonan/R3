@@ -11,7 +11,6 @@ stay compatible with the vehicle energy configuration and charging strategy.
 from collections import Counter
 import math
 import random
-from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from core.route import Route
@@ -20,48 +19,12 @@ from core.vehicle import Vehicle, create_vehicle
 from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
 from planner.operators import AdaptiveOperatorSelector
-
-
-@dataclass
-class CostParameters:
-    """Weight configuration for the multi-objective route cost model.
-
-    The ALNS solver measures improvements across distance, charging energy,
-    travel time, lateness, and idle waiting.  Additionally, large penalties are
-    applied when a plan drops tasks or violates hard feasibility constraints.
-    All values are expressed in the planner's internal monetary units so that
-    every component can be tuned against the same objective scale.
-    """
-
-    C_tr: float = 1.0
-    C_ch: float = 0.6
-    C_time: float = 0.1
-    C_delay: float = 2.0
-    C_wait: float = 0.05
-
-    C_missing_task: float = 10000.0
-    C_infeasible: float = 10000.0
-
-    def get_total_cost(self, distance: float, charging: float,
-                      time: float, delay: float, waiting: float) -> float:
-        """
-        计算加权总成本
-
-        参数:
-            distance: 总距离 (m)
-            charging: 总充电量 (kWh)
-            time: 总时间 (s)
-            delay: 总延迟 (s)
-            waiting: 总等待 (s)
-
-        返回:
-            float: 加权总成本
-        """
-        return (self.C_tr * distance +
-                self.C_ch * charging +
-                self.C_time * time +
-                self.C_delay * delay +
-                self.C_wait * waiting)
+from config import (
+    ALNSHyperParameters,
+    CostParameters,
+    DEFAULT_ALNS_HYPERPARAMETERS,
+    DEFAULT_COST_PARAMETERS,
+)
 
 class MinimalALNS:
     """Single-vehicle ALNS solver with adaptive destroy/repair operators.
@@ -77,32 +40,32 @@ class MinimalALNS:
     def __init__(self, distance_matrix: DistanceMatrix, task_pool,
                  repair_mode='mixed', cost_params: Optional[CostParameters] = None,
                  charging_strategy=None, use_adaptive: bool = True,
-                 *, verbose: bool = True):
+                 *, verbose: bool = True,
+                 hyper_params: Optional[ALNSHyperParameters] = None):
         """Initialise the ALNS planner with distance data and candidate tasks."""
         self.distance = distance_matrix
         self.task_pool = task_pool
         self.repair_mode = repair_mode
         self.verbose = verbose
 
-        self.cost_params = cost_params or CostParameters()
+        self.cost_params = cost_params or DEFAULT_COST_PARAMETERS
+        self.hyper = hyper_params or DEFAULT_ALNS_HYPERPARAMETERS
         self.charging_strategy = charging_strategy
         self.use_adaptive = use_adaptive or repair_mode == 'adaptive'
         if self.use_adaptive:
             self.adaptive_repair_selector = AdaptiveOperatorSelector(
                 operators=['greedy', 'regret2', 'random'],
-                initial_weight=1.0,
-                decay_factor=0.8
+                params=self.hyper.adaptive_selector
             )
             self.adaptive_destroy_selector = AdaptiveOperatorSelector(
                 operators=['random_removal', 'partial_removal'],
-                initial_weight=1.0,
-                decay_factor=0.8
+                params=self.hyper.adaptive_selector
             )
         else:
             self.adaptive_repair_selector = None
             self.adaptive_destroy_selector = None
-        self.initial_temp = 100.0
-        self.cooling_rate = 0.995
+        self.initial_temp = self.hyper.simulated_annealing.initial_temperature
+        self.cooling_rate = self.hyper.simulated_annealing.cooling_rate
 
     def _log(self, message: str) -> None:
         if self.verbose:
@@ -270,7 +233,12 @@ class MinimalALNS:
 
         return best_route
     
-    def random_removal(self, route: Route, q: int = 2, remove_cs_prob: float = 0.3) -> Tuple[Route, List[int]]:
+    def random_removal(
+        self,
+        route: Route,
+        q: Optional[int] = None,
+        remove_cs_prob: Optional[float] = None,
+    ) -> Tuple[Route, List[int]]:
         """
         Destroy算子：随机移除q个任务 + 可选地移除充电站
 
@@ -285,6 +253,11 @@ class MinimalALNS:
             (destroyed_route, removed_task_ids)
         """
         task_ids = route.get_served_tasks()
+
+        if q is None:
+            q = self.hyper.destroy_repair.random_removal_q
+        if remove_cs_prob is None:
+            remove_cs_prob = self.hyper.destroy_repair.remove_cs_probability
 
         if len(task_ids) < q:
             q = max(1, len(task_ids))
@@ -317,7 +290,11 @@ class MinimalALNS:
 
         return destroyed_route, removed_task_ids
 
-    def partial_removal(self, route: Route, q: int = 2) -> Tuple[Route, List[int]]:
+    def partial_removal(
+        self,
+        route: Route,
+        q: Optional[int] = None,
+    ) -> Tuple[Route, List[int]]:
         """
         Destroy算子：只移除delivery节点（Week 3步骤2.2）
 
@@ -332,6 +309,9 @@ class MinimalALNS:
             其中removed_task_ids表示需要重新插入delivery的任务
         """
         task_ids = route.get_served_tasks()
+
+        if q is None:
+            q = self.hyper.destroy_repair.partial_removal_q
 
         if len(task_ids) < q:
             q = max(1, len(task_ids))
@@ -571,7 +551,7 @@ class MinimalALNS:
                             continue
 
                         if charging_plan:
-                            charging_penalty_per_station = 100.0
+                            charging_penalty_per_station = self.hyper.charging.penalty_per_station
                             total_charging_penalty = len(charging_plan) * charging_penalty_per_station
                             cost_delta += total_charging_penalty
 
@@ -693,7 +673,7 @@ class MinimalALNS:
         for i in range(len(route.nodes) - 1):
             current_node = route.nodes[i]
             next_node = route.nodes[i + 1]
-            vehicle_speed = 1.5  # m/s
+            vehicle_speed = self.hyper.vehicle.cruise_speed_m_s
             distance = self.distance.get_distance(
                 current_node.node_id,
                 next_node.node_id
@@ -842,7 +822,11 @@ class MinimalALNS:
 
         return True  # 整个路径可行
 
-    def _check_time_window_feasibility_fast(self, temp_route: Route, vehicle_speed: float = 1.5) -> Tuple[bool, float]:
+    def _check_time_window_feasibility_fast(
+        self,
+        temp_route: Route,
+        vehicle_speed: Optional[float] = None,
+    ) -> Tuple[bool, float]:
         """
         快速检查路径的时间窗可行性（Week 3新增）
 
@@ -850,11 +834,14 @@ class MinimalALNS:
 
         参数:
             temp_route: 待检查的路径
-            vehicle_speed: 车辆速度 (m/s)，默认1.5m/s
+            vehicle_speed: 车辆速度 (m/s)，默认使用全局配置
 
         返回:
             Tuple[bool, float]: (是否满足硬时间窗, 延迟惩罚成本)
         """
+        if vehicle_speed is None:
+            vehicle_speed = self.hyper.vehicle.cruise_speed_m_s
+
         current_time = 0.0
         total_tardiness = 0.0
 
@@ -895,10 +882,14 @@ class MinimalALNS:
                 # 简化：假设充电10秒（实际应根据充电量计算）
                 if hasattr(node, 'charge_amount'):
                     charging_rate = self.energy_config.charging_rate if hasattr(self, 'energy_config') else 0.001
-                    charge_time = node.charge_amount / charging_rate if charging_rate > 0 else 10.0
+                    charge_time = (
+                        node.charge_amount / charging_rate
+                        if charging_rate > 0
+                        else self.hyper.charging.fallback_duration_s
+                    )
                     current_time += charge_time
                 else:
-                    current_time += 10.0  # 默认充电时间
+                    current_time += self.hyper.charging.fallback_duration_s  # 默认充电时间
 
         # 计算延迟惩罚成本
         delay_cost = total_tardiness * self.cost_params.C_delay
@@ -927,7 +918,7 @@ class MinimalALNS:
             if current_node.is_charging_station():
                 if self.charging_strategy:
                     # 正确公式：energy = consumption_rate(kWh/s) * time(s)
-                    vehicle_speed = 1.5  # m/s
+                    vehicle_speed = self.hyper.vehicle.cruise_speed_m_s
                     remaining_energy_demand = 0.0
                     energy_to_next_stop = 0.0
                     next_stop_is_cs = False
@@ -964,7 +955,7 @@ class MinimalALNS:
             # 计算到下一节点的能耗
             # 正确公式：energy = consumption_rate(kWh/s) * time(s)
             distance = self.distance.get_distance(current_node.node_id, next_node.node_id)
-            vehicle_speed = 1.5  # m/s
+            vehicle_speed = self.hyper.vehicle.cruise_speed_m_s
             travel_time = distance / vehicle_speed
             energy_consumed = energy_config.consumption_rate * travel_time
             current_battery -= energy_consumed
@@ -1127,7 +1118,7 @@ class MinimalALNS:
                 if self.charging_strategy:
                     # 计算剩余能耗
                     # 正确公式：energy = consumption_rate(kWh/s) * time(s)
-                    vehicle_speed = 1.5  # m/s
+                    vehicle_speed = self.hyper.vehicle.cruise_speed_m_s
                     remaining_energy_demand = 0.0
                     energy_to_next_stop = 0.0
                     next_stop_is_cs = False
@@ -1173,7 +1164,7 @@ class MinimalALNS:
             # 计算行驶距离和时间
             distance = self.distance.get_distance(current_node.node_id, next_node.node_id)
             # 正确公式：energy = consumption_rate(kWh/s) * time(s)
-            vehicle_speed = 1.5  # m/s
+            vehicle_speed = self.hyper.vehicle.cruise_speed_m_s
             travel_time = distance / vehicle_speed
             energy_consumed = energy_config.consumption_rate * travel_time
 
