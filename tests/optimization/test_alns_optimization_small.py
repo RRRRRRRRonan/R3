@@ -1,9 +1,9 @@
-"""Small-scale ALNS optimization smoke test."""
+"""Validate ALNS improvements on the small optimisation scenario.
 
-from pathlib import Path
-import sys
-
-sys.path.append(str(Path(__file__).resolve().parents[2]))
+The test instantiates the reusable five-request scenario, runs ALNS with each
+charging strategy, and asserts that every strategy beats the greedy baseline by
+the minimum improvement margin documented in the optimisation README.
+"""
 
 from tests.optimization.common import (
     ScenarioConfig,

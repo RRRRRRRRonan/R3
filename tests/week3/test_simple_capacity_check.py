@@ -1,17 +1,11 @@
-"""
-Week 3 步骤2.1 简单测试：容量可行性检查
-"""
-
-import sys
-sys.path.append('src')
+"""Unit tests for the route capacity feasibility helper."""
 
 from core.node import DepotNode, create_task_node_pair
 from core.task import Task
 from core.route import Route, create_empty_route
 
 def test_basic_capacity_check():
-    """测试基本容量检查"""
-    print("测试容量可行性检查方法...")
+    """Ensure the route reports infeasibility when over capacity."""
 
     # 创建depot
     depot = DepotNode(coordinates=(0.0, 0.0))

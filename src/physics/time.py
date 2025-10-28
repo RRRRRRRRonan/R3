@@ -1,37 +1,10 @@
-# time.py          # 时间计算
-#     ├─ calculate_travel_time()    # 行驶时间
-#     ├─ check_time_window()        # 时间窗检查
-#     └─ calculate_tardiness()      # 延迟计算
+"""Time utility helpers used by the routing and charging simulators.
 
-"""
-时间计算模块
-=============
-实现AMR任务执行时间的计算与验证,对应数学模型中的时间约束
-
-数学模型映射:
-    参数: 
-        t̄_{(i,j)}: 基准移动时间
-        t_i^{serv}: 节点i的服务时间
-        e_i, l_i: 时间窗的下界和上界
-    
-    决策变量:
-        S_i^a: AMR a到达并开始服务节点i的时间
-        T_{dep,i}^a: AMR a离开节点i的时间
-        t_{move,(i,j)}^a: 实际移动时间
-        T_{tard,i}^a: 节点i的延迟惩罚
-        ω_i^a: 节点i的等待时间
-    
-    约束:
-        (5): T_{dep,i}^a = S_i^a + t_i^{ch,a} + t_i^{serv} + ρ_i^a + ω_i^a
-        (7): e_i ≤ S_i^a ≤ l_i + T_{tard,i}^a
-        (12): t_{move,(i,j)}^a = t̄_{(i,j)} · x_{(i,j)}^a
-        (14): T_{tard,i}^a ≥ S_i^a - l_i (延迟定义)
-        (15): S_j^a ≥ T_{dep,i}^a + t_{move,(i,j)}^a (时间顺序)
-
-设计理念:
-    - 时间以"秒"为基本单位
-    - 支持时间窗的软约束（允许延迟，但有惩罚）
-    - 提供路径时间剖面分析工具
+The functions translate physical parameters into scheduling values: they
+evaluate travel times, enforce hard or soft time windows, and accumulate full
+route time profiles that power the optimisation metrics.  The module is the
+single source of truth for the mathematical definitions of waiting, service,
+charging, and tardiness durations in seconds.
 """
 
 from typing import Tuple, List, Optional, Dict

@@ -1,23 +1,9 @@
+"""Stress tests for large-scale Week 3 warehouse instances.
+
+The suite spins up 50–100 task scenarios with multiple charging stations and
+verifies that the planner scales while keeping cost improvements and runtime
+within acceptable bounds.
 """
-Week 3 大规模测试：仓库机器人场景（50-100任务）
-====================================
-
-验证Week 3功能在大规模实际场景下的可扩展性和性能。
-
-场景：
-- 仓库大小：150-200m × 150-200m
-- 任务数量：50-100个
-- 机器人：Kiva类型（300-350kg载重，25-30kWh电池）
-- 充电站：3-4个
-
-测试重点：
-- 算法可扩展性
-- 执行时间
-- 解的质量
-"""
-
-import sys
-sys.path.append('src')
 
 import random
 import time

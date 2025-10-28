@@ -1,32 +1,16 @@
-"""
-路径（Route）数据结构模块
-==========================
-定义AMR的行驶路径及其验证、计算功能
+"""Route representation and feasibility checks for single-AMR planning.
 
-设计要点:
-    - Route = 节点序列 + 时间表 + 验证逻辑
-    - 支持静态规划（ALNS构建路径）和动态执行（CBS仿真）
-    - 提供插入/删除节点操作（ALNS的destroy/repair operators使用）
-    - 集成physics层的distance、energy、time计算
-
-功能层次:
-    1. 存储层：节点序列、时间表、负载/电量轨迹
-    2. 计算层：总距离、总时间、总能耗
-    3. 验证层：时间窗、容量、电量、precedence约束
-    4. 操作层：插入、删除、交换节点（给ALNS用）
-
-对应数学模型:
-    π_k: AMR k的路径（节点序列）
-    t_i: 在节点i的到达时间
-    q_i: 在节点i的载重
-    b_i: 在节点i的电量
+The ``Route`` class stores node sequences, generates visit timelines on demand,
+tracks load and battery profiles, and exposes operations used by destroy/repair
+heuristics.  It integrates the physics helpers to evaluate distances, charging
+requirements, waiting delays, and ensures that time windows, capacity, and
+precedence constraints hold whenever the optimisation loop probes a candidate
+solution.
 """
 
 from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass, field
 from copy import deepcopy
-import sys
-sys.path.append('src')
 
 from core.node import Node, DepotNode, TaskNode, ChargingNode, NodeType
 from core.task import Task
@@ -44,7 +28,6 @@ from physics.time import (
 from core.vehicle import Vehicle
 
 
-# ========== 路径节点访问记录 ==========
 
 @dataclass
 class RouteNodeVisit:
@@ -88,7 +71,6 @@ class RouteNodeVisit:
         return 0.0
 
 
-# ========== 路径类 ==========
 
 @dataclass
 class Route:
@@ -127,7 +109,6 @@ class Route:
     is_feasible: bool = True
     infeasibility_info: Optional[str] = None
     
-    # ========== 基础操作 ==========
     
     def add_node(self, node: Node):
         """
@@ -197,7 +178,6 @@ class Route:
         self.is_feasible = True
         self.infeasibility_info = None
     
-    # ========== 查询方法 ==========
     
     def is_empty(self) -> bool:
         """路径是否为空（只有depot或完全没有节点）"""
@@ -236,7 +216,6 @@ class Route:
                 task_ids.add(node.task_id)
         return sorted(list(task_ids))
     
-    # ========== 时间表计算 ==========
     
     def compute_schedule(self,
                         distance_matrix: DistanceMatrix,
@@ -399,7 +378,6 @@ class Route:
         self.infeasibility_info = None
         return True
     
-    # ========== 约束验证 ==========
     
     def validate_precedence(self) -> Tuple[bool, Optional[str]]:
         """
@@ -523,7 +501,6 @@ class Route:
         # 检查precedence
         return self.validate_precedence()
     
-    # ========== 成本计算 ==========
     
     def calculate_total_distance(self, distance_matrix: DistanceMatrix) -> float:
         """
@@ -597,7 +574,6 @@ class Route:
 
         return sum(visit.get_delay() for visit in self.visits)
 
-    # ========== 充电统计方法 (Week 1 新增) ==========
 
     def get_total_charging_amount(self) -> float:
         """
@@ -718,7 +694,6 @@ class Route:
             "is_feasible": self.is_feasible
         }
     
-    # ========== 字符串表示 ==========
     
     def __str__(self) -> str:
         """简洁字符串表示"""
@@ -757,7 +732,6 @@ class Route:
         
         return "\n".join(lines)
     
-        # ========== ALNS操作接口 ==========
     
     def copy(self) -> 'Route':
         """
@@ -1166,7 +1140,6 @@ class Route:
         return new_distance - original_distance
 
 
-# ========== 便捷构造函数 ==========
 
 def create_empty_route(vehicle_id: int, 
                       depot_node: DepotNode) -> Route:

@@ -1,19 +1,9 @@
+"""Integrated regression for Week 3 planner capabilities.
+
+Combines time windows, charging strategies, destroy/repair operators, and
+capacity/energy feasibility checks on a ten-task scenario to validate that the
+entire stack works end to end.
 """
-Week 3 集成测试：时间窗 + 充电策略 + ALNS优化
-==================================================
-
-验证所有核心功能的组合：
-1. 硬/软时间窗约束
-2. 完全充电 vs 局部充电策略
-3. Pickup/Delivery分离优化
-4. 容量约束
-5. 能量约束
-
-测试规模：10任务小规模场景
-"""
-
-import sys
-sys.path.append('src')
 
 from core.node import DepotNode, create_task_node_pair, ChargingNode
 from core.task import Task, TaskPool

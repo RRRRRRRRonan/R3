@@ -1,21 +1,10 @@
+"""Integration-style comparison of charging strategies.
+
+The script simulates a handcrafted scenario for the FR and PR-Fixed strategies
+to illustrate the impact on charging frequency, energy usage, and cost.  It is
+primarily used for exploratory analysis and documentation examples rather than
+formal assertions.
 """
-充电策略对比测试 (Week 1 补充)
-==============================
-对比FR vs PR-Fixed策略在实际路径规划中的效果
-
-测试内容:
-    1. 构造真实场景 (任务 + 充电站 + 距离矩阵)
-    2. 模拟两种充电策略下的路径执行
-    3. 对比成本、充电量、充电时间、充电次数
-    4. 分析策略选择对总成本的影响
-
-注意:
-    当前版本是简化测试，手动构造路径并模拟充电策略
-    Week 2将集成到ALNS优化流程中
-"""
-
-import sys
-sys.path.append('src')
 
 from core.node import create_depot, create_task_node_pair, create_charging_node, NodeType
 from core.route import Route, create_empty_route

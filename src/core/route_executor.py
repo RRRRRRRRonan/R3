@@ -1,17 +1,11 @@
-"""
-路径执行器 (Route Executor)
-============================
-执行路径并生成详细的visits记录，包括充电决策
+"""Simulate executing a planned route to produce visit level telemetry.
 
-功能:
-- 模拟车辆沿路径行驶
-- 在充电站使用充电策略决定充电量
-- 生成RouteNodeVisit记录
-- 计算时间、电量、负载轨迹
+``RouteExecutor`` replays a route with the configured distance, energy, and time
+models, applies the active charging strategy whenever a charging node is
+encountered, and records the resulting timeline in ``RouteNodeVisit`` entries.
+The generated trace is used by feasibility checks, debugging tools, and the
+charging strategy benchmarks.
 """
-
-import sys
-sys.path.append('src')
 
 from typing import List, Optional, Tuple
 from core.route import Route, RouteNodeVisit

@@ -1,5 +1,13 @@
 """Utilities for selecting and tracking ALNS operators."""
 
+"""Adaptive operator scoring utilities shared by the planning pipeline.
+
+The ALNS planner routes all destroy and repair operator choices through this
+module.  It maintains exponentially-decayed performance weights, computes
+roulette-wheel sampling probabilities, and exposes human-readable summaries so
+we can inspect which neighbourhood moves drive improvements.
+"""
+
 from __future__ import annotations
 
 import random

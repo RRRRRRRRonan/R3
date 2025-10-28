@@ -1,14 +1,15 @@
-"""Shared factories and helpers for optimization-scale ALNS tests."""
+"""Shared factories and helpers for optimisation-scale ALNS tests.
+
+Utilities in this module generate deterministic demand scenarios, construct
+routes and vehicles, and wrap ALNS execution so the small/medium/large
+optimisation tests can focus on assertions instead of boilerplate setup.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List, Sequence, Tuple
 from copy import deepcopy
-from pathlib import Path
 import random
-import sys
-
-sys.path.append(str(Path(__file__).resolve().parents[1].parent / "src"))
 
 from core.node import DepotNode, ChargingNode, NodeType, create_task_node_pair
 from core.route import create_empty_route

@@ -1,9 +1,9 @@
-"""Large-scale ALNS optimization regression test."""
+"""Regression test covering the large optimisation scenario.
 
-from pathlib import Path
-import sys
-
-sys.path.append(str(Path(__file__).resolve().parents[2]))
+Exercises the fifteen-request scenario to confirm that optimisation still
+delivers significant cost savings across charging strategies despite the larger
+search space.
+"""
 
 from tests.optimization.common import (
     ScenarioConfig,

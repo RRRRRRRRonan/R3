@@ -1,9 +1,8 @@
-"""Medium-scale ALNS optimization regression test."""
+"""Regression test covering the medium optimisation scenario.
 
-from pathlib import Path
-import sys
-
-sys.path.append(str(Path(__file__).resolve().parents[2]))
+Runs the shared ten-request scenario, expecting each charging strategy to
+deliver cost reductions while staying within the documented runtime budget.
+"""
 
 from tests.optimization.common import (
     ScenarioConfig,

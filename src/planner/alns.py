@@ -1,7 +1,11 @@
-"""
-ALNS (Adaptive Large Neighborhood Search) 优化器
-==============================================
-用于单AMR路径规划 + 局部充电优化
+"""Charging-aware Adaptive Large Neighbourhood Search implementation.
+
+The module bundles the end-to-end ALNS workflow that powers the single-AMR
+planner: destroy/repair operators, adaptive operator scoring, simulated annealing
+acceptance, and cost evaluation that blends distance, time, lateness and
+charging penalties.  It also embeds feasibility checks for capacity, time
+windows, and the three-tier battery threshold model so that candidate solutions
+stay compatible with the vehicle energy configuration and charging strategy.
 """
 
 from collections import Counter
@@ -18,23 +22,25 @@ from physics.energy import EnergyConfig
 from planner.operators import AdaptiveOperatorSelector
 
 
-# ========== 成本参数配置 ==========
 @dataclass
 class CostParameters:
-    """
-    多目标成本函数参数配置
-    支持距离、充电、时间、延迟多目标优化
-    """
-    # 基础成本权重
-    C_tr: float = 1.0      # 距离成本 ($/m)
-    C_ch: float = 0.6      # 充电成本 ($/kWh)
-    C_time: float = 0.1    # 时间成本 ($/s)
-    C_delay: float = 2.0   # 延迟惩罚 ($/s)
-    C_wait: float = 0.05   # 等待成本 ($/s)
+    """Weight configuration for the multi-objective route cost model.
 
-    # 惩罚项
-    C_missing_task: float = 10000.0  # 任务丢失惩罚
-    C_infeasible: float = 10000.0    # 不可行解惩罚
+    The ALNS solver measures improvements across distance, charging energy,
+    travel time, lateness, and idle waiting.  Additionally, large penalties are
+    applied when a plan drops tasks or violates hard feasibility constraints.
+    All values are expressed in the planner's internal monetary units so that
+    every component can be tuned against the same objective scale.
+    """
+
+    C_tr: float = 1.0
+    C_ch: float = 0.6
+    C_time: float = 0.1
+    C_delay: float = 2.0
+    C_wait: float = 0.05
+
+    C_missing_task: float = 10000.0
+    C_infeasible: float = 10000.0
 
     def get_total_cost(self, distance: float, charging: float,
                       time: float, delay: float, waiting: float) -> float:
@@ -58,53 +64,35 @@ class CostParameters:
                 self.C_wait * waiting)
 
 class MinimalALNS:
-    """
-    最简ALNS实现
+    """Single-vehicle ALNS solver with adaptive destroy/repair operators.
 
-    第一版功能：
-    - Random Removal (destroy)
-    - Greedy Insertion (repair)
-    - 模拟退火接受准则
-    - 充电约束集成
-
-    Week 1 改进:
-    - 多目标成本函数 (距离 + 充电 + 时间 + 延迟)
+    The implementation keeps track of operator usage, evaluates candidate routes
+    through the weighted cost function, and coordinates simulated annealing
+    acceptance with temperature cooling.  Destroy and repair choices can be
+    deterministic, randomly mixed, or steered by adaptive scoring.  Charging
+    feasibility is safeguarded via vehicle-aware battery simulation combined with
+    the pluggable charging strategy.
     """
 
     def __init__(self, distance_matrix: DistanceMatrix, task_pool,
                  repair_mode='mixed', cost_params: Optional[CostParameters] = None,
                  charging_strategy=None, use_adaptive: bool = True,
                  *, verbose: bool = True):
-        """
-        参数：
-            distance_matrix: 距离矩阵（用于计算成本）
-            task_pool: 任务池
-            repair_mode: 修复算子模式 ('greedy', 'regret2', 'random', 'mixed', 'adaptive')
-            cost_params: 成本参数配置
-            charging_strategy: 充电策略对象 (Week 2新增)
-            use_adaptive: 是否使用自适应算子选择（Week 4新增）
-        """
+        """Initialise the ALNS planner with distance data and candidate tasks."""
         self.distance = distance_matrix
         self.task_pool = task_pool
         self.repair_mode = repair_mode
         self.verbose = verbose
 
-        # Week 1: 成本参数
         self.cost_params = cost_params or CostParameters()
-
-        # Week 2: 充电策略
         self.charging_strategy = charging_strategy
-
-        # Week 4: 自适应算子选择（Repair算子）
         self.use_adaptive = use_adaptive or repair_mode == 'adaptive'
         if self.use_adaptive:
-            # Repair算子自适应选择器
             self.adaptive_repair_selector = AdaptiveOperatorSelector(
                 operators=['greedy', 'regret2', 'random'],
                 initial_weight=1.0,
                 decay_factor=0.8
             )
-            # Destroy算子自适应选择器（新增）
             self.adaptive_destroy_selector = AdaptiveOperatorSelector(
                 operators=['random_removal', 'partial_removal'],
                 initial_weight=1.0,
@@ -113,8 +101,6 @@ class MinimalALNS:
         else:
             self.adaptive_repair_selector = None
             self.adaptive_destroy_selector = None
-
-        # 模拟退火参数
         self.initial_temp = 100.0
         self.cooling_rate = 0.995
 
@@ -315,7 +301,6 @@ class MinimalALNS:
             task = self.task_pool.get_task(task_id)
             destroyed_route.remove_task(task)
 
-        # Week 2新增：可选地移除充电站
         if random.random() < remove_cs_prob:
             cs_nodes = [n for n in destroyed_route.nodes if n.is_charging_station()]
 
@@ -489,7 +474,6 @@ class MinimalALNS:
         for task_id in removed_task_ids:
             task = self.task_pool.get_task(task_id)
 
-            # Week 3步骤2.2：检查pickup是否已在路径中
             pickup_in_route = False
             pickup_position = None
             for i, node in enumerate(repaired_route.nodes):
@@ -509,7 +493,6 @@ class MinimalALNS:
                     temp_route = repaired_route.copy()
                     temp_route.nodes.insert(delivery_pos, task.delivery_node)
 
-                    # Week 3新增：检查容量可行性
                     capacity_feasible, capacity_error = temp_route.check_capacity_feasibility(
                         vehicle.capacity,
                         debug=False
@@ -518,7 +501,6 @@ class MinimalALNS:
                     if not capacity_feasible:
                         continue
 
-                    # Week 3新增：检查时间窗可行性
                     time_feasible, delay_cost = self._check_time_window_feasibility_fast(temp_route)
                     if not time_feasible:
                         # 违反硬时间窗，跳过
@@ -545,7 +527,6 @@ class MinimalALNS:
                         best_position = ('delivery_only', delivery_pos)
             else:
                 # 需要插入完整任务（pickup和delivery）
-                # Week 3改进：遍历所有pickup和delivery位置组合
                 # 允许pickup和delivery之间有间隔（支持分离插入）
                 for pickup_pos in range(1, len(repaired_route.nodes)):
                     for delivery_pos in range(pickup_pos + 1, len(repaired_route.nodes) + 1):
@@ -554,7 +535,6 @@ class MinimalALNS:
                         temp_route = repaired_route.copy()
                         temp_route.insert_task(task, (pickup_pos, delivery_pos))
 
-                        # Week 3新增：检查容量可行性
                         capacity_feasible, capacity_error = temp_route.check_capacity_feasibility(
                             vehicle.capacity,
                             debug=False
@@ -564,7 +544,6 @@ class MinimalALNS:
                             # 容量不可行，跳过此位置
                             continue
 
-                        # Week 3新增：检查时间窗可行性
                         time_feasible, delay_cost = self._check_time_window_feasibility_fast(temp_route)
                         if not time_feasible:
                             # 违反硬时间窗，跳过
@@ -601,7 +580,6 @@ class MinimalALNS:
                             best_position = (pickup_pos, delivery_pos)
                             best_charging_plan = charging_plan
 
-            # Week 3步骤2.2：根据best_position类型执行不同的插入
             if best_position is not None:
                 if isinstance(best_position, tuple) and len(best_position) == 2:
                     if best_position[0] == 'delivery_only':
@@ -793,7 +771,6 @@ class MinimalALNS:
             if current_battery < 0:
                 return False  # 电量不足，不可行
             
-            # Week 4修复：如果刚到达充电站，应允许先充电再检查阈值
             # 之前的逻辑会在到站前执行阈值检查，导致即使成功抵达充电站
             #（电量>=0）也会因为低于警告/安全阈值被判为不可行
             # 这会让大量候选解被提前否决，使优化率显著下降。
@@ -802,7 +779,6 @@ class MinimalALNS:
                 # 因此这里无需再进行阈值检查
                 continue
 
-            # Week 4改进：策略感知的分层临界值检查（软约束）
             # 安全层：绝对最低电量（5%），硬约束
             safety_threshold = energy_config.safety_threshold * vehicle.battery_capacity
             if current_battery < safety_threshold:
@@ -994,7 +970,6 @@ class MinimalALNS:
             current_battery -= energy_consumed
 
             # 检查是否电量不足（只检查耗尽，不检查临界值）
-            # Week 2注释：初始解生成时允许略微违反临界值，在ALNS优化中自然修复
             if current_battery < 0:
                 return i + 1  # 返回无法到达的节点位置
 
@@ -1096,7 +1071,6 @@ class MinimalALNS:
         attempts = 0
 
         while attempts < max_attempts:
-            # Week 2修复：优先检查完整电池可行性（包括临界值）
             if self._check_battery_feasibility(route):
                 return route  # 已经可行
 
@@ -1232,7 +1206,6 @@ class MinimalALNS:
 
         distance = route.calculate_total_distance(self.distance)
 
-        # Week 2新增：执行路径生成visits（如果有vehicle和energy_config）
         if hasattr(self, 'vehicle') and hasattr(self, 'energy_config'):
             executor = RouteExecutor(
                 distance_matrix=self.distance,
@@ -1333,7 +1306,6 @@ class MinimalALNS:
             for task_id in remaining_tasks:
                 task = self.task_pool.get_task(task_id)
 
-                # Week 3步骤2.2：检查pickup是否已在路径中
                 pickup_in_route = False
                 pickup_position = None
                 for i, node in enumerate(repaired_route.nodes):
@@ -1350,12 +1322,10 @@ class MinimalALNS:
                         temp_route = repaired_route.copy()
                         temp_route.nodes.insert(delivery_pos, task.delivery_node)
 
-                        # Week 3新增：检查容量可行性
                         capacity_feasible, _ = temp_route.check_capacity_feasibility(vehicle.capacity, debug=False)
                         if not capacity_feasible:
                             continue
 
-                        # Week 3新增：检查时间窗可行性
                         time_feasible, delay_cost = self._check_time_window_feasibility_fast(temp_route)
                         if not time_feasible:
                             # 违反硬时间窗，跳过
@@ -1387,12 +1357,10 @@ class MinimalALNS:
                             temp_route = repaired_route.copy()
                             temp_route.insert_task(task, (pickup_pos, delivery_pos))
 
-                            # Week 3新增：检查容量可行性
                             capacity_feasible, _ = temp_route.check_capacity_feasibility(vehicle.capacity, debug=False)
                             if not capacity_feasible:
                                 continue
 
-                            # Week 3新增：检查时间窗可行性
                             time_feasible, delay_cost = self._check_time_window_feasibility_fast(temp_route)
                             if not time_feasible:
                                 # 违反硬时间窗，跳过
@@ -1452,7 +1420,6 @@ class MinimalALNS:
             if best_task_id:
                 task = self.task_pool.get_task(best_task_id)
 
-                # Week 3步骤2.2：根据best_position类型执行不同的插入
                 if isinstance(best_position, tuple) and len(best_position) == 2:
                     if best_position[0] == 'delivery_only':
                         # 只插入delivery节点
@@ -1509,7 +1476,6 @@ class MinimalALNS:
                 chosen_position = random.choice(possible_positions)
                 repaired_route.insert_task(task, chosen_position)
 
-                # Week 2新增：插入任务后，自动插入必要的充电站
                 repaired_route = self._insert_necessary_charging_stations(repaired_route)
 
         return repaired_route
