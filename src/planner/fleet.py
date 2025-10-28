@@ -53,6 +53,16 @@ class FleetPlanResult:
     ----------
     routes:
         Mapping from vehicle id to the optimised route assigned to that AMR.
+    initial_routes:
+        Mapping from vehicle id to the seeded greedy route before the ALNS
+        optimisation loop runs.  Useful for callers that want to compare the
+        improvement delivered by the local search phase.
+    initial_cost:
+        Sum of the individual route costs before optimisation.  Uses the same
+        weighted objective as ``MinimalALNS``.
+    optimised_cost:
+        Sum of the route costs after optimisation.  Allows multi-vehicle tests
+        to reuse the legacy assertions that check for overall cost reductions.
     unassigned_tasks:
         List of task ids that were not assigned because the fleet ran out of
         vehicles.  The current implementation aims to allocate every task, so
@@ -61,6 +71,9 @@ class FleetPlanResult:
     """
 
     routes: Dict[int, Route]
+    initial_routes: Dict[int, Route]
+    initial_cost: float
+    optimised_cost: float
     unassigned_tasks: List[int]
 
 
@@ -106,17 +119,28 @@ class FleetPlanner:
 
         remaining_task_ids = [task.task_id for task in self.task_pool.get_all_tasks()]
         routes: Dict[int, Route] = {}
+        initial_routes: Dict[int, Route] = {}
+        initial_cost = 0.0
+        optimised_cost = 0.0
 
         if not remaining_task_ids:
             for vehicle in self.vehicles:
                 routes[vehicle.vehicle_id] = create_empty_route(vehicle.vehicle_id, self.depot)
-            return FleetPlanResult(routes=routes, unassigned_tasks=[])
+                initial_routes[vehicle.vehicle_id] = routes[vehicle.vehicle_id]
+            return FleetPlanResult(
+                routes=routes,
+                initial_routes=initial_routes,
+                initial_cost=0.0,
+                optimised_cost=0.0,
+                unassigned_tasks=[],
+            )
 
         remaining_vehicles = len(self.vehicles)
 
         for vehicle in self.vehicles:
             if not remaining_task_ids:
                 routes[vehicle.vehicle_id] = create_empty_route(vehicle.vehicle_id, self.depot)
+                initial_routes[vehicle.vehicle_id] = routes[vehicle.vehicle_id]
                 continue
 
             batch_size = math.ceil(len(remaining_task_ids) / remaining_vehicles)
@@ -147,6 +171,8 @@ class FleetPlanner:
 
             initial_route = create_empty_route(vehicle.vehicle_id, self.depot)
             seeded_route = planner.greedy_insertion(initial_route, batch_task_ids)
+            initial_routes[vehicle.vehicle_id] = seeded_route
+            initial_cost += planner.evaluate_cost(seeded_route)
 
             if max_iterations > 0 and not seeded_route.is_empty():
                 optimised_route = planner.optimize(seeded_route, max_iterations=max_iterations)
@@ -154,9 +180,16 @@ class FleetPlanner:
                 optimised_route = seeded_route
 
             routes[vehicle.vehicle_id] = optimised_route
+            optimised_cost += planner.evaluate_cost(optimised_route)
             vehicle.assign_route(optimised_route)
 
-        return FleetPlanResult(routes=routes, unassigned_tasks=remaining_task_ids)
+        return FleetPlanResult(
+            routes=routes,
+            initial_routes=initial_routes,
+            initial_cost=initial_cost,
+            optimised_cost=optimised_cost,
+            unassigned_tasks=remaining_task_ids,
+        )
 
 
 __all__ = ["FleetPlanner", "FleetPlanResult"]

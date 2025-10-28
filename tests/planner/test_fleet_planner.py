@@ -69,6 +69,8 @@ def test_fleet_planner_balances_tasks_across_vehicles():
     result = planner.plan_routes(max_iterations=10)
 
     assert set(result.routes.keys()) == {1, 2}
+    assert set(result.initial_routes.keys()) == {1, 2}
+    assert result.initial_cost >= result.optimised_cost
 
     total_pickups = 0
     for vehicle in vehicles:
@@ -112,7 +114,9 @@ def test_fleet_planner_handles_more_vehicles_than_tasks():
     result = planner.plan_routes(max_iterations=5)
 
     assert set(result.routes.keys()) == {1, 2, 3}
+    assert set(result.initial_routes.keys()) == {1, 2, 3}
     assert len(result.unassigned_tasks) == 0
+    assert result.initial_cost >= result.optimised_cost
 
     empty_routes = [route for route in result.routes.values() if route.is_empty()]
     assert len(empty_routes) == 1  # one vehicle should remain idle
