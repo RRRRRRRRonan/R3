@@ -92,6 +92,10 @@ R3/
 - **Repair算子**: greedy_insertion, regret2_insertion
 - **Local Search**: pair_exchange
 
+### 1.1 Matheuristic升级
+- **MatheuristicALNS**: 在ALNS主循环之上加入精英解记忆和分段重优化，结合仿MILP的段内重构提升能量约束场景下的收敛质量。
+- **设计说明**: 详见 [docs/summaries/matheuristic_alns.md](./summaries/matheuristic_alns.md)。
+
 ### 2. 充电策略
 - **FR**: Full Recharge（完全充电）
 - **PR-Fixed**: Partial Recharge Fixed（固定比例局部充电）

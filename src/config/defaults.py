@@ -14,6 +14,40 @@ from typing import Dict, Tuple
 
 
 @dataclass(frozen=True)
+class LPRepairParams:
+    """Parameters steering the LP-based repair operator inspired by Singh et al."""
+
+    time_limit_s: float = 0.5
+    max_plans_per_task: int = 6
+    improvement_tolerance: float = 1e-4
+    skip_penalty: float = 5_000.0
+    fractional_threshold: float = 1e-3
+
+
+@dataclass(frozen=True)
+class SegmentOptimizationParams:
+    """Configuration for the MILP-inspired segment optimiser in Matheuristic ALNS."""
+
+    max_segment_tasks: int = 4
+    candidate_pool_size: int = 5
+    improvement_tolerance: float = 1e-3
+    max_permutations: int = 24
+    lookahead_window: int = 3
+
+
+@dataclass(frozen=True)
+class MatheuristicParams:
+    """Higher-level knobs steering matheuristic intensification behaviour."""
+
+    elite_pool_size: int = 6
+    intensification_interval: int = 40
+    segment_frequency: int = 4
+    max_elite_trials: int = 3
+    segment_optimization: SegmentOptimizationParams = field(default_factory=SegmentOptimizationParams)
+    lp_repair: LPRepairParams = field(default_factory=LPRepairParams)
+
+
+@dataclass(frozen=True)
 class VehicleDefaults:
     """Baseline AMR characteristics used by vehicle factories."""
 
@@ -139,6 +173,7 @@ class ALNSHyperParameters:
     destroy_repair: DestroyRepairParams = field(default_factory=DestroyRepairParams)
     charging: ChargingDefaults = field(default_factory=ChargingDefaults)
     vehicle: VehicleDynamics = field(default_factory=VehicleDynamics)
+    matheuristic: MatheuristicParams = field(default_factory=MatheuristicParams)
 
 
 @dataclass(frozen=True)
@@ -170,6 +205,9 @@ DEFAULT_SIMULATED_ANNEALING_PARAMS = SimulatedAnnealingParams()
 DEFAULT_DESTROY_REPAIR_PARAMS = DestroyRepairParams()
 DEFAULT_CHARGING_DEFAULTS = ChargingDefaults()
 DEFAULT_VEHICLE_DYNAMICS = VehicleDynamics()
+DEFAULT_LP_REPAIR_PARAMS = LPRepairParams()
+DEFAULT_SEGMENT_OPTIMIZATION_PARAMS = SegmentOptimizationParams()
+DEFAULT_MATHEURISTIC_PARAMS = MatheuristicParams()
 DEFAULT_ALNS_HYPERPARAMETERS = ALNSHyperParameters()
 DEFAULT_OPTIMIZATION_SCENARIO = OptimizationScenarioDefaults(
     num_tasks=10,
