@@ -12,7 +12,8 @@ from core.vehicle import create_vehicle
 from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
 from physics.time import TimeWindow, TimeWindowType
-from planner.alns import MinimalALNS, CostParameters
+from config import CostParameters
+from planner.alns import MinimalALNS
 from strategy.charging_strategies import (
     FullRechargeStrategy,
     PartialRechargeFixedStrategy,

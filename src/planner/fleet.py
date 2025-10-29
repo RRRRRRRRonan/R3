@@ -42,7 +42,8 @@ from core.task import TaskPool
 from core.vehicle import Vehicle
 from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
-from planner.alns import CostParameters, MinimalALNS
+from config import CostParameters, DEFAULT_COST_PARAMETERS
+from planner.alns import MinimalALNS
 
 
 @dataclass
@@ -102,7 +103,7 @@ class FleetPlanner:
         self.vehicles = sorted(vehicles, key=lambda v: v.vehicle_id)
         self.task_pool = task_pool
         self.energy_config = energy_config
-        self.cost_params = cost_params or CostParameters()
+        self.cost_params = cost_params or DEFAULT_COST_PARAMETERS
         self.charging_strategy = charging_strategy
         self.repair_mode = repair_mode
         self.use_adaptive = use_adaptive

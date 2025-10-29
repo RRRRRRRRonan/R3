@@ -6,7 +6,7 @@ optimisation tests can focus on assertions instead of boilerplate setup.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Dict, List, Sequence, Tuple
 from copy import deepcopy
 import random
@@ -18,7 +18,12 @@ from core.vehicle import Vehicle, create_vehicle
 from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
 from physics.time import TimeWindow, TimeWindowType
-from planner.alns import CostParameters, MinimalALNS
+from config import (
+    CostParameters,
+    OptimizationScenarioDefaults,
+    DEFAULT_OPTIMIZATION_SCENARIO,
+)
+from planner.alns import MinimalALNS
 from planner.fleet import FleetPlanner
 
 
@@ -38,6 +43,16 @@ class ScenarioConfig:
     service_time: float = 45.0
     pickup_tw_width: float = 120.0
     delivery_gap: float = 30.0
+    vehicle_speed: float = DEFAULT_OPTIMIZATION_SCENARIO.vehicle_speed
+
+    @classmethod
+    def from_defaults(
+        cls, defaults: OptimizationScenarioDefaults, **overrides
+    ) -> "ScenarioConfig":
+        """Create a scenario configuration from shared defaults."""
+
+        params = {**asdict(defaults), **overrides}
+        return cls(**params)
 
 
 @dataclass
@@ -144,7 +159,7 @@ def build_scenario(config: ScenarioConfig) -> Scenario:
             battery_capacity=config.battery_capacity,
             initial_battery=config.battery_capacity,
         )
-        vehicle.speed = 1.5
+        vehicle.speed = config.vehicle_speed
         vehicles.append(vehicle)
 
     reference_vehicle = vehicles[0]
