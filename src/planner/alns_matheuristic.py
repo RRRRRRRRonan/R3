@@ -107,8 +107,7 @@ class MatheuristicALNS(MinimalALNS):
         destroy_usage = {op: 0 for op in ("random_removal", "partial_removal")}
         consecutive_no_improve = 0
 
-        if self._use_q_learning:
-            self._prepare_q_learning(max_iterations)
+        self._prepare_stagnation_thresholds(max_iterations)
 
         self._log(f"初始成本: {best_cost:.2f}m")
         self._log(f"总迭代次数: {max_iterations}")
@@ -119,7 +118,7 @@ class MatheuristicALNS(MinimalALNS):
                 self._log("使用自适应算子选择 ✓ (Destroy + Repair)")
 
         for iteration in range(max_iterations):
-            q_state = self._determine_state(consecutive_no_improve) if self._use_q_learning else None
+            q_state = self._determine_state(consecutive_no_improve)
             (
                 destroy_operator,
                 repair_operator,

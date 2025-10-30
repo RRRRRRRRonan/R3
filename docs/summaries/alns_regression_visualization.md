@@ -14,19 +14,21 @@ The script emits the Markdown table below, saves a JSON dump of the raw metrics
 
 | Scale | Solver | Baseline Cost | Optimised Cost | Improvement |
 |:------|:-------|--------------:|---------------:|------------:|
-| Small | Matheuristic ALNS | 35353.07 | 32941.42 | 6.82% |
-| Small | Minimal ALNS | 35791.99 | 31751.32 | 11.29% |
-| Small | Matheuristic + Q-learning | 35791.99 | 24215.64 | 32.34% |
-| Medium | Matheuristic ALNS | 24698.03 | 24324.44 | 1.51% |
-| Medium | Minimal ALNS | 38842.80 | 38842.80 | 0.00% |
+| Small | Matheuristic ALNS | 35353.07 | 32284.53 | 8.68% |
+| Small | Minimal ALNS | 35791.99 | 32263.47 | 9.86% |
+| Small | Matheuristic + Q-learning | 35791.99 | 24809.23 | 30.68% |
+| Medium | Matheuristic ALNS | 24698.03 | 24447.13 | 1.02% |
+| Medium | Minimal ALNS | 38842.80 | 38041.59 | 2.06% |
 | Medium | Matheuristic + Q-learning | 38842.80 | 38257.55 | 1.51% |
 | Large | Matheuristic ALNS | 52400.92 | 33600.06 | 35.88% |
-| Large | Minimal ALNS | 60709.91 | 59230.27 | 2.44% |
-| Large | Matheuristic + Q-learning | 60709.91 | 54340.95 | 10.49% |
+| Large | Minimal ALNS | 60709.91 | 56409.99 | 7.08% |
+| Large | Matheuristic + Q-learning | 60709.91 | 51611.44 | 14.99% |
 
 > **Note:** Dynamic stagnation thresholds for the Q-learning agent now adapt to
 > each scenario's iteration budget, keeping the state machine reachable on small
 > regression runs while preventing the large-scale preset from reporting an
-> infinite baseline cost.
+> infinite baseline cost.  The destroy operators also scale their removal volume
+> with the detected stagnation state so medium and large instances can break out
+> of shallow local minima without exhausting the runtime budget.
 
 ![Relative improvement comparison](../figures/alns_regression_improvements.svg)

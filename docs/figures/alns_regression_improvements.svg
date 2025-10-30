@@ -20,26 +20,26 @@
   <line class='grid' x1='70' y1='69.99' x2='830' y2='69.99' />
   <text class='label' x='55' y='74.99' text-anchor='end'>35.9</text>
   <text class='label' x='196.67' y='460' text-anchor='middle'>Small</text>
-  <rect x='101.67' y='316.73' width='50.67' height='113.27' fill='#4B8BBE' />
-  <text class='label' x='127.00' y='310.73' text-anchor='middle'>11.29%</text>
-  <rect x='165.00' y='361.55' width='50.67' height='68.45' fill='#306998' />
-  <text class='label' x='190.33' y='355.55' text-anchor='middle'>6.82%</text>
-  <rect x='228.33' y='105.47' width='50.67' height='324.53' fill='#FFE873' />
-  <text class='label' x='253.67' y='99.47' text-anchor='middle'>32.34%</text>
+  <rect x='101.67' y='331.08' width='50.67' height='98.92' fill='#4B8BBE' />
+  <text class='label' x='127.00' y='325.08' text-anchor='middle'>9.86%</text>
+  <rect x='165.00' y='342.91' width='50.67' height='87.09' fill='#306998' />
+  <text class='label' x='190.33' y='336.91' text-anchor='middle'>8.68%</text>
+  <rect x='228.33' y='122.11' width='50.67' height='307.89' fill='#FFE873' />
+  <text class='label' x='253.67' y='116.11' text-anchor='middle'>30.68%</text>
   <text class='label' x='450.00' y='460' text-anchor='middle'>Medium</text>
-  <rect x='355.00' y='430.00' width='50.67' height='0.00' fill='#4B8BBE' />
-  <text class='label' x='380.33' y='424.00' text-anchor='middle'>0.00%</text>
-  <rect x='418.33' y='414.82' width='50.67' height='15.18' fill='#306998' />
-  <text class='label' x='443.67' y='408.82' text-anchor='middle'>1.51%</text>
+  <rect x='355.00' y='409.30' width='50.67' height='20.70' fill='#4B8BBE' />
+  <text class='label' x='380.33' y='403.30' text-anchor='middle'>2.06%</text>
+  <rect x='418.33' y='419.81' width='50.67' height='10.19' fill='#306998' />
+  <text class='label' x='443.67' y='413.81' text-anchor='middle'>1.02%</text>
   <rect x='481.67' y='414.88' width='50.67' height='15.12' fill='#FFE873' />
   <text class='label' x='507.00' y='408.88' text-anchor='middle'>1.51%</text>
   <text class='label' x='703.33' y='460' text-anchor='middle'>Large</text>
-  <rect x='608.33' y='405.55' width='50.67' height='24.45' fill='#4B8BBE' />
-  <text class='label' x='633.67' y='399.55' text-anchor='middle'>2.44%</text>
+  <rect x='608.33' y='358.93' width='50.67' height='71.07' fill='#4B8BBE' />
+  <text class='label' x='633.67' y='352.93' text-anchor='middle'>7.08%</text>
   <rect x='671.67' y='70.00' width='50.67' height='360.00' fill='#306998' />
   <text class='label' x='697.00' y='64.00' text-anchor='middle'>35.88%</text>
-  <rect x='735.00' y='324.74' width='50.67' height='105.26' fill='#FFE873' />
-  <text class='label' x='760.33' y='318.74' text-anchor='middle'>10.49%</text>
+  <rect x='735.00' y='279.63' width='50.67' height='150.37' fill='#FFE873' />
+  <text class='label' x='760.33' y='273.63' text-anchor='middle'>14.99%</text>
   <rect x='610' y='50' width='18' height='18' fill='#4B8BBE' />
   <text class='label legend' x='636' y='64'>Minimal ALNS</text>
   <rect x='610' y='74' width='18' height='18' fill='#306998' />

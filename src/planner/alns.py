@@ -73,13 +73,15 @@ class MinimalALNS:
         self._stagnation_threshold: Optional[int] = None
         self._deep_stagnation_threshold: Optional[int] = None
 
+        self._q_params: QLearningParams = getattr(
+            self.hyper, 'q_learning', DEFAULT_Q_LEARNING_PARAMS
+        )
+
         if self._use_q_learning:
-            q_params: QLearningParams = getattr(self.hyper, 'q_learning', DEFAULT_Q_LEARNING_PARAMS)
-            self._q_params = q_params
             self._q_agent = QLearningOperatorAgent(
                 destroy_operators=self._destroy_operators,
                 repair_operators=self.repair_operators,
-                params=q_params,
+                params=self._q_params,
             )
             self.adaptive_repair_selector = None
             self.adaptive_destroy_selector = None
@@ -93,12 +95,10 @@ class MinimalALNS:
                 params=self.hyper.adaptive_selector
             )
             self._q_agent = None
-            self._q_params = None
         else:
             self.adaptive_repair_selector = None
             self.adaptive_destroy_selector = None
             self._q_agent = None
-            self._q_params = None
         self.initial_temp = self.hyper.simulated_annealing.initial_temperature
         self.cooling_rate = self.hyper.simulated_annealing.cooling_rate
 
@@ -106,17 +106,25 @@ class MinimalALNS:
         if self.verbose:
             print(message)
 
-    def _apply_destroy_operator(self, route: Route) -> Tuple[str, Route, List[int]]:
+    def _apply_destroy_operator(
+        self,
+        route: Route,
+        destroy_params: Optional[Tuple[int, float]] = None,
+    ) -> Tuple[str, Route, List[int]]:
         if self.use_adaptive and self.adaptive_destroy_selector is not None:
             operator = self.adaptive_destroy_selector.select()
         else:
             operator = 'random_removal'
 
+        q, remove_prob = self._resolve_destroy_params(route, destroy_params)
+
         if operator == 'partial_removal':
-            destroyed_route, removed_tasks = self.partial_removal(route, q=2)
+            destroyed_route, removed_tasks = self.partial_removal(route, q=q)
         else:
             operator = 'random_removal'
-            destroyed_route, removed_tasks = self.random_removal(route, q=2)
+            destroyed_route, removed_tasks = self.random_removal(
+                route, q=q, remove_cs_prob=remove_prob
+            )
 
         return operator, destroyed_route, removed_tasks
 
@@ -135,13 +143,15 @@ class MinimalALNS:
         *,
         state: Optional[str] = None,
     ) -> Tuple[str, str, Route, List[int], Route, Optional[Tuple[str, str]]]:
+        destroy_params = self._select_destroy_parameters(current_route, state)
+
         if self._use_q_learning:
             if state is None:
                 raise ValueError("state must be provided when using Q-learning adaptation")
             action = self._q_agent.select_action(state)
             destroy_operator, repair_operator = action
             destroyed_route, removed_task_ids = self._run_destroy_operator(
-                destroy_operator, current_route
+                destroy_operator, current_route, destroy_params
             )
             candidate_route = self._run_repair_operator(
                 repair_operator, destroyed_route, removed_task_ids
@@ -155,7 +165,9 @@ class MinimalALNS:
                 action,
             )
 
-        destroy_operator, destroyed_route, removed_task_ids = self._apply_destroy_operator(current_route)
+        destroy_operator, destroyed_route, removed_task_ids = self._apply_destroy_operator(
+            current_route, destroy_params
+        )
         repair_operator, candidate_route = self._apply_repair_operator(
             destroyed_route, removed_task_ids
         )
@@ -185,12 +197,16 @@ class MinimalALNS:
         return self.random_insertion(route, removed_task_ids)
 
     def _run_destroy_operator(
-        self, operator: str, route: Route
+        self,
+        operator: str,
+        route: Route,
+        destroy_params: Optional[Tuple[int, float]] = None,
     ) -> Tuple[Route, List[int]]:
+        q, remove_prob = self._resolve_destroy_params(route, destroy_params)
         if operator == 'partial_removal':
-            return self.partial_removal(route, q=2)
+            return self.partial_removal(route, q=q)
         if operator == 'random_removal':
-            return self.random_removal(route, q=2)
+            return self.random_removal(route, q=q, remove_cs_prob=remove_prob)
         raise ValueError(f"未知的Destroy算子: {operator}")
 
     def _run_repair_operator(
@@ -201,11 +217,8 @@ class MinimalALNS:
     ) -> Route:
         return self._execute_repair_operator(operator, route, removed_task_ids)
 
-    def _prepare_q_learning(self, max_iterations: int) -> None:
-        """Scale Q-learning thresholds to the upcoming iteration budget."""
-
-        if not self._use_q_learning:
-            return
+    def _prepare_stagnation_thresholds(self, max_iterations: int) -> None:
+        """Scale stagnation thresholds to the upcoming iteration budget."""
 
         params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
         scaled_stuck = max(
@@ -224,9 +237,6 @@ class MinimalALNS:
         )
 
     def _determine_state(self, consecutive_no_improve: int) -> str:
-        if not self._use_q_learning:
-            return 'explore'
-
         stuck_threshold = self._stagnation_threshold
         deep_threshold = self._deep_stagnation_threshold
 
@@ -256,6 +266,79 @@ class MinimalALNS:
         if is_accepted:
             return params.reward_accepted
         return params.reward_rejected
+
+    def _select_destroy_parameters(
+        self, route: Route, state: Optional[str]
+    ) -> Optional[Tuple[int, float]]:
+        """Pick a destroy strength based on the current stagnation state."""
+
+        state_key = state or 'explore'
+        task_count = len(route.get_served_tasks())
+
+        if task_count == 0:
+            return None
+
+        fraction_map = {
+            'explore': 0.12,
+            'stuck': 0.22,
+            'deep_stuck': 0.35,
+        }
+        min_remove = {
+            'explore': 2,
+            'stuck': 3,
+            'deep_stuck': 4,
+        }
+
+        fraction = fraction_map.get(state_key, fraction_map['explore'])
+        candidate_q = int(math.ceil(task_count * fraction))
+        minimum = min_remove.get(state_key, 2)
+
+        if task_count <= minimum:
+            q = task_count
+        else:
+            q = max(minimum, candidate_q)
+
+        q = max(1, min(task_count, q))
+
+        base_prob = self.hyper.destroy_repair.remove_cs_probability
+        prob_adjust = {
+            'explore': 0.0,
+            'stuck': 0.15,
+            'deep_stuck': 0.3,
+        }
+        remove_prob = min(1.0, max(0.0, base_prob + prob_adjust.get(state_key, 0.0)))
+
+        if task_count <= 1:
+            remove_prob = 0.0
+
+        return q, remove_prob
+
+    def _resolve_destroy_params(
+        self, route: Route, destroy_params: Optional[Tuple[int, float]]
+    ) -> Tuple[int, float]:
+        """Normalise destroy parameters before invoking an operator."""
+
+        task_count = len(route.get_served_tasks())
+        default_prob = self.hyper.destroy_repair.remove_cs_probability
+
+        if destroy_params is None or task_count == 0:
+            q = 0 if task_count == 0 else (2 if task_count > 1 else 1)
+            remove_prob = 0.0 if task_count <= 1 else default_prob
+        else:
+            q, remove_prob = destroy_params
+
+        if task_count > 0:
+            q = max(1, min(task_count, int(round(q))))
+        else:
+            q = 0
+
+        remove_prob = float(remove_prob)
+        remove_prob = max(0.0, min(1.0, remove_prob))
+
+        if task_count <= 1:
+            remove_prob = 0.0
+
+        return q, remove_prob
 
     def _log_q_learning_statistics(self) -> None:
         if not self._use_q_learning or not self.verbose:
@@ -321,11 +404,10 @@ class MinimalALNS:
             elif self.adaptation_mode == 'roulette':
                 self._log("使用自适应算子选择 ✓ (Destroy + Repair)")
 
-        if self._use_q_learning:
-            self._prepare_q_learning(max_iterations)
+        self._prepare_stagnation_thresholds(max_iterations)
 
         for iteration in range(max_iterations):
-            q_state = self._determine_state(consecutive_no_improve) if self._use_q_learning else None
+            q_state = self._determine_state(consecutive_no_improve)
             (
                 destroy_operator,
                 repair_operator,

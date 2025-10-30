@@ -2,30 +2,30 @@
   "small": {
     "minimal": {
       "baseline_cost": 35791.98834297467,
-      "optimised_cost": 31751.3183551869,
-      "improvement_ratio": 0.11289314103112354
+      "optimised_cost": 32263.472061810797,
+      "improvement_ratio": 0.09858396933280343
     },
     "matheuristic": {
       "baseline_cost": 35353.06872427369,
-      "optimised_cost": 32941.416817294,
-      "improvement_ratio": 0.06821619717905375
+      "optimised_cost": 32284.529583410305,
+      "improvement_ratio": 0.08679696704112426
     },
     "q_learning": {
       "baseline_cost": 35791.98834297467,
-      "optimised_cost": 24215.637131579657,
-      "improvement_ratio": 0.32343414678350063
+      "optimised_cost": 24809.227126759673,
+      "improvement_ratio": 0.30684970924144583
     }
   },
   "medium": {
     "minimal": {
       "baseline_cost": 38842.80279140272,
-      "optimised_cost": 38842.80279140272,
-      "improvement_ratio": 0.0
+      "optimised_cost": 38041.587057052566,
+      "improvement_ratio": 0.02062713493289651
     },
     "matheuristic": {
       "baseline_cost": 24698.02760650758,
-      "optimised_cost": 24324.442455523436,
-      "improvement_ratio": 0.01512611277856498
+      "optimised_cost": 24447.134456464708,
+      "improvement_ratio": 0.010158428601673708
     },
     "q_learning": {
       "baseline_cost": 38842.80279140272,
@@ -36,8 +36,8 @@
   "large": {
     "minimal": {
       "baseline_cost": 60709.91270867346,
-      "optimised_cost": 59230.27276826628,
-      "improvement_ratio": 0.024372295633292615
+      "optimised_cost": 56409.98706307864,
+      "improvement_ratio": 0.07082740616394431
     },
     "matheuristic": {
       "baseline_cost": 52400.91557396012,
@@ -46,8 +46,8 @@
     },
     "q_learning": {
       "baseline_cost": 60709.91270867346,
-      "optimised_cost": 54340.95257522912,
-      "improvement_ratio": 0.10490807595139928
+      "optimised_cost": 51611.43934437869,
+      "improvement_ratio": 0.14986800274207765
     }
   }
 }
