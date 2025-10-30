@@ -35,8 +35,8 @@ ALNS_TEST_PRESETS: Dict[str, ScalePreset] = {
         iterations=IterationPreset(minimal=16, matheuristic=28, q_learning=18),
     ),
     "medium": ScalePreset(
-        scenario_overrides={"num_tasks": 20, "num_charging": 2, "seed": 13},
-        iterations=IterationPreset(minimal=24, matheuristic=36, q_learning=24),
+        scenario_overrides={"num_tasks": 24, "num_charging": 1, "seed": 19},
+        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=36),
     ),
     "large": ScalePreset(
         scenario_overrides={"num_tasks": 30, "num_charging": 3, "seed": 17},

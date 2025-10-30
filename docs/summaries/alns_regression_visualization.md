@@ -3,10 +3,10 @@
 This note summarises the unified regression presets across the Minimal ALNS,
 Matheuristic ALNS, and Matheuristic + Q-learning solvers.  The metrics were
 produced with [`scripts/generate_alns_visualization.py`](../../scripts/generate_alns_visualization.py)
-using the shared optimisation presets scaled to 60% of their iteration budgets
-(`--iteration-scale 0.6`).  To keep runtimes modest, the helper narrows the
-medium and large scenarios to single-vehicle cases with 12 and 16 requests
-respectively while preserving the relative charging density from the tests.
+using the shared optimisation presets at their full iteration budgets so the
+reported improvements mirror the regression tests exactly.  The medium scale now
+uses a tougher 24-request, single-station scenario which exposes the benefits of
+state-aware destroy strengths and the reinforcement-learning agent.
 
 The script emits the Markdown table below, saves a JSON dump of the raw metrics
 (`docs/data/alns_regression_results.json`), and renders an SVG bar chart
@@ -14,21 +14,22 @@ The script emits the Markdown table below, saves a JSON dump of the raw metrics
 
 | Scale | Solver | Baseline Cost | Optimised Cost | Improvement |
 |:------|:-------|--------------:|---------------:|------------:|
-| Small | Matheuristic ALNS | 35353.07 | 32284.53 | 8.68% |
-| Small | Minimal ALNS | 35791.99 | 32263.47 | 9.86% |
-| Small | Matheuristic + Q-learning | 35791.99 | 24809.23 | 30.68% |
-| Medium | Matheuristic ALNS | 24698.03 | 24447.13 | 1.02% |
-| Medium | Minimal ALNS | 38842.80 | 38041.59 | 2.06% |
-| Medium | Matheuristic + Q-learning | 38842.80 | 38257.55 | 1.51% |
-| Large | Matheuristic ALNS | 52400.92 | 33600.06 | 35.88% |
-| Large | Minimal ALNS | 60709.91 | 56409.99 | 7.08% |
-| Large | Matheuristic + Q-learning | 60709.91 | 51611.44 | 14.99% |
+| Small | Matheuristic ALNS | 35353.07 | 15442.74 | 56.32% |
+| Small | Minimal ALNS | 35791.99 | 33690.76 | 5.87% |
+| Small | Matheuristic + Q-learning | 35791.99 | 24014.70 | 32.90% |
+| Medium | Matheuristic ALNS | 35102.80 | 21500.60 | 38.75% |
+| Medium | Minimal ALNS | 39317.52 | 37099.26 | 5.64% |
+| Medium | Matheuristic + Q-learning | 39317.52 | 34945.20 | 11.12% |
+| Large | Matheuristic ALNS | 52400.92 | 32381.44 | 38.20% |
+| Large | Minimal ALNS | 60709.91 | 55034.43 | 9.35% |
+| Large | Matheuristic + Q-learning | 60709.91 | 50054.48 | 17.55% |
 
-> **Note:** Dynamic stagnation thresholds for the Q-learning agent now adapt to
-> each scenario's iteration budget, keeping the state machine reachable on small
+> **Note:** Dynamic stagnation thresholds for the Q-learning agent adapt to each
+> scenario's iteration budget, keeping the state machine reachable on the shorter
 > regression runs while preventing the large-scale preset from reporting an
 > infinite baseline cost.  The destroy operators also scale their removal volume
-> with the detected stagnation state so medium and large instances can break out
-> of shallow local minima without exhausting the runtime budget.
+> with the detected stagnation state so the new 24-task medium instance and the
+> large preset can break out of shallow local minima without exhausting the
+> runtime budget.
 
 ![Relative improvement comparison](../figures/alns_regression_improvements.svg)

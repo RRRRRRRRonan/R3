@@ -29,7 +29,7 @@ tests/optimization/
 | Test module | Scenario size | Charging stations | Iterations |
 |-------------|---------------|-------------------|------------|
 | `matheuristic/test_matheuristic_small.py` | 10 tasks | 1 | 28 |
-| `matheuristic/test_matheuristic_medium.py` | 20 tasks | 2 | 36 |
+| `matheuristic/test_matheuristic_medium.py` | 24 tasks | 1 | 44 |
 | `matheuristic/test_matheuristic_large.py` | 30 tasks | 3 | 44 |
 
 Each suite exercises the three supported charging strategies (full recharge,
@@ -41,7 +41,7 @@ search reduces the weighted cost from the greedy baseline solution.
 | Test module | Scenario size | Charging stations | Iterations |
 |-------------|---------------|-------------------|------------|
 | `minimal/test_minimal_small.py` | 10 tasks | 1 | 16 |
-| `minimal/test_minimal_medium.py` | 20 tasks | 2 | 24 |
+| `minimal/test_minimal_medium.py` | 24 tasks | 1 | 32 |
 | `minimal/test_minimal_large.py` | 30 tasks | 3 | 32 |
 
 These tests run the baseline single-vehicle ALNS solver without matheuristic
@@ -53,7 +53,7 @@ variants so we can compare solver behaviour under identical conditions.
 | Test module | Scenario size | Charging stations | Iterations |
 |-------------|---------------|-------------------|------------|
 | `q_learning/test_q_learning_small.py` | 10 tasks | 1 | 18 |
-| `q_learning/test_q_learning_medium.py` | 20 tasks | 2 | 24 |
+| `q_learning/test_q_learning_medium.py` | 24 tasks | 1 | 36 |
 | `q_learning/test_q_learning_large.py` | 30 tasks | 3 | 30 |
 
 These tests reuse the deterministic scenario factory but run a single solver

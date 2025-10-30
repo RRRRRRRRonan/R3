@@ -2,52 +2,52 @@
   "small": {
     "minimal": {
       "baseline_cost": 35791.98834297467,
-      "optimised_cost": 32263.472061810797,
-      "improvement_ratio": 0.09858396933280343
+      "optimised_cost": 33690.764268531915,
+      "improvement_ratio": 0.05870654779801266
     },
     "matheuristic": {
       "baseline_cost": 35353.06872427369,
-      "optimised_cost": 32284.529583410305,
-      "improvement_ratio": 0.08679696704112426
+      "optimised_cost": 15442.738806145468,
+      "improvement_ratio": 0.5631853368490649
     },
     "q_learning": {
       "baseline_cost": 35791.98834297467,
-      "optimised_cost": 24809.227126759673,
-      "improvement_ratio": 0.30684970924144583
+      "optimised_cost": 24014.703796511367,
+      "improvement_ratio": 0.3290480661093246
     }
   },
   "medium": {
     "minimal": {
-      "baseline_cost": 38842.80279140272,
-      "optimised_cost": 38041.587057052566,
-      "improvement_ratio": 0.02062713493289651
+      "baseline_cost": 39317.523459731936,
+      "optimised_cost": 37099.25939941936,
+      "improvement_ratio": 0.0564192213831695
     },
     "matheuristic": {
-      "baseline_cost": 24698.02760650758,
-      "optimised_cost": 24447.134456464708,
-      "improvement_ratio": 0.010158428601673708
+      "baseline_cost": 35102.79961678669,
+      "optimised_cost": 21500.596407495766,
+      "improvement_ratio": 0.3874962498086945
     },
     "q_learning": {
-      "baseline_cost": 38842.80279140272,
-      "optimised_cost": 38257.55341525214,
-      "improvement_ratio": 0.015067125286852678
+      "baseline_cost": 39317.523459731936,
+      "optimised_cost": 34945.199617110826,
+      "improvement_ratio": 0.1112054742486296
     }
   },
   "large": {
     "minimal": {
       "baseline_cost": 60709.91270867346,
-      "optimised_cost": 56409.98706307864,
-      "improvement_ratio": 0.07082740616394431
+      "optimised_cost": 55034.429036512,
+      "improvement_ratio": 0.09348528796930085
     },
     "matheuristic": {
       "baseline_cost": 52400.91557396012,
-      "optimised_cost": 33600.05867342281,
-      "improvement_ratio": 0.3587887099797188
+      "optimised_cost": 32381.43842775225,
+      "improvement_ratio": 0.3820444151963684
     },
     "q_learning": {
       "baseline_cost": 60709.91270867346,
-      "optimised_cost": 51611.43934437869,
-      "improvement_ratio": 0.14986800274207765
+      "optimised_cost": 50054.48326443085,
+      "improvement_ratio": 0.17551383240121674
     }
   }
 }
