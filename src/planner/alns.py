@@ -20,11 +20,14 @@ from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
 from physics.time import TimeConfig
 from planner.operators import AdaptiveOperatorSelector
+from planner.q_learning import QLearningOperatorAgent
 from config import (
     ALNSHyperParameters,
     CostParameters,
     DEFAULT_ALNS_HYPERPARAMETERS,
     DEFAULT_COST_PARAMETERS,
+    DEFAULT_Q_LEARNING_PARAMS,
+    QLearningParams,
 )
 
 class MinimalALNS:
@@ -48,6 +51,7 @@ class MinimalALNS:
         use_adaptive: bool = True,
         *,
         verbose: bool = True,
+        adaptation_mode: str = "q_learning",
         hyper_params: Optional[ALNSHyperParameters] = None,
         repair_operators: Optional[Sequence[str]] = None,
     ):
@@ -63,18 +67,36 @@ class MinimalALNS:
         self.use_adaptive = use_adaptive or repair_mode == 'adaptive'
         self.repair_operators = list(repair_operators or ['greedy', 'regret2', 'random'])
 
-        if self.use_adaptive:
+        self._destroy_operators = ('random_removal', 'partial_removal')
+        self.adaptation_mode = adaptation_mode
+        self._use_q_learning = self.use_adaptive and adaptation_mode == 'q_learning'
+
+        if self._use_q_learning:
+            q_params: QLearningParams = getattr(self.hyper, 'q_learning', DEFAULT_Q_LEARNING_PARAMS)
+            self._q_params = q_params
+            self._q_agent = QLearningOperatorAgent(
+                destroy_operators=self._destroy_operators,
+                repair_operators=self.repair_operators,
+                params=q_params,
+            )
+            self.adaptive_repair_selector = None
+            self.adaptive_destroy_selector = None
+        elif self.use_adaptive and adaptation_mode == 'roulette':
             self.adaptive_repair_selector = AdaptiveOperatorSelector(
                 operators=self.repair_operators,
                 params=self.hyper.adaptive_selector
             )
             self.adaptive_destroy_selector = AdaptiveOperatorSelector(
-                operators=['random_removal', 'partial_removal'],
+                operators=list(self._destroy_operators),
                 params=self.hyper.adaptive_selector
             )
+            self._q_agent = None
+            self._q_params = None
         else:
             self.adaptive_repair_selector = None
             self.adaptive_destroy_selector = None
+            self._q_agent = None
+            self._q_params = None
         self.initial_temp = self.hyper.simulated_annealing.initial_temperature
         self.cooling_rate = self.hyper.simulated_annealing.cooling_rate
 
@@ -105,6 +127,45 @@ class MinimalALNS:
         repaired_route = self._execute_repair_operator(operator, route, removed_task_ids)
         return operator, repaired_route
 
+    def _execute_destroy_repair(
+        self,
+        current_route: Route,
+        *,
+        state: Optional[str] = None,
+    ) -> Tuple[str, str, Route, List[int], Route, Optional[Tuple[str, str]]]:
+        if self._use_q_learning:
+            if state is None:
+                raise ValueError("state must be provided when using Q-learning adaptation")
+            action = self._q_agent.select_action(state)
+            destroy_operator, repair_operator = action
+            destroyed_route, removed_task_ids = self._run_destroy_operator(
+                destroy_operator, current_route
+            )
+            candidate_route = self._run_repair_operator(
+                repair_operator, destroyed_route, removed_task_ids
+            )
+            return (
+                destroy_operator,
+                repair_operator,
+                destroyed_route,
+                removed_task_ids,
+                candidate_route,
+                action,
+            )
+
+        destroy_operator, destroyed_route, removed_task_ids = self._apply_destroy_operator(current_route)
+        repair_operator, candidate_route = self._apply_repair_operator(
+            destroyed_route, removed_task_ids
+        )
+        return (
+            destroy_operator,
+            repair_operator,
+            destroyed_route,
+            removed_task_ids,
+            candidate_route,
+            None,
+        )
+
     def _deterministic_repair_choice(self) -> str:
         if self.repair_mode in self.repair_operators:
             return self.repair_mode
@@ -120,6 +181,59 @@ class MinimalALNS:
         if operator == 'lp':
             return self.lp_insertion(route, removed_task_ids)
         return self.random_insertion(route, removed_task_ids)
+
+    def _run_destroy_operator(
+        self, operator: str, route: Route
+    ) -> Tuple[Route, List[int]]:
+        if operator == 'partial_removal':
+            return self.partial_removal(route, q=2)
+        if operator == 'random_removal':
+            return self.random_removal(route, q=2)
+        raise ValueError(f"未知的Destroy算子: {operator}")
+
+    def _run_repair_operator(
+        self,
+        operator: str,
+        route: Route,
+        removed_task_ids: List[int],
+    ) -> Route:
+        return self._execute_repair_operator(operator, route, removed_task_ids)
+
+    def _determine_state(self, consecutive_no_improve: int) -> str:
+        if not self._use_q_learning:
+            return 'explore'
+
+        params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
+        if consecutive_no_improve >= params.deep_stagnation_threshold:
+            return 'deep_stuck'
+        if consecutive_no_improve >= params.stagnation_threshold:
+            return 'stuck'
+        return 'explore'
+
+    def _compute_q_reward(
+        self,
+        *,
+        improvement: float,
+        is_new_best: bool,
+        is_accepted: bool,
+    ) -> float:
+        params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
+        if is_new_best:
+            return params.reward_new_best
+        if improvement > 0:
+            return params.reward_improvement
+        if is_accepted:
+            return params.reward_accepted
+        return params.reward_rejected
+
+    def _log_q_learning_statistics(self) -> None:
+        if not self._use_q_learning or not self.verbose:
+            return
+
+        self._log("\n" + "=" * 70)
+        self._log("Q-Learning算子统计")
+        self._log("=" * 70)
+        self._log(self._q_agent.format_statistics())
 
     def _update_adaptive_weights(
         self,
@@ -166,28 +280,39 @@ class MinimalALNS:
 
         repair_usage: Counter[str] = Counter()
         destroy_usage: Counter[str] = Counter()
+        consecutive_no_improve = 0
 
         self._log(f"初始成本: {best_cost:.2f}m")
         self._log(f"总迭代次数: {max_iterations}")
         if self.use_adaptive:
-            self._log("使用自适应算子选择 ✓ (Destroy + Repair)")
+            if self._use_q_learning:
+                self._log("使用Q-Learning算子选择 ✓ (Destroy + Repair)")
+            elif self.adaptation_mode == 'roulette':
+                self._log("使用自适应算子选择 ✓ (Destroy + Repair)")
 
         for iteration in range(max_iterations):
-            destroy_operator, destroyed_route, removed_task_ids = self._apply_destroy_operator(current_route)
-            destroy_usage[destroy_operator] += 1
+            q_state = self._determine_state(consecutive_no_improve) if self._use_q_learning else None
+            (
+                destroy_operator,
+                repair_operator,
+                destroyed_route,
+                removed_task_ids,
+                candidate_route,
+                q_action,
+            ) = self._execute_destroy_repair(current_route, state=q_state)
 
-            repair_operator, candidate_route = self._apply_repair_operator(destroyed_route, removed_task_ids)
+            destroy_usage[destroy_operator] += 1
             repair_usage[repair_operator] += 1
 
             # 评估成本
+            previous_cost = self.evaluate_cost(current_route)
             candidate_cost = self.evaluate_cost(candidate_route)
-            current_cost = self.evaluate_cost(current_route)
 
             # 计算改进量
-            improvement = current_cost - candidate_cost
+            improvement = previous_cost - candidate_cost
 
             # 接受准则
-            is_accepted = self.accept_solution(candidate_cost, current_cost, temperature)
+            is_accepted = self.accept_solution(candidate_cost, previous_cost, temperature)
             is_new_best = False
 
             if is_accepted:
@@ -196,10 +321,9 @@ class MinimalALNS:
                     best_route = candidate_route
                     best_cost = candidate_cost
                     is_new_best = True
-                    print(f"迭代 {iteration+1}: 新最优成本 {best_cost:.2f}m")
+                    self._log(f"迭代 {iteration+1}: 新最优成本 {best_cost:.2f}m")
 
-            # 更新自适应权重
-            if self.use_adaptive:
+            if self.use_adaptive and self.adaptation_mode == 'roulette':
                 self._update_adaptive_weights(
                     repair_operator=repair_operator,
                     destroy_operator=destroy_operator,
@@ -207,6 +331,21 @@ class MinimalALNS:
                     is_new_best=is_new_best,
                     is_accepted=is_accepted,
                 )
+
+            if is_new_best:
+                consecutive_no_improve = 0
+            else:
+                consecutive_no_improve += 1
+
+            if self._use_q_learning and q_state is not None and q_action is not None:
+                reward = self._compute_q_reward(
+                    improvement=improvement,
+                    is_new_best=is_new_best,
+                    is_accepted=is_accepted,
+                )
+                next_state = self._determine_state(consecutive_no_improve)
+                self._q_agent.update(q_state, q_action, reward, next_state)
+                self._q_agent.decay_epsilon()
 
             # 降温
             temperature *= self.cooling_rate
@@ -227,7 +366,7 @@ class MinimalALNS:
         self._log(f"  Destroy: {destroy_summary}")
         self._log(f"最终最优成本: {best_cost:.2f}m (改进 {self.evaluate_cost(initial_route)-best_cost:.2f}m)")
 
-        if self.use_adaptive and self.verbose:
+        if self.adaptation_mode == 'roulette' and self.use_adaptive and self.verbose:
             self._log("\n" + "=" * 70)
             self._log("Repair算子自适应统计")
             self._log("=" * 70)
@@ -238,6 +377,9 @@ class MinimalALNS:
                 self._log("Destroy算子自适应统计")
                 self._log("=" * 70)
                 self._log(self.adaptive_destroy_selector.format_statistics())
+
+        if self._use_q_learning:
+            self._log_q_learning_statistics()
 
         return best_route
     

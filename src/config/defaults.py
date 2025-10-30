@@ -174,6 +174,24 @@ class ALNSHyperParameters:
     charging: ChargingDefaults = field(default_factory=ChargingDefaults)
     vehicle: VehicleDynamics = field(default_factory=VehicleDynamics)
     matheuristic: MatheuristicParams = field(default_factory=MatheuristicParams)
+    q_learning: "QLearningParams" = field(default_factory=lambda: QLearningParams())
+
+
+@dataclass(frozen=True)
+class QLearningParams:
+    """Hyper-parameters for the Q-learning operator agent."""
+
+    alpha: float = 0.1
+    gamma: float = 0.9
+    initial_epsilon: float = 1.0
+    epsilon_decay: float = 0.995
+    epsilon_min: float = 0.05
+    reward_new_best: float = 50.0
+    reward_improvement: float = 20.0
+    reward_accepted: float = 5.0
+    reward_rejected: float = 0.0
+    stagnation_threshold: int = 200
+    deep_stagnation_threshold: int = 800
 
 
 @dataclass(frozen=True)
@@ -208,6 +226,7 @@ DEFAULT_VEHICLE_DYNAMICS = VehicleDynamics()
 DEFAULT_LP_REPAIR_PARAMS = LPRepairParams()
 DEFAULT_SEGMENT_OPTIMIZATION_PARAMS = SegmentOptimizationParams()
 DEFAULT_MATHEURISTIC_PARAMS = MatheuristicParams()
+DEFAULT_Q_LEARNING_PARAMS = QLearningParams()
 DEFAULT_ALNS_HYPERPARAMETERS = ALNSHyperParameters()
 DEFAULT_OPTIMIZATION_SCENARIO = OptimizationScenarioDefaults(
     num_tasks=10,
