@@ -8,7 +8,7 @@
 tests/
 ├── warehouse_regression/ # 仓储回归阶段场景回归 (MinimalALNS)
 ├── charging/             # 充电策略对比与验证
-└── optimization/         # ALNS 优化规模回归 (Matheuristic / Q-learning)
+└── optimization/         # ALNS 优化规模回归 (Minimal / Matheuristic / Q-learning)
 ```
 
 ## 仓储回归场景（`tests/warehouse_regression/`）
@@ -48,10 +48,15 @@ python tests/charging/test_strategy_comparison.py
 ```
 optimization/
 ├── common.py
+├── minimal/
+│   ├── test_minimal_small.py
+│   ├── test_minimal_medium.py
+│   └── test_minimal_large.py
 ├── matheuristic/
 │   ├── test_matheuristic_small.py
 │   ├── test_matheuristic_medium.py
 │   └── test_matheuristic_large.py
+├── presets.py
 ├── q_learning/
 │   ├── test_q_learning_small.py
 │   ├── test_q_learning_medium.py
@@ -60,24 +65,31 @@ optimization/
 └── test_alns_matheuristic.py
 ```
 
+### Minimal ALNS（大/中/小规模）
+
+| 文件 | 场景规模 / 迭代 | 说明 |
+|------|-----------------|------|
+| `minimal/test_minimal_small.py` | 10 任务 / 16 迭代 | 验证基础版 ALNS 在统一小场景下优于贪心基线 |
+| `minimal/test_minimal_medium.py` | 20 任务 / 24 迭代 | 中规模统一场景的回归，确保成本改进 |
+| `minimal/test_minimal_large.py` | 30 任务 / 32 迭代 | 大规模统一场景，确认 Q-learning 模式下的稳健性 |
+
 ### Matheuristic ALNS（大/中/小规模）
 
-| 文件 | 场景规模 | 说明 |
-|------|----------|------|
-| `matheuristic/test_matheuristic_small.py` | 10 任务 / 1 站 | 烟雾测试，三种充电策略均需优于贪心基线 |
-| `matheuristic/test_matheuristic_medium.py` | 30 任务 / 2 站 | 周期性回归，验证主展示场景的成本改进 |
-| `matheuristic/test_matheuristic_large.py` | 50 任务 / 3 站 | 压力测试，覆盖自适应算子在大规模下的表现 |
+| 文件 | 场景规模 / 迭代 | 说明 |
+|------|-----------------|------|
+| `matheuristic/test_matheuristic_small.py` | 10 任务 / 28 迭代 | 烟雾测试，三种充电策略均需优于贪心基线 |
+| `matheuristic/test_matheuristic_medium.py` | 20 任务 / 36 迭代 | 周期性回归，验证统一中规模场景的成本改进 |
+| `matheuristic/test_matheuristic_large.py` | 30 任务 / 44 迭代 | 压力测试，覆盖自适应算子在大规模下的表现 |
 
 ### Matheuristic + Q-learning（大/中/小规模）
 
-| 文件 | 场景规模 | 说明 |
-|------|----------|------|
-| `q_learning/test_q_learning_small.py` | 10 任务 / 10 迭代 | 验证 Q-learning 算子在小规模下的学习与成本改进 |
-| `q_learning/test_q_learning_medium.py` | 20 任务 / 14 迭代 | 确认 Q-learning 在中规模下仍能持续获得正奖励 |
-| `q_learning/test_q_learning_large.py` | 30 任务 / 18 迭代 | 大规模压力测试，确保 Q-learning 统计和成本表现稳定 |
+| 文件 | 场景规模 / 迭代 | 说明 |
+|------|-----------------|------|
+| `q_learning/test_q_learning_small.py` | 10 任务 / 18 迭代 | 验证 Q-learning 算子在小规模下的学习与成本改进 |
+| `q_learning/test_q_learning_medium.py` | 20 任务 / 24 迭代 | 确认 Q-learning 在中规模下仍能持续获得正奖励 |
+| `q_learning/test_q_learning_large.py` | 30 任务 / 30 迭代 | 大规模压力测试，确保 Q-learning 统计和成本表现稳定 |
 
-各测试均使用确定性的场景生成器：`matheuristic/` 套件覆盖三种充电策略，而 `q_learning/` 套件专注于单一配置以验证强化学习信号
-（Q 值更新、epsilon 衰减、算子使用次数）。
+各测试均使用确定性的场景生成器，参数统一由 `optimization/presets.py` 管理：`minimal/` 套件验证基础 ALNS，`matheuristic/` 套件覆盖三种充电策略，而 `q_learning/` 套件专注于单一配置以验证强化学习信号（Q 值更新、epsilon 衰减、算子使用次数）。
 
 运行示例：
 
@@ -88,11 +100,10 @@ python -m pytest tests/optimization/q_learning/test_q_learning_small.py -q
 
 > ⚠️ **命令不可用？**
 >
-> - 若提示 `pytest` 不是可执行文件，说明当前环境尚未安装该工具，请执行 `python -m pip install pytest`（或使用项目统一的依赖安装命
-令）。
+> - 若提示 `pytest` 不是可执行文件，说明当前环境尚未安装该工具，请执行 `python -m pip install pytest`（或使用项目统一的依赖安装命令）。
 > - Windows PowerShell 默认不会解析 `pytest` 入口，使用上面展示的 `python -m pytest …` 形式即可跨平台运行。
 
-大规模测试可能耗时数分钟，可在调试阶段临时降低测试文件内的迭代次数。
+大规模测试可能耗时数分钟，可在调试阶段临时调整 `presets.py` 中的迭代次数以保持三套回归同步。
 
 ## 执行提示
 

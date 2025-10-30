@@ -1,16 +1,12 @@
 """Ensure Q-learning remains effective on the medium optimisation scenario."""
 
-from tests.optimization.common import ScenarioConfig
-from config import OPTIMIZATION_SCENARIO_PRESETS
+from tests.optimization.common import get_scale_config, get_solver_iterations
 
 from tests.optimization.q_learning.utils import run_q_learning_trial
 
-MEDIUM_Q_CONFIG = ScenarioConfig.from_defaults(
-    OPTIMIZATION_SCENARIO_PRESETS["medium"],
-    num_tasks=20,
-)
-
-ITERATIONS = 14
+SCALE = "medium"
+MEDIUM_Q_CONFIG = get_scale_config(SCALE)
+ITERATIONS = get_solver_iterations(SCALE, "q_learning")
 
 
 def test_q_learning_accumulates_rewards_on_medium_scenario():
