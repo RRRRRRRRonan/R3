@@ -6,14 +6,14 @@
 
 ```
 tests/
-├── warehouse_regression/ # 仓储回归（原 Week 3）场景回归
+├── warehouse_regression/ # 仓储回归阶段场景回归
 ├── charging/     # 充电策略对比与验证
 └── optimization/ # 小/中/大规模 ALNS 架构回归
 ```
 
-## 仓储回归场景（原 Week 3，`tests/warehouse_regression/`）
+## 仓储回归场景（`tests/warehouse_regression/`）
 
-> 注：早期项目在第三周迭代中引入该批仓储场景回归测试，因此最初以 "Week 3" 命名；现统一重命名为 "warehouse_regression" 以突显其仓储回归含义。
+> 注：早期项目在第三周迭代中引入该批仓储场景回归测试，因此最初以阶段代号命名；现统一改为 "warehouse_regression" 以突显其仓储回归含义。
 
 | 文件 | 侧重点 |
 |------|--------|

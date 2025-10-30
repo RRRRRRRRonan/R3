@@ -1,8 +1,8 @@
 """Shared configuration objects for the warehouse regression scenarios.
 
 These dataclasses encode physical layouts, robot capabilities, and energy
-parameters for the small, medium, and large Week 3 scenarios so tests can build
-consistent environments without duplicating constants.
+parameters for the small, medium, and large warehouse regression scenarios so
+tests can build consistent environments without duplicating constants.
 """
 
 from dataclasses import dataclass

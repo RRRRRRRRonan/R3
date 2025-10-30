@@ -9,7 +9,7 @@ used to live in this folder.
 | Test module | Scenario size | Charging stations | Purpose |
 |-------------|---------------|-------------------|---------|
 | `test_alns_optimization_small.py` | 10 tasks | 1 | Quick confidence check that every charging strategy improves a compact instance. |
-| `test_alns_optimization_medium.py` | 30 tasks | 2 | Regression harness for the default demo instance showcased in Week 3. |
+| `test_alns_optimization_medium.py` | 30 tasks | 2 | Regression harness for the default demo instance introduced during the warehouse regression iteration. |
 | `test_alns_optimization_large.py` | 50 tasks | 3 | Stress test for the adaptive operator logic at higher scale. |
 
 Each suite exercises the three supported charging strategies (full recharge,

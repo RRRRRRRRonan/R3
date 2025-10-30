@@ -44,7 +44,7 @@ src/
 
 ### Destroy算子
 - **random_removal**: 随机移除q个任务
-- **partial_removal** (Week 3): 只移除delivery节点，保留pickup
+- **partial_removal**（仓储场景迭代）: 只移除delivery节点，保留pickup
 
 ### Repair算子
 - **greedy_insertion**: 贪心插入（最小成本）
@@ -52,7 +52,7 @@ src/
 - **random_insertion**: 随机插入
 
 ### Local Search
-- **pair_exchange** (Week 3): 交换两个任务位置
+- **pair_exchange**（仓储场景迭代）: 交换两个任务位置
 
 ### 约束检查（Repair阶段）
 ```python

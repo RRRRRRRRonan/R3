@@ -69,7 +69,7 @@ R3/
 │   └── strategy/          # 充电策略
 │
 ├── tests/                  # 测试套件
-│   ├── warehouse_regression/ # 仓储回归（原 Week 3）核心流程测试
+│   ├── warehouse_regression/ # 仓储回归阶段核心流程测试
 │   │   ├── test_integrated_features.py      ★ 综合测试
 │   │   ├── test_regression_comprehensive.py
 │   │   ├── test_regression_small_scale.py
@@ -150,5 +150,5 @@ R3/
 
 ---
 
-*版本: 1.0 (仓储回归测试整合完成（原 Week 3）)*
+*版本: 1.0 (仓储回归测试整合完成)*
 *最后更新: 2024*

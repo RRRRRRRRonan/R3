@@ -338,7 +338,7 @@ route: depot → p1 → d1 → p2 →     → p3 → d3  # pickup保留位置信
 - 搜索空间更小，更容易找到改进
 
 #### 2. **更适合pickup-delivery分离场景**
-- Week 3实现了pickup-delivery分离优化
+- 仓储场景迭代实现了pickup-delivery分离优化
 - `partial_removal`专门为此设计
 - 允许更灵活的重新组织delivery顺序
 

@@ -261,7 +261,7 @@ python tests/debug/debug_pr_minimal_initial.py
 
 ## 下一步计划
 
-### Week 3：取送货节点分离优化
+### 仓储场景迭代：取送货节点分离优化
 - 允许在pickup和delivery之间插入其他任务
 - 提高调度灵活性
 - 降低距离成本
@@ -300,7 +300,7 @@ python tests/debug/debug_pr_minimal_initial.py
 ## 联系与贡献
 
 **项目状态**：Week 2 已完成 ✅
-**下一步**：Week 3 取送货分离优化
+**下一步**：仓储场景迭代（取送货分离优化）
 **Git分支**：`claude/alns-charging-integration-011CUMKhsmT1H6wFBWgf8KxX`
 
 ---

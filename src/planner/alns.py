@@ -304,7 +304,7 @@ class MinimalALNS:
         q: Optional[int] = None,
     ) -> Tuple[Route, List[int]]:
         """
-        Destroy算子：只移除delivery节点（Week 3步骤2.2）
+        Destroy算子：只移除delivery节点（仓储场景迭代步骤2.2）
 
         功能:
             - 随机选择q个任务
@@ -346,7 +346,7 @@ class MinimalALNS:
 
     def pair_exchange(self, route: Route) -> Route:
         """
-        Local search算子：交换两个任务的位置（Week 3步骤2.3）
+        Local search算子：交换两个任务的位置（仓储场景迭代步骤2.3）
 
         功能:
             - 随机选择两个任务
@@ -436,13 +436,13 @@ class MinimalALNS:
         """
         贪心插入算子 + 充电支持
 
-        Week 3改进（步骤2.1）：
+        仓储场景迭代改进（步骤2.1）：
         - 支持pickup/delivery分离插入（可以先集中取货，再集中送货）
         - 增加容量约束检查，防止超载
 
         策略：
         1. 对每个任务，找到成本最小的插入位置
-        2. Week 3新增：检查容量可行性（避免超载）
+        2. 仓储场景迭代新增：检查容量可行性（避免超载）
         3. 如果需要充电，在总成本中加入充电惩罚
         4. 插入成本 = 距离增量 + 充电惩罚
         """
@@ -841,7 +841,7 @@ class MinimalALNS:
         vehicle_speed: Optional[float] = None,
     ) -> Tuple[bool, float]:
         """
-        快速检查路径的时间窗可行性（Week 3新增）
+        快速检查路径的时间窗可行性（仓储场景迭代新增）
 
         简化版：只检查硬时间窗违反，计算软时间窗延迟成本
 
@@ -1283,9 +1283,9 @@ class MinimalALNS:
                       route: Route,
                       removed_task_ids: List[int]) -> Route:
         """
-        Regret-2插入算子+充电支持（Week 3步骤2.4改进）
+        Regret-2插入算子+充电支持（仓储场景迭代步骤2.4改进）
 
-        Week 3改进：
+        仓储场景迭代改进：
         - 支持容量约束检查
         - 支持partial delivery插入
         - 更智能的位置评估
