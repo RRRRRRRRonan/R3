@@ -6,9 +6,9 @@
 
 ```
 tests/
-├── warehouse_regression/ # 仓储回归阶段场景回归
+├── warehouse_regression/ # 仓储回归阶段场景回归 (MinimalALNS)
 ├── charging/     # 充电策略对比与验证
-└── optimization/ # 小/中/大规模 ALNS 架构回归
+└── optimization/ # 小/中/大规模 ALNS 架构回归 (MatheuristicALNS)
 ```
 
 ## 仓储回归场景（`tests/warehouse_regression/`）
