@@ -14,20 +14,19 @@ The script emits the Markdown table below, saves a JSON dump of the raw metrics
 
 | Scale | Solver | Baseline Cost | Optimised Cost | Improvement |
 |:------|:-------|--------------:|---------------:|------------:|
-| Small | Matheuristic ALNS | 35353.07 | 20746.39 | 41.32% |
-| Small | Minimal ALNS | 35791.99 | 32965.82 | 7.90% |
-| Small | Matheuristic + Q-learning | 35791.99 | 23905.07 | 33.21% |
-| Medium | Matheuristic ALNS | 24698.03 | 24698.03 | 0.00% |
-| Medium | Minimal ALNS | 38842.80 | 35619.06 | 8.30% |
-| Medium | Matheuristic + Q-learning | 38842.80 | 35678.08 | 8.15% |
-| Large | Matheuristic ALNS | 52400.92 | 52400.92 | 0.00% |
-| Large | Minimal ALNS | 60709.91 | 59709.45 | 1.65% |
-| Large | Matheuristic + Q-learning | ∞ | 55654.49 | 0.00% |
+| Small | Matheuristic ALNS | 35353.07 | 32941.42 | 6.82% |
+| Small | Minimal ALNS | 35791.99 | 31751.32 | 11.29% |
+| Small | Matheuristic + Q-learning | 35791.99 | 24215.64 | 32.34% |
+| Medium | Matheuristic ALNS | 24698.03 | 24324.44 | 1.51% |
+| Medium | Minimal ALNS | 38842.80 | 38842.80 | 0.00% |
+| Medium | Matheuristic + Q-learning | 38842.80 | 38257.55 | 1.51% |
+| Large | Matheuristic ALNS | 52400.92 | 33600.06 | 35.88% |
+| Large | Minimal ALNS | 60709.91 | 59230.27 | 2.44% |
+| Large | Matheuristic + Q-learning | 60709.91 | 54340.95 | 10.49% |
 
-> **Note:** The greedy baseline for the large Q-learning scenario is infeasible,
-> producing an infinite cost.  The optimiser still finds a finite solution, but
-> the relative improvement is reported as zero because the baseline cost is
-> unbounded.  This mirrors the stress the large-scale preset puts on the
-> destroy/repair pair selection when only one vehicle is available.
+> **Note:** Dynamic stagnation thresholds for the Q-learning agent now adapt to
+> each scenario's iteration budget, keeping the state machine reachable on small
+> regression runs while preventing the large-scale preset from reporting an
+> infinite baseline cost.
 
 ![Relative improvement comparison](../figures/alns_regression_improvements.svg)

@@ -85,10 +85,18 @@ def run_q_learning_trial(
         initial_route = create_empty_route(vehicle_id=1, depot_node=scenario.depot)
         removed_task_ids = [task.task_id for task in scenario.tasks]
         baseline = alns.greedy_insertion(initial_route, removed_task_ids)
-        baseline_cost = alns.evaluate_cost(baseline)
+        if hasattr(alns, "_segment_optimizer"):
+            alns._segment_optimizer._ensure_schedule(baseline)
+            baseline_cost = alns._safe_evaluate(baseline)
+        else:
+            baseline_cost = alns.evaluate_cost(baseline)
 
         optimised_route = alns.optimize(baseline, max_iterations=iterations)
-        optimised_cost = alns.evaluate_cost(optimised_route)
+        if hasattr(alns, "_segment_optimizer"):
+            alns._segment_optimizer._ensure_schedule(optimised_route)
+            optimised_cost = alns._safe_evaluate(optimised_route)
+        else:
+            optimised_cost = alns.evaluate_cost(optimised_route)
     finally:
         random.setstate(state)
 

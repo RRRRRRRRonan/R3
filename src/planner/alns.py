@@ -70,6 +70,8 @@ class MinimalALNS:
         self._destroy_operators = ('random_removal', 'partial_removal')
         self.adaptation_mode = adaptation_mode
         self._use_q_learning = self.use_adaptive and adaptation_mode == 'q_learning'
+        self._stagnation_threshold: Optional[int] = None
+        self._deep_stagnation_threshold: Optional[int] = None
 
         if self._use_q_learning:
             q_params: QLearningParams = getattr(self.hyper, 'q_learning', DEFAULT_Q_LEARNING_PARAMS)
@@ -199,14 +201,43 @@ class MinimalALNS:
     ) -> Route:
         return self._execute_repair_operator(operator, route, removed_task_ids)
 
+    def _prepare_q_learning(self, max_iterations: int) -> None:
+        """Scale Q-learning thresholds to the upcoming iteration budget."""
+
+        if not self._use_q_learning:
+            return
+
+        params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
+        scaled_stuck = max(
+            1,
+            int(round(max_iterations * params.stagnation_ratio)),
+        )
+        scaled_deep = max(
+            scaled_stuck + 1,
+            int(round(max_iterations * params.deep_stagnation_ratio)),
+        )
+
+        self._stagnation_threshold = min(params.stagnation_threshold, scaled_stuck)
+        self._deep_stagnation_threshold = min(
+            params.deep_stagnation_threshold,
+            scaled_deep,
+        )
+
     def _determine_state(self, consecutive_no_improve: int) -> str:
         if not self._use_q_learning:
             return 'explore'
 
-        params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
-        if consecutive_no_improve >= params.deep_stagnation_threshold:
+        stuck_threshold = self._stagnation_threshold
+        deep_threshold = self._deep_stagnation_threshold
+
+        if stuck_threshold is None or deep_threshold is None:
+            params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
+            stuck_threshold = params.stagnation_threshold
+            deep_threshold = params.deep_stagnation_threshold
+
+        if consecutive_no_improve >= deep_threshold:
             return 'deep_stuck'
-        if consecutive_no_improve >= params.stagnation_threshold:
+        if consecutive_no_improve >= stuck_threshold:
             return 'stuck'
         return 'explore'
 
@@ -289,6 +320,9 @@ class MinimalALNS:
                 self._log("使用Q-Learning算子选择 ✓ (Destroy + Repair)")
             elif self.adaptation_mode == 'roulette':
                 self._log("使用自适应算子选择 ✓ (Destroy + Repair)")
+
+        if self._use_q_learning:
+            self._prepare_q_learning(max_iterations)
 
         for iteration in range(max_iterations):
             q_state = self._determine_state(consecutive_no_improve) if self._use_q_learning else None

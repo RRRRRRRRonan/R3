@@ -183,15 +183,17 @@ class QLearningParams:
 
     alpha: float = 0.1
     gamma: float = 0.9
-    initial_epsilon: float = 1.0
-    epsilon_decay: float = 0.995
+    initial_epsilon: float = 0.4
+    epsilon_decay: float = 0.92
     epsilon_min: float = 0.05
     reward_new_best: float = 50.0
     reward_improvement: float = 20.0
     reward_accepted: float = 5.0
-    reward_rejected: float = 0.0
+    reward_rejected: float = -2.0
     stagnation_threshold: int = 200
     deep_stagnation_threshold: int = 800
+    stagnation_ratio: float = 0.25
+    deep_stagnation_ratio: float = 0.6
 
 
 @dataclass(frozen=True)

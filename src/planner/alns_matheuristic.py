@@ -107,6 +107,9 @@ class MatheuristicALNS(MinimalALNS):
         destroy_usage = {op: 0 for op in ("random_removal", "partial_removal")}
         consecutive_no_improve = 0
 
+        if self._use_q_learning:
+            self._prepare_q_learning(max_iterations)
+
         self._log(f"初始成本: {best_cost:.2f}m")
         self._log(f"总迭代次数: {max_iterations}")
         if self.use_adaptive:
