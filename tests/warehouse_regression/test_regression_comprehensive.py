@@ -25,8 +25,9 @@ def create_test_scenario():
     coordinates = {0: depot.coordinates}
 
     for i in range(1, 4):
-        pickup_coords = (i * 10000.0, 0.0)  # 距离更近
-        delivery_coords = (i * 10000.0, 15000.0)  # 距离更近
+        # 距离保持在几十米级别，确保能量约束不过早触发
+        pickup_coords = (i * 10.0, 0.0)
+        delivery_coords = (i * 10.0, 15.0)
 
         pickup, delivery = create_task_node_pair(
             task_id=i,

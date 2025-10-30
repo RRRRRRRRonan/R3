@@ -24,12 +24,12 @@ MEDIUM_CONFIG = ScenarioConfig.from_defaults(
 )
 
 STRATEGIES = [
-    ("Full", FullRechargeStrategy(), 6),
-    ("Fixed-60%", PartialRechargeFixedStrategy(charge_ratio=0.6), 8),
+    ("Full", FullRechargeStrategy(), 26),
+    ("Fixed-60%", PartialRechargeFixedStrategy(charge_ratio=0.6), 32),
     (
         "Minimal",
         PartialRechargeMinimalStrategy(safety_margin=0.03, min_margin=0.01),
-        10,
+        38,
     ),
 ]
 
