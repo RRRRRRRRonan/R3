@@ -24,12 +24,12 @@ R3是一个完整的**电动自主移动机器人(AMR)路径规划框架**，使
 ### 运行综合测试
 ```bash
 # 推荐：一键验证核心流程
-python tests/week3/test_integrated_features.py
+python tests/warehouse_regression/test_integrated_features.py
 
 # 依据规模拆分验证
-python tests/week3/test_week3_small_scale.py
-python tests/week3/test_week3_medium_scale.py
-python tests/week3/test_week3_large_scale.py
+python tests/warehouse_regression/test_regression_small_scale.py
+python tests/warehouse_regression/test_regression_medium_scale.py
+python tests/warehouse_regression/test_regression_large_scale.py
 ```
 
 ### 基础使用示例
@@ -69,12 +69,12 @@ R3/
 │   └── strategy/          # 充电策略
 │
 ├── tests/                  # 测试套件
-│   ├── week3/             # 核心流程测试
+│   ├── warehouse_regression/ # 仓储回归阶段核心流程测试
 │   │   ├── test_integrated_features.py      ★ 综合测试
-│   │   ├── test_week3_comprehensive.py
-│   │   ├── test_week3_small_scale.py
-│   │   ├── test_week3_medium_scale.py
-│   │   └── test_week3_large_scale.py
+│   │   ├── test_regression_comprehensive.py
+│   │   ├── test_regression_small_scale.py
+│   │   ├── test_regression_medium_scale.py
+│   │   └── test_regression_large_scale.py
 │   └── charging/          # 充电策略验证
 │       └── test_strategy_comparison.py
 │
@@ -118,9 +118,9 @@ R3/
 
 | 测试 | 规模 | 说明 |
 |------|------|------|
-| `test_week3_small_scale.py` | 小 | 5-10 个任务的快速健康检查 |
-| `test_week3_medium_scale.py` | 中 | 20-30 个任务的典型部署 |
-| `test_week3_large_scale.py` | 大 | 50-100 个任务的压力测试 |
+| `test_regression_small_scale.py` | 小 | 5-10 个任务的快速健康检查 |
+| `test_regression_medium_scale.py` | 中 | 20-30 个任务的典型部署 |
+| `test_regression_large_scale.py` | 大 | 50-100 个任务的压力测试 |
 | `test_integrated_features.py` | 综合 | 完整流程与约束联调 |
 
 ---
@@ -150,5 +150,5 @@ R3/
 
 ---
 
-*版本: 1.0 (Week 3完成)*
+*版本: 1.0 (仓储回归测试整合完成)*
 *最后更新: 2024*

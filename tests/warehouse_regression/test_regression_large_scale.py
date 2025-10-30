@@ -1,4 +1,4 @@
-"""Stress tests for large-scale Week 3 warehouse instances.
+"""Stress tests for large-scale warehouse regression instances.
 
 The suite spins up 50–100 task scenarios with multiple charging stations and
 verifies that the planner scales while keeping cost improvements and runtime
@@ -370,7 +370,7 @@ def test_large_scalability_analysis():
 
 if __name__ == "__main__":
     print("\n" + "="*70)
-    print("Week 3 大规模测试：仓库机器人场景")
+    print("仓储回归 大规模测试：仓库机器人场景")
     print("="*70)
 
     # 显示配置信息
@@ -391,8 +391,8 @@ if __name__ == "__main__":
         print("2. ✓ 50任务Regret-2插入可行")
         print("3. ✓ 100任务压力测试通过")
         print("4. ✓ 可扩展性分析完成")
-        print("\nWeek 3在仓库机器人大规模场景下验证成功！")
-        print("\n🎉 Week 3所有规模测试（小、中、大）全部通过！")
+        print("\n仓储回归在仓库机器人大规模场景下验证成功！")
+        print("\n🎉 仓储回归所有规模测试（小、中、大）全部通过！")
 
     except AssertionError as e:
         print(f"\n✗ 测试失败: {e}")

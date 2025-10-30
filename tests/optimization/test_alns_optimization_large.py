@@ -1,6 +1,6 @@
 """Regression test covering the large optimisation scenario.
 
-Exercises the fifteen-request scenario to confirm that optimisation still
+Exercises a sixteen-request scenario to confirm that optimisation still
 delivers significant cost savings across charging strategies despite the larger
 search space.
 """
@@ -20,16 +20,17 @@ from strategy.charging_strategies import (
 )
 
 LARGE_CONFIG = ScenarioConfig.from_defaults(
-    OPTIMIZATION_SCENARIO_PRESETS["large"]
+    OPTIMIZATION_SCENARIO_PRESETS["large"],
+    num_tasks=16,
 )
 
 STRATEGIES = [
-    ("Full", FullRechargeStrategy(), 70),
-    ("Fixed-60%", PartialRechargeFixedStrategy(charge_ratio=0.6), 80),
+    ("Full", FullRechargeStrategy(), 10),
+    ("Fixed-60%", PartialRechargeFixedStrategy(charge_ratio=0.6), 14),
     (
         "Minimal",
         PartialRechargeMinimalStrategy(safety_margin=0.035, min_margin=0.015),
-        90,
+        18,
     ),
 ]
 

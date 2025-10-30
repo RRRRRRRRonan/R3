@@ -6,7 +6,7 @@ optimisation tests can focus on assertions instead of boilerplate setup.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Dict, List, Sequence, Tuple
 from copy import deepcopy
 import random
@@ -20,10 +20,14 @@ from physics.energy import EnergyConfig
 from physics.time import TimeWindow, TimeWindowType
 from config import (
     CostParameters,
+    DestroyRepairParams,
+    LPRepairParams,
+    MatheuristicParams,
     OptimizationScenarioDefaults,
+    DEFAULT_ALNS_HYPERPARAMETERS,
     DEFAULT_OPTIMIZATION_SCENARIO,
 )
-from planner.alns import MinimalALNS
+from planner.alns_matheuristic import MatheuristicALNS
 from planner.fleet import FleetPlanner
 
 
@@ -194,9 +198,25 @@ def run_alns_trial(
     random.setstate(rng.getstate())
     try:
         task_pool = scenario.create_task_pool()
+        hyper_params = replace(
+            DEFAULT_ALNS_HYPERPARAMETERS,
+            destroy_repair=DestroyRepairParams(
+                random_removal_q=1,
+                partial_removal_q=1,
+                remove_cs_probability=0.1,
+            ),
+            matheuristic=MatheuristicParams(
+                elite_pool_size=1,
+                intensification_interval=0,
+                segment_frequency=0,
+                max_elite_trials=0,
+                lp_repair=LPRepairParams(time_limit_s=0.01, max_plans_per_task=1),
+            ),
+        )
 
         if len(scenario.vehicles) == 1:
-            alns = MinimalALNS(
+            # 使用升级后的 Matheuristic ALNS，以覆盖 LP 修复算子等改进
+            alns = MatheuristicALNS(
                 distance_matrix=scenario.distance,
                 task_pool=task_pool,
                 repair_mode="adaptive",
@@ -204,6 +224,7 @@ def run_alns_trial(
                 charging_strategy=strategy,
                 use_adaptive=True,
                 verbose=False,
+                hyper_params=hyper_params,
             )
             alns.vehicle = deepcopy(scenario.vehicles[0])
             alns.energy_config = deepcopy(scenario.energy)
@@ -226,6 +247,8 @@ def run_alns_trial(
             repair_mode="adaptive",
             use_adaptive=True,
             verbose=False,
+            alns_class=MatheuristicALNS,
+            alns_hyper_params=hyper_params,
         )
         result = planner.plan_routes(max_iterations=iterations)
 

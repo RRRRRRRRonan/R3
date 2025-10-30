@@ -420,7 +420,7 @@ class Route:
 
     def check_capacity_feasibility(self, vehicle_capacity: float, debug: bool = False) -> Tuple[bool, Optional[str]]:
         """
-        检查容量可行性（Week 3新增 - 步骤2.1）
+        检查容量可行性（仓储场景迭代新增 - 步骤2.1）
 
         功能:
             模拟货物装载，确保不超过车辆容量

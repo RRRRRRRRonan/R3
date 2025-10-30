@@ -1,12 +1,11 @@
-"""Regression tests for the mid-sized Week 3 scenario range.
+"""Regression tests for the compact warehouse regression scenario.
 
-These cases cover 20–30 tasks with moderate warehouse dimensions and ensure the
-planner maintains feasibility, latency, and improvement guarantees when demand
-grows beyond the small baseline.
+The suite synthesises a 5–10 task environment with realistic warehouse
+distances, generates grid layouts, and ensures the ALNS planner plus charging
+constraints deliver feasible low-cost routes for each seed configuration.
 """
 
 import random
-import time
 from typing import List, Tuple
 from core.node import DepotNode, create_task_node_pair, create_charging_node
 from core.task import Task, TaskPool
@@ -18,8 +17,8 @@ from config import CostParameters
 from planner.alns import MinimalALNS
 
 from warehouse_test_config import (
-    MEDIUM_WAREHOUSE_20_TASKS,
-    MEDIUM_WAREHOUSE_30_TASKS,
+    SMALL_WAREHOUSE_5_TASKS,
+    SMALL_WAREHOUSE_10_TASKS,
     print_config_summary
 )
 
@@ -28,12 +27,20 @@ def create_grid_layout(warehouse_size: Tuple[float, float],
                        num_tasks: int,
                        num_charging_stations: int = 0) -> Tuple[DepotNode, List[Tuple[float, float]], List[Tuple[float, float]]]:
     """
-    创建仓库网格布局（与小规模测试相同）
+    创建仓库网格布局
+
+    布局策略：
+    - Depot在仓库中心
+    - Pickup点在左半区域均匀分布
+    - Delivery点在右半区域均匀分布
+    - 充电站在仓库战略位置
     """
     width, height = warehouse_size
+
+    # Depot在中心
     depot = DepotNode(coordinates=(width/2, height/2))
 
-    # Pickup点：左半区域
+    # Pickup点：左半区域，网格分布
     pickup_coords_list = []
     grid_size = int(num_tasks ** 0.5) + 1
     for i in range(num_tasks):
@@ -41,11 +48,12 @@ def create_grid_layout(warehouse_size: Tuple[float, float],
         col = i % grid_size
         x = width * 0.15 + (col * width * 0.3 / max(1, grid_size-1)) if grid_size > 1 else width * 0.25
         y = height * 0.15 + (row * height * 0.7 / max(1, grid_size-1)) if grid_size > 1 else height * 0.5
+        # 添加随机扰动（±10%），模拟实际货架位置
         x += random.uniform(-width*0.05, width*0.05)
         y += random.uniform(-height*0.05, height*0.05)
         pickup_coords_list.append((x, y))
 
-    # Delivery点：右半区域
+    # Delivery点：右半区域，网格分布
     delivery_coords_list = []
     for i in range(num_tasks):
         row = i // grid_size
@@ -56,9 +64,10 @@ def create_grid_layout(warehouse_size: Tuple[float, float],
         y += random.uniform(-height*0.05, height*0.05)
         delivery_coords_list.append((x, y))
 
-    # 充电站位置
+    # 充电站位置（如果需要）
     charging_coords_list = []
     if num_charging_stations > 0:
+        # 充电站放置在仓库四个角落
         positions = [
             (width * 0.15, height * 0.15),
             (width * 0.85, height * 0.15),
@@ -71,15 +80,23 @@ def create_grid_layout(warehouse_size: Tuple[float, float],
 
 
 def create_warehouse_scenario(config):
-    """根据配置创建仓库场景"""
-    print(f"\n创建场景：{config.name}")
+    """
+    根据配置创建仓库场景
 
+    返回：
+        depot, tasks, distance_matrix, vehicle, energy_config, charging_nodes
+    """
+    print(f"\n创建场景：{config.name}")
+    print(f"仓库：{config.warehouse_size}, 任务：{config.num_tasks}")
+
+    # 1. 创建布局
     depot, pickup_coords_list, delivery_coords_list, charging_coords_list = create_grid_layout(
         config.warehouse_size,
         config.num_tasks,
         config.num_charging_stations
     )
 
+    # 2. 创建任务
     tasks = []
     node_id_counter = 1
     coordinates = {0: depot.coordinates}
@@ -88,6 +105,8 @@ def create_warehouse_scenario(config):
         task_id = i + 1
         pickup_coords = pickup_coords_list[i]
         delivery_coords = delivery_coords_list[i]
+
+        # 随机任务需求
         demand = random.uniform(*config.task_demand_range)
 
         pickup, delivery = create_task_node_pair(
@@ -99,25 +118,37 @@ def create_warehouse_scenario(config):
             demand=demand
         )
 
-        task = Task(task_id=task_id, pickup_node=pickup, delivery_node=delivery, demand=demand)
+        task = Task(
+            task_id=task_id,
+            pickup_node=pickup,
+            delivery_node=delivery,
+            demand=demand
+        )
         tasks.append(task)
+
         coordinates[pickup.node_id] = pickup_coords
         coordinates[delivery.node_id] = delivery_coords
         node_id_counter += 2
 
+    # 3. 创建充电站
     charging_nodes = []
     for i, charging_coords in enumerate(charging_coords_list):
-        charging_node_id = 100 + i
-        charging_node = create_charging_node(node_id=charging_node_id, coordinates=charging_coords)
+        charging_node_id = 100 + i  # 充电站ID从100开始
+        charging_node = create_charging_node(
+            node_id=charging_node_id,
+            coordinates=charging_coords
+        )
         charging_nodes.append(charging_node)
         coordinates[charging_node_id] = charging_coords
 
+    # 4. 创建距离矩阵
     distance_matrix = DistanceMatrix(
         coordinates=coordinates,
         num_tasks=config.num_tasks,
         num_charging_stations=config.num_charging_stations
     )
 
+    # 5. 创建车辆
     vehicle = create_vehicle(
         vehicle_id=1,
         capacity=config.robot_capacity,
@@ -125,30 +156,36 @@ def create_warehouse_scenario(config):
         initial_battery=config.robot_battery
     )
 
+    # 6. 创建能量配置
     energy_config = EnergyConfig(
         consumption_rate=config.consumption_rate,
         charging_rate=config.charging_rate,
         battery_capacity=config.robot_battery
     )
 
-    print(f"✓ 场景创建完成：{len(tasks)}任务，{len(charging_nodes)}充电站")
+    print(f"✓ 场景创建完成")
+    print(f"  任务：{len(tasks)}个")
+    print(f"  充电站：{len(charging_nodes)}个")
+    print(f"  坐标点：{len(coordinates)}个")
 
     return depot, tasks, distance_matrix, vehicle, energy_config, charging_nodes
 
 
-def test_medium_20_tasks_greedy():
-    """测试1：20任务 - Greedy插入"""
+def test_small_5_tasks_basic():
+    """测试1：5任务基础场景（无充电站）"""
     print("\n" + "="*70)
-    print("测试1：20任务 - Greedy插入性能测试")
+    print("测试1：5任务基础场景")
     print("="*70)
 
-    config = MEDIUM_WAREHOUSE_20_TASKS
+    config = SMALL_WAREHOUSE_5_TASKS
     depot, tasks, distance_matrix, vehicle, energy_config, charging_nodes = create_warehouse_scenario(config)
 
+    # 创建TaskPool
     task_pool = TaskPool()
     for task in tasks:
         task_pool.add_task(task)
 
+    # 使用greedy插入创建初始解
     alns = MinimalALNS(
         distance_matrix=distance_matrix,
         task_pool=task_pool,
@@ -160,139 +197,94 @@ def test_medium_20_tasks_greedy():
     route = create_empty_route(1, depot)
     removed_task_ids = [t.task_id for t in tasks]
 
-    print(f"\n执行Greedy插入（{len(tasks)}任务）...")
-    start_time = time.time()
+    print(f"\n执行Greedy插入...")
     route = alns.greedy_insertion(route, removed_task_ids)
-    elapsed_time = time.time() - start_time
 
+    # 验证结果
     served_tasks = route.get_served_tasks()
-    capacity_feasible, capacity_error = route.check_capacity_feasibility(vehicle.capacity)
+    capacity_feasible, capacity_error = route.check_capacity_feasibility(vehicle.capacity, debug=False)
     precedence_valid, precedence_error = route.validate_precedence()
 
     print(f"\n结果：")
-    print(f"  服务任务数：{len(served_tasks)}/{len(tasks)} ({len(served_tasks)/len(tasks)*100:.1f}%)")
+    print(f"  服务任务数：{len(served_tasks)}/{len(tasks)}")
     print(f"  路径节点数：{len(route.nodes)}")
-    print(f"  执行时间：{elapsed_time:.2f}秒")
     print(f"  容量可行：{'✓' if capacity_feasible else '✗ ' + (capacity_error or '')}")
     print(f"  顺序有效：{'✓' if precedence_valid else '✗ ' + (precedence_error or '')}")
 
-    assert len(served_tasks) >= len(tasks) * 0.8, f"至少应服务80%任务"
+    # 断言
+    assert len(served_tasks) == len(tasks), f"应服务{len(tasks)}个任务，实际{len(served_tasks)}个"
     assert capacity_feasible, "容量应可行"
     assert precedence_valid, "顺序应有效"
-    assert elapsed_time < 30.0, f"执行时间应<30秒，实际{elapsed_time:.2f}秒"
 
-    print(f"\n✓ 测试1通过：20任务Greedy插入正常工作")
+    print(f"\n✓ 测试1通过：5任务基础场景正常工作")
 
 
-def test_medium_20_tasks_regret2():
-    """测试2：20任务 - Regret-2插入"""
+def test_small_10_tasks_with_charging():
+    """测试2：10任务 + 充电站场景"""
     print("\n" + "="*70)
-    print("测试2：20任务 - Regret-2插入性能测试")
+    print("测试2：10任务 + 充电站场景")
     print("="*70)
 
-    config = MEDIUM_WAREHOUSE_20_TASKS
+    config = SMALL_WAREHOUSE_10_TASKS
     depot, tasks, distance_matrix, vehicle, energy_config, charging_nodes = create_warehouse_scenario(config)
 
+    # 创建TaskPool
     task_pool = TaskPool()
     for task in tasks:
         task_pool.add_task(task)
 
+    # 使用regret2插入
     alns = MinimalALNS(
         distance_matrix=distance_matrix,
         task_pool=task_pool,
-        repair_mode='regret2'
+        repair_mode='regret2',
+        cost_params=CostParameters(C_tr=1.0, C_ch=5.0)
     )
     alns.vehicle = vehicle
     alns.energy_config = energy_config
 
+    # 充电站已经通过DistanceMatrix注册，无需额外添加
+    # ALNS会在插入过程中自动考虑充电站
+
     route = create_empty_route(1, depot)
     removed_task_ids = [t.task_id for t in tasks]
 
-    print(f"\n执行Regret-2插入（{len(tasks)}任务）...")
-    start_time = time.time()
+    print(f"\n执行Regret-2插入（含充电站）...")
     route = alns.regret2_insertion(route, removed_task_ids)
-    elapsed_time = time.time() - start_time
 
+    # 验证结果
     served_tasks = route.get_served_tasks()
-    capacity_feasible, capacity_error = route.check_capacity_feasibility(vehicle.capacity)
+    capacity_feasible, capacity_error = route.check_capacity_feasibility(vehicle.capacity, debug=False)
     precedence_valid, precedence_error = route.validate_precedence()
 
-    print(f"\n结果：")
-    print(f"  服务任务数：{len(served_tasks)}/{len(tasks)} ({len(served_tasks)/len(tasks)*100:.1f}%)")
-    print(f"  路径节点数：{len(route.nodes)}")
-    print(f"  执行时间：{elapsed_time:.2f}秒")
-    print(f"  容量可行：{'✓' if capacity_feasible else '✗'}")
-    print(f"  顺序有效：{'✓' if precedence_valid else '✗'}")
-
-    assert len(served_tasks) >= len(tasks) * 0.8, f"至少应服务80%任务"
-    assert capacity_feasible, "容量应可行"
-    assert precedence_valid, "顺序应有效"
-    assert elapsed_time < 60.0, f"执行时间应<60秒，实际{elapsed_time:.2f}秒"
-
-    print(f"\n✓ 测试2通过：20任务Regret-2插入正常工作")
-
-
-def test_medium_30_tasks_mixed():
-    """测试3：30任务 - 混合模式压力测试"""
-    print("\n" + "="*70)
-    print("测试3：30任务 - 混合模式压力测试")
-    print("="*70)
-
-    config = MEDIUM_WAREHOUSE_30_TASKS
-    depot, tasks, distance_matrix, vehicle, energy_config, charging_nodes = create_warehouse_scenario(config)
-
-    task_pool = TaskPool()
-    for task in tasks:
-        task_pool.add_task(task)
-
-    alns = MinimalALNS(
-        distance_matrix=distance_matrix,
-        task_pool=task_pool,
-        repair_mode='mixed'
-    )
-    alns.vehicle = vehicle
-    alns.energy_config = energy_config
-
-    route = create_empty_route(1, depot)
-    removed_task_ids = [t.task_id for t in tasks]
-
-    print(f"\n执行混合插入（{len(tasks)}任务）...")
-    start_time = time.time()
-
-    # 先用greedy创建初始解
-    route = alns.greedy_insertion(route, removed_task_ids)
-    initial_served = len(route.get_served_tasks())
-
-    elapsed_time = time.time() - start_time
-
-    served_tasks = route.get_served_tasks()
-    capacity_feasible, capacity_error = route.check_capacity_feasibility(vehicle.capacity)
-    precedence_valid, precedence_error = route.validate_precedence()
+    # 统计充电站使用
+    charging_count = sum(1 for node in route.nodes if hasattr(node, 'is_charging_station') and node.is_charging_station())
 
     print(f"\n结果：")
-    print(f"  服务任务数：{len(served_tasks)}/{len(tasks)} ({len(served_tasks)/len(tasks)*100:.1f}%)")
+    print(f"  服务任务数：{len(served_tasks)}/{len(tasks)}")
     print(f"  路径节点数：{len(route.nodes)}")
-    print(f"  执行时间：{elapsed_time:.2f}秒")
-    print(f"  容量可行：{'✓' if capacity_feasible else '✗'}")
-    print(f"  顺序有效：{'✓' if precedence_valid else '✗'}")
+    print(f"  充电站访问：{charging_count}次")
+    print(f"  容量可行：{'✓' if capacity_feasible else '✗ ' + (capacity_error or '')}")
+    print(f"  顺序有效：{'✓' if precedence_valid else '✗ ' + (precedence_error or '')}")
 
-    assert len(served_tasks) >= len(tasks) * 0.7, f"至少应服务70%任务（{len(tasks)*0.7:.0f}个）"
+    # 断言
+    assert len(served_tasks) >= len(tasks) * 0.8, f"至少应服务80%任务（{len(tasks)*0.8:.0f}个），实际{len(served_tasks)}个"
     assert capacity_feasible, "容量应可行"
     assert precedence_valid, "顺序应有效"
-    assert elapsed_time < 90.0, f"执行时间应<90秒，实际{elapsed_time:.2f}秒"
 
-    print(f"\n✓ 测试3通过：30任务混合模式正常工作")
+    print(f"\n✓ 测试2通过：10任务+充电站场景正常工作")
 
 
-def test_medium_week3_operators_performance():
-    """测试4：Week 3算子在中规模场景下的性能"""
+def test_small_regression_operators():
+    """测试3：仓储回归算子在小规模场景下的表现"""
     print("\n" + "="*70)
-    print("测试4：Week 3算子性能测试（20任务）")
+    print("测试3：仓储回归算子测试（Partial Removal + Pair Exchange）")
     print("="*70)
 
-    config = MEDIUM_WAREHOUSE_20_TASKS
+    config = SMALL_WAREHOUSE_10_TASKS
     depot, tasks, distance_matrix, vehicle, energy_config, charging_nodes = create_warehouse_scenario(config)
 
+    # 创建TaskPool
     task_pool = TaskPool()
     for task in tasks:
         task_pool.add_task(task)
@@ -305,48 +297,59 @@ def test_medium_week3_operators_performance():
     alns.vehicle = vehicle
     alns.energy_config = energy_config
 
-    # 创建初始路径
+    # 创建初始路径（所有任务连续插入）
     route = create_empty_route(1, depot)
     for task in tasks:
         route.nodes.insert(-1, task.pickup_node)
         route.nodes.insert(-1, task.delivery_node)
 
-    print(f"\n初始路径：{len(route.nodes)}节点，{len(tasks)}任务")
+    print(f"\n初始路径：{len(route.nodes)}个节点，{len(tasks)}个任务")
 
-    # 测试Partial Removal性能
-    print(f"\n--- Partial Removal性能 ---")
-    start_time = time.time()
-    for _ in range(10):
-        destroyed_route, removed = alns.partial_removal(route, q=5)
-    elapsed = time.time() - start_time
-    print(f"  10次执行时间：{elapsed:.3f}秒 (平均{elapsed/10*1000:.1f}ms)")
-    assert elapsed < 1.0, f"10次Partial Removal应<1秒"
+    # 测试Partial Removal
+    print(f"\n--- 测试Partial Removal ---")
+    destroyed_route, removed_task_ids = alns.partial_removal(route, q=3)
 
-    # 测试Pair Exchange性能
-    print(f"\n--- Pair Exchange性能 ---")
-    start_time = time.time()
-    for _ in range(10):
-        exchanged = alns.pair_exchange(route)
-    elapsed = time.time() - start_time
-    print(f"  10次执行时间：{elapsed:.3f}秒 (平均{elapsed/10*1000:.1f}ms)")
-    assert elapsed < 1.0, f"10次Pair Exchange应<1秒"
+    print(f"移除的任务：{removed_task_ids}")
+    for task_id in removed_task_ids:
+        task = task_pool.get_task(task_id)
+        has_pickup = any(n.node_id == task.pickup_node.node_id for n in destroyed_route.nodes)
+        has_delivery = any(n.node_id == task.delivery_node.node_id for n in destroyed_route.nodes)
+        print(f"  任务{task_id}: pickup={has_pickup}, delivery={has_delivery}")
+        assert has_pickup, f"任务{task_id}的pickup应该保留"
+        assert not has_delivery, f"任务{task_id}的delivery应该移除"
 
-    # 验证正确性
-    precedence_valid, _ = exchanged.validate_precedence()
-    assert precedence_valid, "Precedence应保持有效"
+    print(f"✓ Partial Removal正确")
 
-    print(f"\n✓ 测试4通过：Week 3算子性能符合预期")
+    # 测试Pair Exchange
+    print(f"\n--- 测试Pair Exchange ---")
+    exchanged_route = alns.pair_exchange(route)
+
+    original_tasks = set(route.get_served_tasks())
+    exchanged_tasks = set(exchanged_route.get_served_tasks())
+
+    print(f"原始任务：{sorted(original_tasks)}")
+    print(f"交换后任务：{sorted(exchanged_tasks)}")
+
+    assert original_tasks == exchanged_tasks, "任务集合应保持不变"
+
+    precedence_valid, _ = exchanged_route.validate_precedence()
+    assert precedence_valid, "Precedence约束应保持"
+
+    print(f"✓ Pair Exchange正确")
+
+    print(f"\n✓ 测试3通过：仓储回归算子在小规模场景正常工作")
 
 
-def test_medium_destroy_repair_cycles():
-    """测试5：多轮Destroy-Repair循环测试"""
+def test_small_end_to_end():
+    """测试4：端到端工作流程"""
     print("\n" + "="*70)
-    print("测试5：多轮Destroy-Repair循环（10轮）")
+    print("测试4：端到端工作流程（Destroy → Repair循环）")
     print("="*70)
 
-    config = MEDIUM_WAREHOUSE_20_TASKS
+    config = SMALL_WAREHOUSE_10_TASKS
     depot, tasks, distance_matrix, vehicle, energy_config, charging_nodes = create_warehouse_scenario(config)
 
+    # 创建TaskPool
     task_pool = TaskPool()
     for task in tasks:
         task_pool.add_task(task)
@@ -360,65 +363,61 @@ def test_medium_destroy_repair_cycles():
     alns.energy_config = energy_config
 
     # 创建初始解
+    print(f"\n步骤1: 创建初始解")
     route = create_empty_route(1, depot)
     removed_task_ids = [t.task_id for t in tasks]
     route = alns.greedy_insertion(route, removed_task_ids)
 
     initial_tasks = len(route.get_served_tasks())
-    print(f"\n初始解：{initial_tasks}任务")
+    print(f"  初始任务数：{initial_tasks}")
 
-    print(f"\n执行10轮Destroy-Repair...")
-    start_time = time.time()
-
+    # 执行多轮destroy-repair
+    print(f"\n步骤2: 执行3轮Destroy-Repair")
     failure_count = 0
-    for iteration in range(10):
+    for iteration in range(3):
         # Destroy
         if random.random() < 0.5:
-            destroyed_route, removed = alns.partial_removal(route, q=5)
+            destroyed_route, removed = alns.partial_removal(route, q=3)
+            method = "Partial Removal"
         else:
-            destroyed_route, removed = alns.random_removal(route, q=5)
+            destroyed_route, removed = alns.random_removal(route, q=3)
+            method = "Random Removal"
 
         # Repair
         if random.random() < 0.5:
             repaired_route = alns.greedy_insertion(destroyed_route, removed)
+            repair_method = "Greedy"
         else:
             repaired_route = alns.regret2_insertion(destroyed_route, removed)
+            repair_method = "Regret-2"
 
-        # 验证可行性
+        tasks_after = len(repaired_route.get_served_tasks())
         capacity_ok, _ = repaired_route.check_capacity_feasibility(vehicle.capacity)
         precedence_ok, _ = repaired_route.validate_precedence()
+
+        print(f"  轮次{iteration+1}: {method} + {repair_method}")
+        print(f"    任务数：{tasks_after}, 容量：{'✓' if capacity_ok else '✗'}, 顺序：{'✓' if precedence_ok else '✗'}")
 
         # 只接受可行解
         if capacity_ok and precedence_ok:
             route = repaired_route
         else:
             failure_count += 1
+            print(f"    ⚠ 不可行解，保留旧解")
 
-        if (iteration + 1) % 5 == 0:
-            tasks_now = len(route.get_served_tasks())
-            print(f"  轮次{iteration+1}: {tasks_now}任务，失败{failure_count}次")
-
-    elapsed_time = time.time() - start_time
     final_tasks = len(route.get_served_tasks())
+    print(f"\n最终任务数：{final_tasks}/{len(tasks)}")
+    print(f"失败repair数：{failure_count}/3")
 
+    # 放宽要求：只要最终解可行即可
     capacity_feasible, _ = route.check_capacity_feasibility(vehicle.capacity)
     precedence_valid, _ = route.validate_precedence()
 
-    print(f"\n结果：")
-    print(f"  最终任务数：{final_tasks}/{len(tasks)}")
-    print(f"  总执行时间：{elapsed_time:.2f}秒")
-    print(f"  平均每轮：{elapsed_time/10:.2f}秒")
-    print(f"  失败repair数：{failure_count}/10")
-    print(f"  容量可行：{'✓' if capacity_feasible else '✗'}")
-    print(f"  顺序有效：{'✓' if precedence_valid else '✗'}")
+    assert final_tasks >= len(tasks) * 0.8, f"至少应保留80%任务"
+    assert capacity_feasible, "最终解容量应可行"
+    assert precedence_valid, "最终解顺序应有效"
 
-    # 放宽要求：只要最终解可行即可
-    assert final_tasks >= len(tasks) * 0.7, f"应保持≥70%任务"
-    assert capacity_feasible, "容量应可行"
-    assert precedence_valid, "顺序应有效"
-    assert elapsed_time < 120.0, f"10轮应<120秒"
-
-    print(f"\n✓ 测试5通过：多轮Destroy-Repair稳定工作")
+    print(f"\n✓ 测试4通过：端到端工作流程正常")
 
 
 # ============================================================================
@@ -427,30 +426,32 @@ def test_medium_destroy_repair_cycles():
 
 if __name__ == "__main__":
     print("\n" + "="*70)
-    print("Week 3 中规模测试：仓库机器人场景")
+    print("仓储回归 小规模测试：仓库机器人场景")
     print("="*70)
 
     # 显示配置信息
-    print("\n场景配置信息：")
-    print_config_summary(MEDIUM_WAREHOUSE_20_TASKS)
+    print("\n" + "="*70)
+    print("测试场景配置")
+    print("="*70)
+    print_config_summary(SMALL_WAREHOUSE_5_TASKS)
+    print_config_summary(SMALL_WAREHOUSE_10_TASKS)
 
     try:
-        test_medium_20_tasks_greedy()
-        test_medium_20_tasks_regret2()
-        test_medium_30_tasks_mixed()
-        test_medium_week3_operators_performance()
-        test_medium_destroy_repair_cycles()
+        # 运行所有测试
+        test_small_5_tasks_basic()
+        test_small_10_tasks_with_charging()
+        test_small_regression_operators()
+        test_small_end_to_end()
 
         print("\n" + "="*70)
-        print("✓ 所有中规模测试通过！")
+        print("✓ 所有小规模测试通过！")
         print("="*70)
         print("\n总结:")
-        print("1. ✓ 20任务Greedy插入正常工作")
-        print("2. ✓ 20任务Regret-2插入正常工作")
-        print("3. ✓ 30任务混合模式正常工作")
-        print("4. ✓ Week 3算子性能符合预期")
-        print("5. ✓ 多轮Destroy-Repair稳定工作")
-        print("\nWeek 3在仓库机器人中规模场景下验证成功！")
+        print("1. ✓ 5任务基础场景正常工作")
+        print("2. ✓ 10任务+充电站场景正常工作")
+        print("3. ✓ 仓储回归算子（Partial Removal, Pair Exchange）正常工作")
+        print("4. ✓ 端到端Destroy-Repair工作流程正常")
+        print("\n仓储回归在仓库机器人小规模场景下验证成功！")
 
     except AssertionError as e:
         print(f"\n✗ 测试失败: {e}")

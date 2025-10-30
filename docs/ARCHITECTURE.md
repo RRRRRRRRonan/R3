@@ -44,7 +44,7 @@ src/
 
 ### Destroy算子
 - **random_removal**: 随机移除q个任务
-- **partial_removal** (Week 3): 只移除delivery节点，保留pickup
+- **partial_removal**（仓储场景迭代）: 只移除delivery节点，保留pickup
 
 ### Repair算子
 - **greedy_insertion**: 贪心插入（最小成本）
@@ -52,7 +52,7 @@ src/
 - **random_insertion**: 随机插入
 
 ### Local Search
-- **pair_exchange** (Week 3): 交换两个任务位置
+- **pair_exchange**（仓储场景迭代）: 交换两个任务位置
 
 ### 约束检查（Repair阶段）
 ```python
@@ -112,9 +112,9 @@ TimeWindow(earliest=100, latest=200, window_type=TimeWindowType.SOFT)
 
 | 规模 | 任务数 | 充电站 | 测试文件 |
 |-----|-------|-------|---------|
-| **小** | 5-10 | 0-1 | `test_week3_small_scale.py` |
-| **中** | 20-30 | 2 | `test_week3_medium_scale.py` |
-| **大** | 50-100 | 3-5 | `test_week3_large_scale.py` |
+| **小** | 5-10 | 0-1 | `test_regression_small_scale.py` |
+| **中** | 20-30 | 2 | `test_regression_medium_scale.py` |
+| **大** | 50-100 | 3-5 | `test_regression_large_scale.py` |
 
 ---
 
@@ -201,7 +201,7 @@ pickup, delivery = create_task_node_pair(
 
 - `src/planner/alns.py` — ALNS主循环与算子实现
 - `src/planner/operators.py` — 算子选择与权重更新工具
-- `tests/week3/*.py` — 核心流程回归测试
+- `tests/warehouse_regression/*.py` — 核心流程回归测试
 - `tests/charging/test_strategy_comparison.py` — 充电策略对比
 
 ----
@@ -210,12 +210,12 @@ pickup, delivery = create_task_node_pair(
 
 ```bash
 # 核心回归（推荐）
-python tests/week3/test_integrated_features.py
+python tests/warehouse_regression/test_integrated_features.py
 
 # 按规模拆分
-python tests/week3/test_week3_small_scale.py
-python tests/week3/test_week3_medium_scale.py
-python tests/week3/test_week3_large_scale.py
+python tests/warehouse_regression/test_regression_small_scale.py
+python tests/warehouse_regression/test_regression_medium_scale.py
+python tests/warehouse_regression/test_regression_large_scale.py
 
 # 策略对比
 python tests/charging/test_strategy_comparison.py
