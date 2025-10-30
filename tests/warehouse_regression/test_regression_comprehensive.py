@@ -1,4 +1,4 @@
-"""Comprehensive regression of the Week 3 optimisation operators.
+"""Comprehensive regression of the warehouse regression optimisation operators.
 
 The tests build a tractable three-task instance and assert that the improved
 destroy/repair operators—delivery removal, pair exchange, regret-2 insertion,
@@ -12,7 +12,8 @@ from core.route import Route, create_empty_route
 from core.vehicle import create_vehicle
 from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
-from planner.alns import MinimalALNS, CostParameters
+from config import CostParameters
+from planner.alns import MinimalALNS
 
 
 def create_test_scenario():
@@ -218,7 +219,7 @@ def test_regret2_with_capacity():
 def test_integrated_workflow():
     """综合测试：完整的ALNS工作流程"""
     print("\n" + "=" * 70)
-    print("综合测试：Week 3完整工作流程")
+    print("综合测试：仓储回归完整工作流程")
     print("=" * 70)
 
     depot, tasks, distance_matrix, vehicle = create_test_scenario()
@@ -256,12 +257,12 @@ def test_integrated_workflow():
 
     assert capacity_feasible and precedence_valid, "初始解应该可行"
 
-    print("\n✓ 综合测试通过：Week 3所有组件正常工作")
+    print("\n✓ 综合测试通过：仓储回归所有组件正常工作")
 
 
 if __name__ == "__main__":
     print("\n" + "=" * 70)
-    print("Week 3 综合测试：取送货分离优化")
+    print("仓储回归 综合测试：取送货分离优化")
     print("=" * 70)
 
     try:
@@ -279,7 +280,7 @@ if __name__ == "__main__":
         print("2. ✓ Pair exchange (步骤2.3) 正常工作")
         print("3. ✓ Regret-2插入 (步骤2.4) 正常工作")
         print("4. ✓ 综合工作流程正常")
-        print("\nWeek 3所有步骤实现成功！")
+        print("\n仓储回归所有步骤实现成功！")
 
     except AssertionError as e:
         print(f"\n✗ 测试失败: {e}")

@@ -1,4 +1,4 @@
-"""Regression tests for the mid-sized Week 3 scenario range.
+"""Regression tests for the mid-sized warehouse regression scenario range.
 
 These cases cover 20–30 tasks with moderate warehouse dimensions and ensure the
 planner maintains feasibility, latency, and improvement guarantees when demand
@@ -14,7 +14,8 @@ from core.route import Route, create_empty_route
 from core.vehicle import create_vehicle
 from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
-from planner.alns import MinimalALNS, CostParameters
+from config import CostParameters
+from planner.alns import MinimalALNS
 
 from warehouse_test_config import (
     MEDIUM_WAREHOUSE_20_TASKS,
@@ -283,10 +284,10 @@ def test_medium_30_tasks_mixed():
     print(f"\n✓ 测试3通过：30任务混合模式正常工作")
 
 
-def test_medium_week3_operators_performance():
-    """测试4：Week 3算子在中规模场景下的性能"""
+def test_medium_regression_operators_performance():
+    """测试4：仓储回归算子在中规模场景下的性能"""
     print("\n" + "="*70)
-    print("测试4：Week 3算子性能测试（20任务）")
+    print("测试4：仓储回归算子性能测试（20任务）")
     print("="*70)
 
     config = MEDIUM_WAREHOUSE_20_TASKS
@@ -334,7 +335,7 @@ def test_medium_week3_operators_performance():
     precedence_valid, _ = exchanged.validate_precedence()
     assert precedence_valid, "Precedence应保持有效"
 
-    print(f"\n✓ 测试4通过：Week 3算子性能符合预期")
+    print(f"\n✓ 测试4通过：仓储回归算子性能符合预期")
 
 
 def test_medium_destroy_repair_cycles():
@@ -426,7 +427,7 @@ def test_medium_destroy_repair_cycles():
 
 if __name__ == "__main__":
     print("\n" + "="*70)
-    print("Week 3 中规模测试：仓库机器人场景")
+    print("仓储回归 中规模测试：仓库机器人场景")
     print("="*70)
 
     # 显示配置信息
@@ -437,7 +438,7 @@ if __name__ == "__main__":
         test_medium_20_tasks_greedy()
         test_medium_20_tasks_regret2()
         test_medium_30_tasks_mixed()
-        test_medium_week3_operators_performance()
+        test_medium_regression_operators_performance()
         test_medium_destroy_repair_cycles()
 
         print("\n" + "="*70)
@@ -447,9 +448,9 @@ if __name__ == "__main__":
         print("1. ✓ 20任务Greedy插入正常工作")
         print("2. ✓ 20任务Regret-2插入正常工作")
         print("3. ✓ 30任务混合模式正常工作")
-        print("4. ✓ Week 3算子性能符合预期")
+        print("4. ✓ 仓储回归算子性能符合预期")
         print("5. ✓ 多轮Destroy-Repair稳定工作")
-        print("\nWeek 3在仓库机器人中规模场景下验证成功！")
+        print("\n仓储回归在仓库机器人中规模场景下验证成功！")
 
     except AssertionError as e:
         print(f"\n✗ 测试失败: {e}")

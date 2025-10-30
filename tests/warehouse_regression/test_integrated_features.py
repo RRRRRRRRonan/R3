@@ -1,4 +1,4 @@
-"""Integrated regression for Week 3 planner capabilities.
+"""Integrated regression for warehouse regression planner capabilities.
 
 Combines time windows, charging strategies, destroy/repair operators, and
 capacity/energy feasibility checks on a ten-task scenario to validate that the
@@ -12,7 +12,8 @@ from core.vehicle import create_vehicle
 from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
 from physics.time import TimeWindow, TimeWindowType
-from planner.alns import MinimalALNS, CostParameters
+from config import CostParameters
+from planner.alns import MinimalALNS
 from strategy.charging_strategies import (
     FullRechargeStrategy,
     PartialRechargeFixedStrategy,
@@ -344,7 +345,7 @@ def test_alns_with_all_features():
 
 if __name__ == '__main__':
     print("="*70)
-    print("Week 3 集成测试：所有功能组合验证")
+    print("仓储回归 集成测试：所有功能组合验证")
     print("="*70)
 
     test_charging_strategy_comparison()

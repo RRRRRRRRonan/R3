@@ -6,28 +6,30 @@
 
 ```
 tests/
-├── week3/        # 核心功能与约束回归测试
+├── warehouse_regression/ # 仓储回归（原 Week 3）场景回归
 ├── charging/     # 充电策略对比与验证
 └── optimization/ # 小/中/大规模 ALNS 架构回归
 ```
 
-## Week 3 场景回归（`tests/week3/`）
+## 仓储回归场景（原 Week 3，`tests/warehouse_regression/`）
+
+> 注：早期项目在第三周迭代中引入该批仓储场景回归测试，因此最初以 "Week 3" 命名；现统一重命名为 "warehouse_regression" 以突显其仓储回归含义。
 
 | 文件 | 侧重点 |
 |------|--------|
 | `test_integrated_features.py` | 核心流程一键回归，验证 Destroy/Repair、时间窗与能量约束协同 |
-| `test_week3_comprehensive.py` | 算子与多目标成本的细粒度断言 |
-| `test_week3_small_scale.py` | 5-10 个任务的快速健康检查 |
-| `test_week3_medium_scale.py` | 20-30 个任务的典型部署验证 |
-| `test_week3_large_scale.py` | 50-100 个任务的压力测试 |
+| `test_regression_comprehensive.py` | 算子与多目标成本的细粒度断言 |
+| `test_regression_small_scale.py` | 5-10 个任务的快速健康检查 |
+| `test_regression_medium_scale.py` | 20-30 个任务的典型部署验证 |
+| `test_regression_large_scale.py` | 50-100 个任务的压力测试 |
 | `test_simple_capacity_check.py` | 载荷与能量可行性最小场景 |
 
 ### 推荐执行顺序
 
 ```bash
-python tests/week3/test_integrated_features.py
-python tests/week3/test_week3_small_scale.py
-python tests/week3/test_week3_medium_scale.py
+python tests/warehouse_regression/test_integrated_features.py
+python tests/warehouse_regression/test_regression_small_scale.py
+python tests/warehouse_regression/test_regression_medium_scale.py
 ```
 
 ## 充电策略验证（`tests/charging/`）
@@ -66,5 +68,5 @@ python -m pytest tests/optimization/test_alns_optimization_small.py -q
 ## 执行提示
 
 1. 在仓库根目录运行测试，Python 会自动识别 `src/` 模块。
-2. 大规模测试（week3 large、optimization large）耗时较长，建议在 CI 中标记为慢测试或单独运行。
+2. 大规模测试（warehouse regression large、optimization large）耗时较长，建议在 CI 中标记为慢测试或单独运行。
 3. 若需新增测试，用以上结构为模板，保持命名清晰与输出可读。

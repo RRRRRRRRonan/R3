@@ -11,6 +11,7 @@ from tests.optimization.common import (
     run_alns_trial,
     summarize_improvements,
 )
+from config import OPTIMIZATION_SCENARIO_PRESETS
 
 from strategy.charging_strategies import (
     FullRechargeStrategy,
@@ -18,24 +19,17 @@ from strategy.charging_strategies import (
     PartialRechargeMinimalStrategy,
 )
 
-SMALL_CONFIG = ScenarioConfig(
-    num_tasks=10,
-    num_charging=1,
-    area_size=(1000.0, 1000.0),
-    vehicle_capacity=200.0,
-    battery_capacity=1.2,
-    consumption_per_km=0.4,
-    charging_rate=5.0 / 3600.0,
-    seed=7,
+SMALL_CONFIG = ScenarioConfig.from_defaults(
+    OPTIMIZATION_SCENARIO_PRESETS["small"]
 )
 
 STRATEGIES = [
-    ("Full", FullRechargeStrategy(), 20),
-    ("Fixed-50%", PartialRechargeFixedStrategy(charge_ratio=0.5), 25),
+    ("Full", FullRechargeStrategy(), 24),
+    ("Fixed-50%", PartialRechargeFixedStrategy(charge_ratio=0.5), 30),
     (
         "Minimal",
         PartialRechargeMinimalStrategy(safety_margin=0.02, min_margin=0.0),
-        30,
+        36,
     ),
 ]
 

@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import Dict, List, Sequence
+from typing import Dict, List, Sequence, Type
 
 from core.node import DepotNode
 from core.route import Route, create_empty_route
@@ -42,7 +42,8 @@ from core.task import TaskPool
 from core.vehicle import Vehicle
 from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
-from planner.alns import CostParameters, MinimalALNS
+from config import ALNSHyperParameters, CostParameters, DEFAULT_COST_PARAMETERS
+from planner.alns import MinimalALNS
 
 
 @dataclass
@@ -93,6 +94,8 @@ class FleetPlanner:
         repair_mode: str = "mixed",
         use_adaptive: bool = True,
         verbose: bool = False,
+        alns_class: Type[MinimalALNS] = MinimalALNS,
+        alns_hyper_params: ALNSHyperParameters | None = None,
     ) -> None:
         if not vehicles:
             raise ValueError("FleetPlanner requires at least one vehicle")
@@ -102,11 +105,13 @@ class FleetPlanner:
         self.vehicles = sorted(vehicles, key=lambda v: v.vehicle_id)
         self.task_pool = task_pool
         self.energy_config = energy_config
-        self.cost_params = cost_params or CostParameters()
+        self.cost_params = cost_params or DEFAULT_COST_PARAMETERS
         self.charging_strategy = charging_strategy
         self.repair_mode = repair_mode
         self.use_adaptive = use_adaptive
         self.verbose = verbose
+        self.alns_class = alns_class
+        self.alns_hyper_params = alns_hyper_params
 
     def plan_routes(self, *, max_iterations: int = 100) -> FleetPlanResult:
         """Generate a route for each vehicle in the fleet.
@@ -157,7 +162,7 @@ class FleetPlanner:
                 # Mark the task as assigned in the master pool for downstream modules.
                 self.task_pool.assign_task(task_id, vehicle.vehicle_id)
 
-            planner = MinimalALNS(
+            planner = self.alns_class(
                 self.distance,
                 sub_pool,
                 repair_mode=self.repair_mode,
@@ -165,6 +170,7 @@ class FleetPlanner:
                 charging_strategy=self.charging_strategy,
                 use_adaptive=self.use_adaptive,
                 verbose=self.verbose,
+                hyper_params=self.alns_hyper_params,
             )
             planner.vehicle = vehicle
             planner.energy_config = self.energy_config

@@ -1,4 +1,4 @@
-"""Regression tests for the compact Week 3 warehouse scenario.
+"""Regression tests for the compact warehouse regression scenario.
 
 The suite synthesises a 5–10 task environment with realistic warehouse
 distances, generates grid layouts, and ensures the ALNS planner plus charging
@@ -13,7 +13,8 @@ from core.route import Route, create_empty_route
 from core.vehicle import create_vehicle
 from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
-from planner.alns import MinimalALNS, CostParameters
+from config import CostParameters
+from planner.alns import MinimalALNS
 
 from warehouse_test_config import (
     SMALL_WAREHOUSE_5_TASKS,
@@ -274,10 +275,10 @@ def test_small_10_tasks_with_charging():
     print(f"\n✓ 测试2通过：10任务+充电站场景正常工作")
 
 
-def test_small_week3_operators():
-    """测试3：Week 3算子在小规模场景下的表现"""
+def test_small_regression_operators():
+    """测试3：仓储回归算子在小规模场景下的表现"""
     print("\n" + "="*70)
-    print("测试3：Week 3算子测试（Partial Removal + Pair Exchange）")
+    print("测试3：仓储回归算子测试（Partial Removal + Pair Exchange）")
     print("="*70)
 
     config = SMALL_WAREHOUSE_10_TASKS
@@ -336,7 +337,7 @@ def test_small_week3_operators():
 
     print(f"✓ Pair Exchange正确")
 
-    print(f"\n✓ 测试3通过：Week 3算子在小规模场景正常工作")
+    print(f"\n✓ 测试3通过：仓储回归算子在小规模场景正常工作")
 
 
 def test_small_end_to_end():
@@ -425,7 +426,7 @@ def test_small_end_to_end():
 
 if __name__ == "__main__":
     print("\n" + "="*70)
-    print("Week 3 小规模测试：仓库机器人场景")
+    print("仓储回归 小规模测试：仓库机器人场景")
     print("="*70)
 
     # 显示配置信息
@@ -439,7 +440,7 @@ if __name__ == "__main__":
         # 运行所有测试
         test_small_5_tasks_basic()
         test_small_10_tasks_with_charging()
-        test_small_week3_operators()
+        test_small_regression_operators()
         test_small_end_to_end()
 
         print("\n" + "="*70)
@@ -448,9 +449,9 @@ if __name__ == "__main__":
         print("\n总结:")
         print("1. ✓ 5任务基础场景正常工作")
         print("2. ✓ 10任务+充电站场景正常工作")
-        print("3. ✓ Week 3算子（Partial Removal, Pair Exchange）正常工作")
+        print("3. ✓ 仓储回归算子（Partial Removal, Pair Exchange）正常工作")
         print("4. ✓ 端到端Destroy-Repair工作流程正常")
-        print("\nWeek 3在仓库机器人小规模场景下验证成功！")
+        print("\n仓储回归在仓库机器人小规模场景下验证成功！")
 
     except AssertionError as e:
         print(f"\n✗ 测试失败: {e}")

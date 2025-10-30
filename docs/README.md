@@ -24,12 +24,12 @@ R3是一个完整的**电动自主移动机器人(AMR)路径规划框架**，使
 ### 运行综合测试
 ```bash
 # 推荐：一键验证核心流程
-python tests/week3/test_integrated_features.py
+python tests/warehouse_regression/test_integrated_features.py
 
 # 依据规模拆分验证
-python tests/week3/test_week3_small_scale.py
-python tests/week3/test_week3_medium_scale.py
-python tests/week3/test_week3_large_scale.py
+python tests/warehouse_regression/test_regression_small_scale.py
+python tests/warehouse_regression/test_regression_medium_scale.py
+python tests/warehouse_regression/test_regression_large_scale.py
 ```
 
 ### 基础使用示例
@@ -69,12 +69,12 @@ R3/
 │   └── strategy/          # 充电策略
 │
 ├── tests/                  # 测试套件
-│   ├── week3/             # 核心流程测试
+│   ├── warehouse_regression/ # 仓储回归（原 Week 3）核心流程测试
 │   │   ├── test_integrated_features.py      ★ 综合测试
-│   │   ├── test_week3_comprehensive.py
-│   │   ├── test_week3_small_scale.py
-│   │   ├── test_week3_medium_scale.py
-│   │   └── test_week3_large_scale.py
+│   │   ├── test_regression_comprehensive.py
+│   │   ├── test_regression_small_scale.py
+│   │   ├── test_regression_medium_scale.py
+│   │   └── test_regression_large_scale.py
 │   └── charging/          # 充电策略验证
 │       └── test_strategy_comparison.py
 │
@@ -91,6 +91,10 @@ R3/
 - **Destroy算子**: random_removal, partial_removal
 - **Repair算子**: greedy_insertion, regret2_insertion
 - **Local Search**: pair_exchange
+
+### 1.1 Matheuristic升级
+- **MatheuristicALNS**: 在ALNS主循环之上加入精英解记忆和分段重优化，结合仿MILP的段内重构提升能量约束场景下的收敛质量。
+- **设计说明**: 详见 [docs/summaries/matheuristic_alns.md](./summaries/matheuristic_alns.md)。
 
 ### 2. 充电策略
 - **FR**: Full Recharge（完全充电）
@@ -114,9 +118,9 @@ R3/
 
 | 测试 | 规模 | 说明 |
 |------|------|------|
-| `test_week3_small_scale.py` | 小 | 5-10 个任务的快速健康检查 |
-| `test_week3_medium_scale.py` | 中 | 20-30 个任务的典型部署 |
-| `test_week3_large_scale.py` | 大 | 50-100 个任务的压力测试 |
+| `test_regression_small_scale.py` | 小 | 5-10 个任务的快速健康检查 |
+| `test_regression_medium_scale.py` | 中 | 20-30 个任务的典型部署 |
+| `test_regression_large_scale.py` | 大 | 50-100 个任务的压力测试 |
 | `test_integrated_features.py` | 综合 | 完整流程与约束联调 |
 
 ---
@@ -146,5 +150,5 @@ R3/
 
 ---
 
-*版本: 1.0 (Week 3完成)*
+*版本: 1.0 (仓储回归测试整合完成（原 Week 3）)*
 *最后更新: 2024*

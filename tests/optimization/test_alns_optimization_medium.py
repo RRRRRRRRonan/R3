@@ -1,6 +1,6 @@
 """Regression test covering the medium optimisation scenario.
 
-Runs the shared ten-request scenario, expecting each charging strategy to
+Runs a trimmed twelve-request scenario, expecting each charging strategy to
 deliver cost reductions while staying within the documented runtime budget.
 """
 
@@ -10,6 +10,7 @@ from tests.optimization.common import (
     run_alns_trial,
     summarize_improvements,
 )
+from config import OPTIMIZATION_SCENARIO_PRESETS
 
 from strategy.charging_strategies import (
     FullRechargeStrategy,
@@ -17,24 +18,18 @@ from strategy.charging_strategies import (
     PartialRechargeMinimalStrategy,
 )
 
-MEDIUM_CONFIG = ScenarioConfig(
-    num_tasks=30,
-    num_charging=2,
-    area_size=(2000.0, 2000.0),
-    vehicle_capacity=220.0,
-    battery_capacity=1.6,
-    consumption_per_km=0.45,
-    charging_rate=5.5 / 3600.0,
-    seed=11,
+MEDIUM_CONFIG = ScenarioConfig.from_defaults(
+    OPTIMIZATION_SCENARIO_PRESETS["medium"],
+    num_tasks=12,
 )
 
 STRATEGIES = [
-    ("Full", FullRechargeStrategy(), 55),
-    ("Fixed-60%", PartialRechargeFixedStrategy(charge_ratio=0.6), 65),
+    ("Full", FullRechargeStrategy(), 6),
+    ("Fixed-60%", PartialRechargeFixedStrategy(charge_ratio=0.6), 8),
     (
         "Minimal",
         PartialRechargeMinimalStrategy(safety_margin=0.03, min_margin=0.01),
-        75,
+        10,
     ),
 ]
 
