@@ -67,44 +67,66 @@ def run_q_learning_trial(
             ),
         ),
         q_learning=QLearningParams(
-            # CRITICAL FIX: Faster learning for online setting
-            alpha=0.25,  # Increased from 0.1 - learn faster in limited iterations
-            gamma=0.9,
+            # CRITICAL: Higher learning rate for faster convergence
+            alpha=0.35,  # Increased from 0.25 - learn aggressively in limited iterations
+            gamma=0.95,  # Increased from 0.9 - value long-term rewards more
 
-            # CRITICAL FIX 2.0: Balanced exploration that persists into stuck phase
-            # Previous problem: epsilon=0.05 with decay=0.5 meant exploration ended
-            # at iteration 3, BEFORE Q-learning could learn LP's value in stuck state
-            #
-            # New strategy: Higher initial epsilon + slower decay
-            # - Iterations 1-5: 15-9% exploration (learn LP works)
-            # - Iterations 6-10: 7-5% exploration (refine strategy)
-            # - Iterations 11-20: 4-1.5% exploration (exploit learned policy)
-            initial_epsilon=0.15,  # Increased from 0.05 - need real exploration
-            epsilon_decay=0.88,    # Increased from 0.5 - sustain exploration longer
-            epsilon_min=0.01,      # Lower floor for minimal exploration
+            # ULTRA-LOW EXPLORATION: Trust intelligent initialization
+            # Problem: epsilon=0.15 meant 15% pure random (worse than roulette wheel)
+            # Solution: Near-zero exploration, rely on initial Q-values + occasional exploration
+            initial_epsilon=0.02,  # Minimal exploration (2%)
+            epsilon_decay=0.98,    # Very slow decay - sustain minimal exploration
+            epsilon_min=0.005,     # Lower floor
             enable_online_updates=True,
 
             # Reward structure optimized for ROI-aware learning
-            reward_new_best=50.0,
-            reward_improvement=20.0,
-            reward_accepted=5.0,
-            reward_rejected=-2.0,
+            reward_new_best=100.0,     # Doubled from 50 - stronger signal for success
+            reward_improvement=30.0,   # Increased from 20
+            reward_accepted=8.0,       # Increased from 5
+            reward_rejected=-3.0,      # More negative from -2
 
-            # Time penalty thresholds - encourage matheuristic when it delivers
+            # Time penalty thresholds - strongly discourage LP waste
             time_penalty_threshold=0.1,
-            time_penalty_positive_scale=2.0,   # Reduced from 2.5 - less penalty for good results
-            time_penalty_negative_scale=10.0,  # Increased from 7.5 - heavier penalty for waste
-            standard_time_penalty_scale=0.5,   # Reduced from 0.75 - cheaper ops are cheap
+            time_penalty_positive_scale=1.5,   # Reduced from 2.0 - less penalty for LP success
+            time_penalty_negative_scale=15.0,  # Increased from 10.0 - heavy penalty for LP waste
+            standard_time_penalty_scale=0.3,   # Reduced from 0.5 - very cheap for greedy
 
-            # CRITICAL FIX: Earlier state transitions for large-scale problems
-            # Now that LP is available in explore phase, we can be more conservative
-            # with state transitions - let Q-learning learn naturally
-            stagnation_threshold=200,          # Legacy absolute threshold (unused if ratio set)
-            deep_stagnation_threshold=800,     # Legacy absolute threshold (unused if ratio set)
-            stagnation_ratio=0.1,              # Reduced from 0.15 - stuck after 4 iterations
-            deep_stagnation_ratio=0.35,        # Reduced from 0.4 - deep_stuck after 14-15 iterations
+            # Conservative state transitions - longer learning windows
+            stagnation_threshold=200,
+            deep_stagnation_threshold=800,
+            stagnation_ratio=0.18,       # Increased from 0.1 - stuck after 7-8 iterations
+            deep_stagnation_ratio=0.45,  # Increased from 0.35 - deep_stuck after 18-20 iterations
         ),
     )
+
+    # Build intelligent initial Q-values to guide early learning
+    # Key insight: Give LP higher initial values in stuck/deep_stuck states
+    # This provides a "warm start" so Q-learning doesn't waste iterations discovering LP
+    initial_q_values = {}
+    for state in ["explore", "stuck", "deep_stuck"]:
+        initial_q_values[state] = {}
+        for destroy_op in ["random_removal", "partial_removal"]:
+            for repair_op in ["greedy", "regret2", "random", "lp"]:
+                action = (destroy_op, repair_op)
+
+                # Intelligent initialization based on expected operator value
+                if repair_op == "lp":
+                    # LP is powerful but expensive - higher value in stuck states
+                    if state == "explore":
+                        initial_q_values[state][action] = 15.0   # Moderate initial value
+                    elif state == "stuck":
+                        initial_q_values[state][action] = 30.0   # High initial value
+                    elif state == "deep_stuck":
+                        initial_q_values[state][action] = 35.0   # Very high initial value
+                elif repair_op == "regret2":
+                    # Regret2 is good heuristic
+                    initial_q_values[state][action] = 12.0
+                elif repair_op == "greedy":
+                    # Greedy is fast and decent
+                    initial_q_values[state][action] = 10.0
+                else:
+                    # Random is baseline
+                    initial_q_values[state][action] = 5.0
 
     rng = random.Random(seed)
     state = random.getstate()
@@ -125,6 +147,7 @@ def run_q_learning_trial(
                 destroy_operators=alns._destroy_operators,
                 repair_operators=alns.repair_operators,
                 params=alns._q_params,
+                initial_q_values=initial_q_values,
             )
         alns.vehicle = deepcopy(scenario.vehicles[0])
         alns.energy_config = deepcopy(scenario.energy)
