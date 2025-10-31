@@ -95,6 +95,9 @@ class MatheuristicALNS(MinimalALNS):
     def optimize(self, initial_route: Route, max_iterations: int = 100) -> Route:
         """Run ALNS with matheuristic intensification steps."""
 
+        self._maybe_reconfigure_q_agent(initial_route)
+        max_iterations = self._normalise_iteration_budget(max_iterations)
+
         current_route = initial_route.copy()
         best_route = initial_route.copy()
         self._segment_optimizer._ensure_schedule(current_route)
@@ -195,6 +198,7 @@ class MatheuristicALNS(MinimalALNS):
                     is_accepted=is_accepted,
                     action_cost=action_runtime,
                     repair_operator=repair_operator,
+                    previous_cost=previous_cost,
                 )
                 next_state = self._determine_state(consecutive_no_improve)
                 self._q_agent.update(q_state, q_action, reward, next_state)

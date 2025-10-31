@@ -33,6 +33,7 @@ class QLearningOperatorAgent:
         params: QLearningParams,
         *,
         initial_q_values: Optional[Dict[State, Dict[Action, float]]] = None,
+        state_labels: Optional[Sequence[State]] = None,
     ) -> None:
         self.params = params
         self.destroy_operators: List[str] = list(destroy_operators)
@@ -46,11 +47,19 @@ class QLearningOperatorAgent:
             for repair in self.repair_operators
         ]
 
-        self.states: Tuple[State, State, State] = (
-            "explore",
-            "stuck",
-            "deep_stuck",
-        )
+        if state_labels:
+            states = tuple(dict.fromkeys(state_labels))
+        else:
+            states = (
+                "explore",
+                "stuck",
+                "deep_stuck",
+            )
+
+        if not states:
+            raise ValueError("Q-learning agent requires at least one state label")
+
+        self.states: Tuple[State, ...] = states
 
         self.q_table: Dict[State, Dict[Action, float]] = {
             state: {action: 0.0 for action in self.actions} for state in self.states
