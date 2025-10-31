@@ -181,24 +181,26 @@ class ALNSHyperParameters:
 class QLearningParams:
     """Hyper-parameters for the Q-learning operator agent."""
 
-    alpha: float = 0.1
-    gamma: float = 0.9
-    initial_epsilon: float = 0.4
-    epsilon_decay: float = 0.92
-    epsilon_min: float = 0.05
+    alpha: float = 0.35
+    gamma: float = 0.95
+    initial_epsilon: float = 0.12
+    epsilon_decay: float = 0.995
+    epsilon_min: float = 0.01
     enable_online_updates: bool = True
-    reward_new_best: float = 50.0
-    reward_improvement: float = 20.0
-    reward_accepted: float = 5.0
-    reward_rejected: float = -2.0
-    time_penalty_threshold: float = 0.1
-    time_penalty_positive_scale: float = 2.5
-    time_penalty_negative_scale: float = 7.5
-    standard_time_penalty_scale: float = 0.75
-    stagnation_threshold: int = 200
-    deep_stagnation_threshold: int = 800
-    stagnation_ratio: float = 0.25
-    deep_stagnation_ratio: float = 0.6
+    reward_new_best: float = 100.0
+    reward_improvement: float = 36.0
+    reward_accepted: float = 10.0
+    reward_rejected: float = -6.0
+    roi_positive_scale: float = 220.0
+    roi_negative_scale: float = 260.0
+    time_penalty_threshold: float = 0.18
+    time_penalty_positive_scale: float = 1.1
+    time_penalty_negative_scale: float = 6.0
+    standard_time_penalty_scale: float = 0.2
+    stagnation_threshold: int = 160
+    deep_stagnation_threshold: int = 560
+    stagnation_ratio: float = 0.16
+    deep_stagnation_ratio: float = 0.4
 
 
 @dataclass(frozen=True)
