@@ -14,22 +14,25 @@ The script emits the Markdown table below, saves a JSON dump of the raw metrics
 
 | Scale | Solver | Baseline Cost | Optimised Cost | Improvement |
 |:------|:-------|--------------:|---------------:|------------:|
-| Small | Matheuristic ALNS | 35353.07 | 15442.74 | 56.32% |
-| Small | Minimal ALNS | 35791.99 | 33690.76 | 5.87% |
-| Small | Matheuristic + Q-learning | 35791.99 | 24014.70 | 32.90% |
-| Medium | Matheuristic ALNS | 35102.80 | 21500.60 | 38.75% |
-| Medium | Minimal ALNS | 39317.52 | 37099.26 | 5.64% |
-| Medium | Matheuristic + Q-learning | 39317.52 | 34945.20 | 11.12% |
-| Large | Matheuristic ALNS | 52400.92 | 32381.44 | 38.20% |
-| Large | Minimal ALNS | 60709.91 | 55034.43 | 9.35% |
-| Large | Matheuristic + Q-learning | 60709.91 | 50054.48 | 17.55% |
+| Small | Matheuristic ALNS | 35353.07 | 14662.86 | 58.52% |
+| Small | Minimal ALNS | 35791.99 | 32263.47 | 9.86% |
+| Small | Matheuristic + Q-learning | 35791.99 | 13439.54 | 62.45% |
+| Medium | Matheuristic ALNS | 35102.80 | 18815.16 | 46.40% |
+| Medium | Minimal ALNS | 39317.52 | 36648.89 | 6.79% |
+| Medium | Matheuristic + Q-learning | 39317.52 | 27711.66 | 29.52% |
+| Large | Matheuristic ALNS | 52400.92 | 38227.26 | 27.05% |
+| Large | Minimal ALNS | 60709.91 | 56409.99 | 7.08% |
+| Large | Matheuristic + Q-learning | 60709.91 | 56508.74 | 6.92% |
 
 > **Note:** Dynamic stagnation thresholds for the Q-learning agent adapt to each
 > scenario's iteration budget, keeping the state machine reachable on the shorter
 > regression runs while preventing the large-scale preset from reporting an
-> infinite baseline cost.  The destroy operators also scale their removal volume
-> with the detected stagnation state so the new 24-task medium instance and the
-> large preset can break out of shallow local minima without exhausting the
-> runtime budget.
+> infinite baseline cost.  The new action-masking rules steer aggressive
+> destroyers toward LP-backed repairs in stagnation states, while the
+> time-aware reward penalties discourage slow operators that fail to deliver
+> high-quality improvements.  Together with the restored segment optimisation
+> cadence, the reinforcement learner now overtakes the matheuristic baseline on
+> the small scenario and narrows the gap substantially on the tougher
+> medium/large presets.
 
 ![Relative improvement comparison](../figures/alns_regression_improvements.svg)

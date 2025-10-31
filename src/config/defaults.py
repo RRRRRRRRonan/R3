@@ -186,10 +186,15 @@ class QLearningParams:
     initial_epsilon: float = 0.4
     epsilon_decay: float = 0.92
     epsilon_min: float = 0.05
+    enable_online_updates: bool = True
     reward_new_best: float = 50.0
     reward_improvement: float = 20.0
     reward_accepted: float = 5.0
     reward_rejected: float = -2.0
+    time_penalty_threshold: float = 0.1
+    time_penalty_positive_scale: float = 2.5
+    time_penalty_negative_scale: float = 7.5
+    standard_time_penalty_scale: float = 0.75
     stagnation_threshold: int = 200
     deep_stagnation_threshold: int = 800
     stagnation_ratio: float = 0.25

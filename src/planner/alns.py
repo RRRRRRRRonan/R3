@@ -11,6 +11,7 @@ stay compatible with the vehicle energy configuration and charging strategy.
 from collections import Counter
 import math
 import random
+import time
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from core.route import Route
@@ -20,7 +21,7 @@ from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
 from physics.time import TimeConfig
 from planner.operators import AdaptiveOperatorSelector
-from planner.q_learning import QLearningOperatorAgent
+from planner.q_learning import Action, QLearningOperatorAgent
 from config import (
     ALNSHyperParameters,
     CostParameters,
@@ -54,6 +55,7 @@ class MinimalALNS:
         adaptation_mode: str = "q_learning",
         hyper_params: Optional[ALNSHyperParameters] = None,
         repair_operators: Optional[Sequence[str]] = None,
+        q_learning_initial_q: Optional[Dict[str, Dict[Action, float]]] = None,
     ):
         """Initialise the ALNS planner with distance data and candidate tasks."""
         self.distance = distance_matrix
@@ -77,12 +79,21 @@ class MinimalALNS:
             self.hyper, 'q_learning', DEFAULT_Q_LEARNING_PARAMS
         )
 
+        self._matheuristic_repairs = {
+            operator
+            for operator in self.repair_operators
+            if operator in {'lp'}
+        }
+
         if self._use_q_learning:
             self._q_agent = QLearningOperatorAgent(
                 destroy_operators=self._destroy_operators,
                 repair_operators=self.repair_operators,
                 params=self._q_params,
+                initial_q_values=q_learning_initial_q,
             )
+            if not self._q_params.enable_online_updates:
+                self._q_agent.set_epsilon(self._q_params.epsilon_min)
             self.adaptive_repair_selector = None
             self.adaptive_destroy_selector = None
         elif self.use_adaptive and adaptation_mode == 'roulette':
@@ -142,20 +153,31 @@ class MinimalALNS:
         current_route: Route,
         *,
         state: Optional[str] = None,
-    ) -> Tuple[str, str, Route, List[int], Route, Optional[Tuple[str, str]]]:
+    ) -> Tuple[
+        str,
+        str,
+        Route,
+        List[int],
+        Route,
+        Optional[Tuple[str, str]],
+        float,
+    ]:
         destroy_params = self._select_destroy_parameters(current_route, state)
 
         if self._use_q_learning:
             if state is None:
                 raise ValueError("state must be provided when using Q-learning adaptation")
-            action = self._q_agent.select_action(state)
+            mask = self._build_action_mask(state)
+            action = self._q_agent.select_action(state, mask=mask)
             destroy_operator, repair_operator = action
+            start_time = time.perf_counter()
             destroyed_route, removed_task_ids = self._run_destroy_operator(
                 destroy_operator, current_route, destroy_params
             )
             candidate_route = self._run_repair_operator(
                 repair_operator, destroyed_route, removed_task_ids
             )
+            elapsed = time.perf_counter() - start_time
             return (
                 destroy_operator,
                 repair_operator,
@@ -163,6 +185,7 @@ class MinimalALNS:
                 removed_task_ids,
                 candidate_route,
                 action,
+                elapsed,
             )
 
         destroy_operator, destroyed_route, removed_task_ids = self._apply_destroy_operator(
@@ -178,6 +201,7 @@ class MinimalALNS:
             removed_task_ids,
             candidate_route,
             None,
+            0.0,
         )
 
     def _deterministic_repair_choice(self) -> str:
@@ -257,15 +281,37 @@ class MinimalALNS:
         improvement: float,
         is_new_best: bool,
         is_accepted: bool,
+        action_cost: float,
+        repair_operator: str,
     ) -> float:
         params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
         if is_new_best:
-            return params.reward_new_best
-        if improvement > 0:
-            return params.reward_improvement
-        if is_accepted:
-            return params.reward_accepted
-        return params.reward_rejected
+            quality = params.reward_new_best
+        elif improvement > 0:
+            quality = params.reward_improvement
+        elif is_accepted:
+            quality = params.reward_accepted
+        else:
+            quality = params.reward_rejected
+
+        penalty = 0.0
+        if action_cost > params.time_penalty_threshold:
+            is_matheuristic = repair_operator in self._current_matheuristic_repairs()
+            if quality >= params.reward_improvement:
+                scale = (
+                    params.time_penalty_positive_scale
+                    if is_matheuristic
+                    else params.standard_time_penalty_scale
+                )
+            else:
+                scale = (
+                    params.time_penalty_negative_scale
+                    if is_matheuristic
+                    else params.standard_time_penalty_scale
+                )
+            penalty = action_cost * scale
+
+        return quality - penalty
 
     def _select_destroy_parameters(
         self, route: Route, state: Optional[str]
@@ -312,6 +358,45 @@ class MinimalALNS:
             remove_prob = 0.0
 
         return q, remove_prob
+
+    def _build_action_mask(self, state: str) -> List[bool]:
+        """Filter operator pairs that violate expert guidance for the state."""
+
+        if not self._use_q_learning:
+            return []
+
+        matheuristic_repairs = self._current_matheuristic_repairs()
+        mask: List[bool] = []
+        aggressive_destroy = state in {'stuck', 'deep_stuck'} and bool(
+            matheuristic_repairs
+        )
+        force_matheuristic = state == 'deep_stuck' and bool(matheuristic_repairs)
+
+        for destroy, repair in self._q_agent.actions:
+            allowed = True
+
+            if state == 'explore' and repair in matheuristic_repairs:
+                allowed = False
+
+            if aggressive_destroy and destroy == 'partial_removal':
+                if repair not in matheuristic_repairs:
+                    allowed = False
+
+            if force_matheuristic and repair not in matheuristic_repairs:
+                allowed = False
+
+            mask.append(allowed)
+
+        return mask
+
+    def _current_matheuristic_repairs(self) -> set:
+        """Return the set of expensive repair operators available."""
+
+        candidates = {'lp'}
+        available = {op for op in self.repair_operators if op in candidates}
+        if available != self._matheuristic_repairs:
+            self._matheuristic_repairs = available
+        return available
 
     def _resolve_destroy_params(
         self, route: Route, destroy_params: Optional[Tuple[int, float]]
@@ -415,6 +500,7 @@ class MinimalALNS:
                 removed_task_ids,
                 candidate_route,
                 q_action,
+                action_runtime,
             ) = self._execute_destroy_repair(current_route, state=q_state)
 
             destroy_usage[destroy_operator] += 1
@@ -453,11 +539,17 @@ class MinimalALNS:
             else:
                 consecutive_no_improve += 1
 
-            if self._use_q_learning and q_state is not None and q_action is not None:
+            if (
+                self._use_q_learning
+                and q_state is not None
+                and q_action is not None
+            ):
                 reward = self._compute_q_reward(
                     improvement=improvement,
                     is_new_best=is_new_best,
                     is_accepted=is_accepted,
+                    action_cost=action_runtime,
+                    repair_operator=repair_operator,
                 )
                 next_state = self._determine_state(consecutive_no_improve)
                 self._q_agent.update(q_state, q_action, reward, next_state)

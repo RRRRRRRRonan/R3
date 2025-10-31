@@ -126,6 +126,7 @@ class MatheuristicALNS(MinimalALNS):
                 removed_task_ids,
                 candidate_route,
                 q_action,
+                action_runtime,
             ) = self._execute_destroy_repair(current_route, state=q_state)
 
             destroy_usage[destroy_operator] += 1
@@ -183,11 +184,17 @@ class MatheuristicALNS(MinimalALNS):
             else:
                 consecutive_no_improve += 1
 
-            if self._use_q_learning and q_state is not None and q_action is not None:
+            if (
+                self._use_q_learning
+                and q_state is not None
+                and q_action is not None
+            ):
                 reward = self._compute_q_reward(
                     improvement=improvement,
                     is_new_best=is_new_best,
                     is_accepted=is_accepted,
+                    action_cost=action_runtime,
+                    repair_operator=repair_operator,
                 )
                 next_state = self._determine_state(consecutive_no_improve)
                 self._q_agent.update(q_state, q_action, reward, next_state)

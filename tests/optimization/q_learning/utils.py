@@ -38,23 +38,23 @@ def run_q_learning_trial(
     tuned_hyper = replace(
         DEFAULT_ALNS_HYPERPARAMETERS,
         destroy_repair=DestroyRepairParams(
-            random_removal_q=1,
-            partial_removal_q=1,
-            remove_cs_probability=0.1,
+            random_removal_q=2,
+            partial_removal_q=2,
+            remove_cs_probability=0.2,
         ),
         matheuristic=MatheuristicParams(
-            elite_pool_size=2,
-            intensification_interval=0,
-            segment_frequency=0,
-            max_elite_trials=1,
+            elite_pool_size=3,
+            intensification_interval=30,
+            segment_frequency=5,
+            max_elite_trials=2,
             segment_optimization=SegmentOptimizationParams(
                 max_segment_tasks=2,
                 candidate_pool_size=2,
-                improvement_tolerance=1e-3,
+                improvement_tolerance=5e-4,
                 max_permutations=4,
-                lookahead_window=1,
+                lookahead_window=2,
             ),
-            lp_repair=LPRepairParams(time_limit_s=0.05, max_plans_per_task=1),
+            lp_repair=LPRepairParams(time_limit_s=0.06, max_plans_per_task=1),
         ),
     )
 
@@ -72,7 +72,6 @@ def run_q_learning_trial(
             verbose=False,
             hyper_params=tuned_hyper,
         )
-        alns.repair_operators = ["greedy", "regret2"]
         if getattr(alns, "_use_q_learning", False):
             alns._q_agent = QLearningOperatorAgent(
                 destroy_operators=alns._destroy_operators,

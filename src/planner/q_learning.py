@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from config import QLearningParams
 
@@ -31,6 +31,8 @@ class QLearningOperatorAgent:
         destroy_operators: Iterable[str],
         repair_operators: Sequence[str],
         params: QLearningParams,
+        *,
+        initial_q_values: Optional[Dict[State, Dict[Action, float]]] = None,
     ) -> None:
         self.params = params
         self.destroy_operators: List[str] = list(destroy_operators)
@@ -53,8 +55,16 @@ class QLearningOperatorAgent:
         self.q_table: Dict[State, Dict[Action, float]] = {
             state: {action: 0.0 for action in self.actions} for state in self.states
         }
+        if initial_q_values:
+            for state, action_map in initial_q_values.items():
+                if state not in self.q_table:
+                    continue
+                for action, value in action_map.items():
+                    if action in self.q_table[state]:
+                        self.q_table[state][action] = float(value)
         self._epsilon = params.initial_epsilon
         self._action_usage: Dict[Action, int] = defaultdict(int)
+        self._experience_buffer: List[Tuple[State, Action, float, State]] = []
 
     @property
     def epsilon(self) -> float:
@@ -62,16 +72,22 @@ class QLearningOperatorAgent:
 
         return self._epsilon
 
-    def select_action(self, state: State) -> Action:
+    def select_action(
+        self, state: State, mask: Optional[Sequence[bool]] = None
+    ) -> Action:
         """Select an operator pair using an epsilon-greedy policy."""
 
         if state not in self.q_table:
             raise KeyError(f"Unknown state '{state}' for Q-learning agent")
 
+        allowed_actions = self._masked_actions(mask)
+        if not allowed_actions:
+            raise ValueError("No valid actions available for the provided mask")
+
         if random.random() < self._epsilon:
-            action = random.choice(self.actions)
+            action = random.choice(allowed_actions)
         else:
-            action = self._best_action(state)
+            action = self._best_action(state, mask=mask)
 
         self._action_usage[action] += 1
         return action
@@ -81,6 +97,10 @@ class QLearningOperatorAgent:
 
         if state not in self.q_table or next_state not in self.q_table:
             raise KeyError("Attempted to update Q-table with unknown state")
+
+        self._experience_buffer.append((state, action, reward, next_state))
+        if not self.params.enable_online_updates:
+            return
 
         old_q = self.q_table[state][action]
         max_future_q = max(self.q_table[next_state].values())
@@ -95,6 +115,11 @@ class QLearningOperatorAgent:
             self._epsilon = max(
                 self.params.epsilon_min, self._epsilon * self.params.epsilon_decay
             )
+
+    def set_epsilon(self, value: float) -> None:
+        """Manually adjust the exploration rate (used for offline policies)."""
+
+        self._epsilon = max(self.params.epsilon_min, min(1.0, float(value)))
 
     def statistics(self) -> Dict[str, List[QLearningActionStats]]:
         """Aggregate usage and Q-value statistics per state."""
@@ -132,10 +157,45 @@ class QLearningOperatorAgent:
                 )
         return "\n".join(rows)
 
-    def _best_action(self, state: State) -> Action:
+    def consume_experiences(self) -> List[Tuple[State, Action, float, State]]:
+        """Return and clear the accumulated experience buffer."""
+
+        experiences = list(self._experience_buffer)
+        self._experience_buffer.clear()
+        return experiences
+
+    def _best_action(
+        self, state: State, *, mask: Optional[Sequence[bool]] = None
+    ) -> Action:
         """Return the greedy action for a given state."""
 
         q_values = self.q_table[state]
-        max_q = max(q_values.values())
-        best_actions = [action for action, value in q_values.items() if value == max_q]
+        if mask is None:
+            candidate_items = q_values.items()
+        else:
+            candidate_items = [
+                (action, value)
+                for action, value, allowed in self._iter_masked_q_values(q_values, mask)
+                if allowed
+            ]
+        if not candidate_items:
+            raise ValueError("No valid actions when evaluating greedy policy")
+
+        max_q = max(value for _, value in candidate_items)
+        best_actions = [action for action, value in candidate_items if value == max_q]
         return random.choice(best_actions)
+
+    def _masked_actions(self, mask: Optional[Sequence[bool]]) -> List[Action]:
+        if mask is None:
+            return list(self.actions)
+        if len(mask) != len(self.actions):
+            raise ValueError("Action mask length mismatch")
+        return [action for action, allowed in zip(self.actions, mask) if allowed]
+
+    def _iter_masked_q_values(
+        self, q_values: Dict[Action, float], mask: Sequence[bool]
+    ):
+        if len(mask) != len(self.actions):
+            raise ValueError("Action mask length mismatch")
+        for action, allowed in zip(self.actions, mask):
+            yield action, q_values[action], allowed
