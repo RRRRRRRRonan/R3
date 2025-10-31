@@ -26,9 +26,12 @@ from config import (
     OptimizationScenarioDefaults,
     DEFAULT_ALNS_HYPERPARAMETERS,
     DEFAULT_OPTIMIZATION_SCENARIO,
+    OPTIMIZATION_SCENARIO_PRESETS,
 )
+from planner.alns import MinimalALNS
 from planner.alns_matheuristic import MatheuristicALNS
 from planner.fleet import FleetPlanner
+from tests.optimization.presets import get_scale_preset
 
 
 @dataclass
@@ -181,6 +184,73 @@ def build_scenario(config: ScenarioConfig) -> Scenario:
         vehicles=vehicles,
         energy=energy,
     )
+
+
+def get_scale_config(scale: str, **overrides) -> ScenarioConfig:
+    """Return a ``ScenarioConfig`` tuned for the requested optimisation scale."""
+
+    preset = get_scale_preset(scale)
+    defaults = OPTIMIZATION_SCENARIO_PRESETS[scale]
+    scenario_kwargs: Dict[str, object] = dict(preset.scenario_overrides)
+    scenario_kwargs.update(overrides)
+    return ScenarioConfig.from_defaults(defaults, **scenario_kwargs)
+
+
+def get_solver_iterations(scale: str, solver: str) -> int:
+    """Return the unified iteration budget for ``solver`` on ``scale`` tests."""
+
+    preset = get_scale_preset(scale)
+    try:
+        return getattr(preset.iterations, solver)
+    except AttributeError as exc:  # pragma: no cover - defensive guard
+        raise ValueError(f"Unknown solver key '{solver}' for scale '{scale}'") from exc
+
+
+def run_minimal_trial(
+    scenario: Scenario,
+    *,
+    iterations: int,
+    seed: int = 2024,
+    repair_mode: str = "adaptive",
+    cost_params: CostParameters | None = None,
+) -> Tuple[float, float]:
+    """Run the Minimal ALNS solver and return the baseline/optimised costs."""
+
+    rng = random.Random(seed)
+    state = random.getstate()
+    random.setstate(rng.getstate())
+    try:
+        task_pool = scenario.create_task_pool()
+        hyper_params = replace(
+            DEFAULT_ALNS_HYPERPARAMETERS,
+            destroy_repair=DestroyRepairParams(
+                random_removal_q=1,
+                partial_removal_q=1,
+                remove_cs_probability=0.1,
+            ),
+        )
+
+        alns = MinimalALNS(
+            distance_matrix=scenario.distance,
+            task_pool=task_pool,
+            repair_mode=repair_mode,
+            cost_params=cost_params or CostParameters(),
+            charging_strategy=None,
+            use_adaptive=True,
+            verbose=False,
+            hyper_params=hyper_params,
+        )
+        alns.vehicle = deepcopy(scenario.vehicles[0])
+        alns.energy_config = deepcopy(scenario.energy)
+
+        initial_route = create_empty_route(vehicle_id=1, depot_node=scenario.depot)
+        removed_task_ids = [task.task_id for task in scenario.tasks]
+        baseline = alns.greedy_insertion(initial_route, removed_task_ids)
+        optimised = alns.optimize(baseline, max_iterations=iterations)
+
+        return alns.evaluate_cost(baseline), alns.evaluate_cost(optimised)
+    finally:
+        random.setstate(state)
 
 
 def run_alns_trial(
