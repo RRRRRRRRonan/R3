@@ -44,17 +44,17 @@ def run_q_learning_trial(
         ),
         matheuristic=MatheuristicParams(
             elite_pool_size=3,
-            intensification_interval=30,
-            segment_frequency=5,
-            max_elite_trials=2,
+            intensification_interval=24,
+            segment_frequency=4,
+            max_elite_trials=3,
             segment_optimization=SegmentOptimizationParams(
                 max_segment_tasks=2,
-                candidate_pool_size=2,
+                candidate_pool_size=3,
                 improvement_tolerance=5e-4,
-                max_permutations=4,
-                lookahead_window=2,
+                max_permutations=5,
+                lookahead_window=3,
             ),
-            lp_repair=LPRepairParams(time_limit_s=0.06, max_plans_per_task=1),
+            lp_repair=LPRepairParams(time_limit_s=0.12, max_plans_per_task=2),
         ),
     )
 

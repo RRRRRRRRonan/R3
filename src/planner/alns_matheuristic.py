@@ -184,21 +184,16 @@ class MatheuristicALNS(MinimalALNS):
             else:
                 consecutive_no_improve += 1
 
-            if (
-                self._use_q_learning
-                and q_state is not None
-                and q_action is not None
-            ):
-                reward = self._compute_q_reward(
-                    improvement=improvement,
-                    is_new_best=is_new_best,
-                    is_accepted=is_accepted,
-                    action_cost=action_runtime,
-                    repair_operator=repair_operator,
-                )
-                next_state = self._determine_state(consecutive_no_improve)
-                self._q_agent.update(q_state, q_action, reward, next_state)
-                self._q_agent.decay_epsilon()
+            self._apply_q_learning_feedback(
+                iteration,
+                q_state=q_state,
+                q_action=q_action,
+                improvement=improvement,
+                is_new_best=is_new_best,
+                is_accepted=is_accepted,
+                action_runtime=action_runtime,
+                consecutive_no_improve=consecutive_no_improve,
+            )
 
             self._update_elite_pool(current_route)
 

@@ -191,6 +191,9 @@ class QLearningParams:
     reward_improvement: float = 20.0
     reward_accepted: float = 5.0
     reward_rejected: float = -2.0
+    reward_roi_scale: float = 3.0
+    reward_roi_clip: float = 30.0
+    roi_time_epsilon: float = 1e-03
     time_penalty_threshold: float = 0.1
     time_penalty_positive_scale: float = 2.5
     time_penalty_negative_scale: float = 7.5
@@ -199,6 +202,9 @@ class QLearningParams:
     deep_stagnation_threshold: int = 800
     stagnation_ratio: float = 0.25
     deep_stagnation_ratio: float = 0.6
+    replay_interval: int = 5
+    replay_batch_size: int = 6
+    replay_rounds: int = 2
 
 
 @dataclass(frozen=True)

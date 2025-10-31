@@ -294,6 +294,20 @@ class MinimalALNS:
         else:
             quality = params.reward_rejected
 
+        roi_bonus = 0.0
+        if action_cost >= params.roi_time_epsilon:
+            if improvement > 0:
+                roi = improvement / max(action_cost, params.roi_time_epsilon)
+                roi = min(params.reward_roi_clip, roi)
+                roi_bonus = roi * params.reward_roi_scale
+            elif quality <= params.reward_accepted:
+                # Penalise wasting expensive actions that fail to improve
+                roi = action_cost / max(params.time_penalty_threshold, params.roi_time_epsilon)
+                roi = min(params.reward_roi_clip, roi)
+                roi_bonus = -roi * params.reward_roi_scale
+
+        quality += roi_bonus
+
         penalty = 0.0
         if action_cost > params.time_penalty_threshold:
             is_matheuristic = repair_operator in self._current_matheuristic_repairs()
@@ -313,6 +327,37 @@ class MinimalALNS:
 
         return quality - penalty
 
+    def _apply_q_learning_feedback(
+        self,
+        iteration: int,
+        *,
+        q_state: Optional[str],
+        q_action: Optional[Action],
+        improvement: float,
+        is_new_best: bool,
+        is_accepted: bool,
+        action_runtime: float,
+        consecutive_no_improve: int,
+    ) -> None:
+        if not self._use_q_learning or q_state is None or q_action is None:
+            return
+
+        reward = self._compute_q_reward(
+            improvement=improvement,
+            is_new_best=is_new_best,
+            is_accepted=is_accepted,
+            action_cost=action_runtime,
+            repair_operator=q_action[1],
+        )
+        next_state = self._determine_state(consecutive_no_improve)
+        self._q_agent.update(q_state, q_action, reward, next_state)
+
+        params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
+        if params.replay_interval > 0 and (iteration + 1) % params.replay_interval == 0:
+            self._q_agent.replay(params.replay_batch_size, params.replay_rounds)
+
+        self._q_agent.decay_epsilon()
+
     def _select_destroy_parameters(
         self, route: Route, state: Optional[str]
     ) -> Optional[Tuple[int, float]]:
@@ -323,6 +368,8 @@ class MinimalALNS:
 
         if task_count == 0:
             return None
+
+        matheuristic_available = bool(self._current_matheuristic_repairs())
 
         fraction_map = {
             'explore': 0.12,
@@ -336,8 +383,13 @@ class MinimalALNS:
         }
 
         fraction = fraction_map.get(state_key, fraction_map['explore'])
-        candidate_q = int(math.ceil(task_count * fraction))
         minimum = min_remove.get(state_key, 2)
+
+        if not matheuristic_available and state_key in {'stuck', 'deep_stuck'}:
+            fraction *= 0.75 if state_key == 'stuck' else 0.7
+            minimum = max(1, minimum - 1)
+
+        candidate_q = int(math.ceil(task_count * fraction))
 
         if task_count <= minimum:
             q = task_count
@@ -352,7 +404,11 @@ class MinimalALNS:
             'stuck': 0.15,
             'deep_stuck': 0.3,
         }
-        remove_prob = min(1.0, max(0.0, base_prob + prob_adjust.get(state_key, 0.0)))
+        adjustment = prob_adjust.get(state_key, 0.0)
+        if not matheuristic_available and state_key in {'stuck', 'deep_stuck'}:
+            adjustment *= 0.5
+
+        remove_prob = min(1.0, max(0.0, base_prob + adjustment))
 
         if task_count <= 1:
             remove_prob = 0.0
@@ -539,21 +595,16 @@ class MinimalALNS:
             else:
                 consecutive_no_improve += 1
 
-            if (
-                self._use_q_learning
-                and q_state is not None
-                and q_action is not None
-            ):
-                reward = self._compute_q_reward(
-                    improvement=improvement,
-                    is_new_best=is_new_best,
-                    is_accepted=is_accepted,
-                    action_cost=action_runtime,
-                    repair_operator=repair_operator,
-                )
-                next_state = self._determine_state(consecutive_no_improve)
-                self._q_agent.update(q_state, q_action, reward, next_state)
-                self._q_agent.decay_epsilon()
+            self._apply_q_learning_feedback(
+                iteration,
+                q_state=q_state,
+                q_action=q_action,
+                improvement=improvement,
+                is_new_best=is_new_best,
+                is_accepted=is_accepted,
+                action_runtime=action_runtime,
+                consecutive_no_improve=consecutive_no_improve,
+            )
 
             # 降温
             temperature *= self.cooling_rate

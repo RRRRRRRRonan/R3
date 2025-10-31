@@ -108,6 +108,28 @@ class QLearningOperatorAgent:
             reward + self.params.gamma * max_future_q - old_q
         )
 
+    def replay(self, batch_size: int, rounds: int) -> None:
+        """Perform batched Bellman updates from the stored experience buffer."""
+
+        if batch_size <= 0 or rounds <= 0 or not self._experience_buffer:
+            return
+
+        population = self._experience_buffer
+        for _ in range(rounds):
+            if batch_size >= len(population):
+                batch = population
+            else:
+                batch = random.sample(population, k=batch_size)
+
+            for state, action, reward, next_state in batch:
+                if state not in self.q_table or next_state not in self.q_table:
+                    continue
+                old_q = self.q_table[state][action]
+                max_future_q = max(self.q_table[next_state].values())
+                self.q_table[state][action] = old_q + self.params.alpha * (
+                    reward + self.params.gamma * max_future_q - old_q
+                )
+
     def decay_epsilon(self) -> None:
         """Decay the exploration rate after each iteration."""
 
