@@ -16,6 +16,7 @@ from config import (
     DestroyRepairParams,
     LPRepairParams,
     MatheuristicParams,
+    QLearningParams,
     SegmentOptimizationParams,
 )
 
@@ -35,6 +36,9 @@ def run_q_learning_trial(
     scenario = build_scenario(config)
     task_pool = scenario.create_task_pool()
 
+    # Use SAME matheuristic strength as the pure matheuristic baseline
+    # This ensures fair comparison - Q-learning's value is in WHEN to use
+    # these operators, not in having weaker operators
     tuned_hyper = replace(
         DEFAULT_ALNS_HYPERPARAMETERS,
         destroy_repair=DestroyRepairParams(
@@ -43,18 +47,48 @@ def run_q_learning_trial(
             remove_cs_probability=0.2,
         ),
         matheuristic=MatheuristicParams(
-            elite_pool_size=3,
-            intensification_interval=30,
-            segment_frequency=5,
+            elite_pool_size=4,
+            intensification_interval=25,
+            segment_frequency=6,
             max_elite_trials=2,
             segment_optimization=SegmentOptimizationParams(
-                max_segment_tasks=2,
-                candidate_pool_size=2,
-                improvement_tolerance=5e-4,
-                max_permutations=4,
+                max_segment_tasks=3,
+                candidate_pool_size=3,
+                improvement_tolerance=1e-3,
+                max_permutations=12,
                 lookahead_window=2,
             ),
-            lp_repair=LPRepairParams(time_limit_s=0.06, max_plans_per_task=1),
+            lp_repair=LPRepairParams(
+                time_limit_s=0.3,  # Increased from 0.06 to 0.3 (5x stronger)
+                max_plans_per_task=4,  # Increased from 1 to 4 (4x stronger)
+                improvement_tolerance=1e-4,
+                skip_penalty=5_000.0,
+                fractional_threshold=1e-3,
+            ),
+        ),
+        q_learning=QLearningParams(
+            alpha=0.1,
+            gamma=0.9,
+            # Reduced initial exploration for faster convergence
+            initial_epsilon=0.2,  # Reduced from 0.4
+            epsilon_decay=0.85,   # Faster decay from 0.92
+            epsilon_min=0.05,
+            enable_online_updates=True,
+            # Reward structure optimized for ROI-aware learning
+            reward_new_best=50.0,
+            reward_improvement=20.0,
+            reward_accepted=5.0,
+            reward_rejected=-2.0,
+            # Time penalty thresholds
+            time_penalty_threshold=0.1,
+            time_penalty_positive_scale=2.5,  # Moderate penalty for expensive+good
+            time_penalty_negative_scale=7.5,  # Heavy penalty for expensive+bad
+            standard_time_penalty_scale=0.75, # Light penalty for cheap operators
+            # State transition thresholds (scaled by iterations)
+            stagnation_threshold=200,
+            deep_stagnation_threshold=800,
+            stagnation_ratio=0.25,
+            deep_stagnation_ratio=0.6,
         ),
     )
 

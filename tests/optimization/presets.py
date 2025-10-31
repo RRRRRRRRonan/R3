@@ -32,15 +32,20 @@ class ScalePreset:
 ALNS_TEST_PRESETS: Dict[str, ScalePreset] = {
     "small": ScalePreset(
         scenario_overrides={"num_tasks": 10, "num_charging": 1, "seed": 11},
-        iterations=IterationPreset(minimal=16, matheuristic=28, q_learning=18),
+        iterations=IterationPreset(minimal=16, matheuristic=28, q_learning=28),
     ),
     "medium": ScalePreset(
         scenario_overrides={"num_tasks": 24, "num_charging": 1, "seed": 19},
-        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=36),
+        # Q-learning now gets SAME iterations as matheuristic for fair comparison
+        # Previously: q_learning=36 while matheuristic=44 (18% less)
+        # Now: both get 44 iterations
+        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=44),
     ),
     "large": ScalePreset(
         scenario_overrides={"num_tasks": 30, "num_charging": 3, "seed": 17},
-        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=30),
+        # Previously: q_learning=30 while matheuristic=44 (32% less!)
+        # Now: both get 44 iterations
+        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=44),
     ),
 }
 
