@@ -86,11 +86,14 @@ class MinimalALNS:
         }
 
         if self._use_q_learning:
+            initial_q_values = (
+                q_learning_initial_q or self._default_q_learning_initial_q()
+            )
             self._q_agent = QLearningOperatorAgent(
                 destroy_operators=self._destroy_operators,
                 repair_operators=self.repair_operators,
                 params=self._q_params,
-                initial_q_values=q_learning_initial_q,
+                initial_q_values=initial_q_values,
             )
             if not self._q_params.enable_online_updates:
                 self._q_agent.set_epsilon(self._q_params.epsilon_min)
@@ -275,6 +278,41 @@ class MinimalALNS:
             return 'stuck'
         return 'explore'
 
+    def _default_q_learning_initial_q(self) -> Dict[str, Dict[Action, float]]:
+        """Return expert-informed initial Q-values for destroy/repair pairs."""
+
+        base_values = {
+            'explore': {
+                'regret2': 15.0,
+                'greedy': 13.0,
+                'lp': 9.0,
+                'random': 6.0,
+            },
+            'stuck': {
+                'lp': 24.0,
+                'regret2': 15.0,
+                'greedy': 11.0,
+                'random': 6.0,
+            },
+            'deep_stuck': {
+                'lp': 32.0,
+                'regret2': 13.0,
+                'greedy': 11.0,
+                'random': 6.0,
+            },
+        }
+        default_value = 8.5
+
+        initial_values: Dict[str, Dict[Action, float]] = {}
+        for state, repair_map in base_values.items():
+            state_values: Dict[Action, float] = {}
+            for destroy in self._destroy_operators:
+                for repair in self.repair_operators:
+                    value = repair_map.get(repair, default_value)
+                    state_values[(destroy, repair)] = value
+            initial_values[state] = state_values
+        return initial_values
+
     def _compute_q_reward(
         self,
         *,
@@ -283,6 +321,7 @@ class MinimalALNS:
         is_accepted: bool,
         action_cost: float,
         repair_operator: str,
+        previous_cost: float,
     ) -> float:
         """Compute Q-learning reward with ROI-aware time penalty.
 
@@ -307,7 +346,15 @@ class MinimalALNS:
         else:
             quality = params.reward_rejected
 
-        # Step 2: Apply ROI-aware time penalty
+        # Step 2: Incorporate relative quality change (ROI boost)
+        baseline_cost = max(previous_cost, 1.0)
+        relative_gain = improvement / baseline_cost
+        if improvement > 0:
+            quality += relative_gain * params.roi_positive_scale
+        elif improvement < 0:
+            quality += relative_gain * params.roi_negative_scale
+
+        # Step 3: Apply ROI-aware time penalty
         penalty = 0.0
         if action_cost > params.time_penalty_threshold:
             is_matheuristic = repair_operator in self._current_matheuristic_repairs()
@@ -594,6 +641,7 @@ class MinimalALNS:
                     is_accepted=is_accepted,
                     action_cost=action_runtime,
                     repair_operator=repair_operator,
+                    previous_cost=previous_cost,
                 )
                 next_state = self._determine_state(consecutive_no_improve)
                 self._q_agent.update(q_state, q_action, reward, next_state)

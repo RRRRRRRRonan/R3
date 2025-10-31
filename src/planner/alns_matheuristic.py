@@ -195,6 +195,7 @@ class MatheuristicALNS(MinimalALNS):
                     is_accepted=is_accepted,
                     action_cost=action_runtime,
                     repair_operator=repair_operator,
+                    previous_cost=previous_cost,
                 )
                 next_state = self._determine_state(consecutive_no_improve)
                 self._q_agent.update(q_state, q_action, reward, next_state)
