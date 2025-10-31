@@ -1,0 +1,2 @@
+# Minimal dependencies for running tests and project utilities.
+pytest>=7.4
