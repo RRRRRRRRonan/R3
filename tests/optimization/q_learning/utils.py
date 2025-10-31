@@ -71,11 +71,16 @@ def run_q_learning_trial(
             alpha=0.25,  # Increased from 0.1 - learn faster in limited iterations
             gamma=0.9,
 
-            # CRITICAL FIX: Minimize exploration for large-scale problems
-            # Problem: Previous ε=0.2 meant 20% random actions in early iterations
-            # Solution: Start near-greedy, decay aggressively
-            initial_epsilon=0.05,  # Reduced from 0.2 (75% reduction)
-            epsilon_decay=0.5,     # Reduced from 0.85 - rapid decay to pure exploitation
+            # CRITICAL FIX 2.0: Balanced exploration that persists into stuck phase
+            # Previous problem: epsilon=0.05 with decay=0.5 meant exploration ended
+            # at iteration 3, BEFORE Q-learning could learn LP's value in stuck state
+            #
+            # New strategy: Higher initial epsilon + slower decay
+            # - Iterations 1-5: 15-9% exploration (learn LP works)
+            # - Iterations 6-10: 7-5% exploration (refine strategy)
+            # - Iterations 11-20: 4-1.5% exploration (exploit learned policy)
+            initial_epsilon=0.15,  # Increased from 0.05 - need real exploration
+            epsilon_decay=0.88,    # Increased from 0.5 - sustain exploration longer
             epsilon_min=0.01,      # Lower floor for minimal exploration
             enable_online_updates=True,
 
@@ -92,12 +97,12 @@ def run_q_learning_trial(
             standard_time_penalty_scale=0.5,   # Reduced from 0.75 - cheaper ops are cheap
 
             # CRITICAL FIX: Earlier state transitions for large-scale problems
-            # Problem: Previous ratio=0.25 meant stuck after 11 iterations (too late!)
-            # Solution: Transition earlier to use matheuristic sooner
+            # Now that LP is available in explore phase, we can be more conservative
+            # with state transitions - let Q-learning learn naturally
             stagnation_threshold=200,          # Legacy absolute threshold (unused if ratio set)
             deep_stagnation_threshold=800,     # Legacy absolute threshold (unused if ratio set)
-            stagnation_ratio=0.15,             # Reduced from 0.25 - stuck after 6-7 iterations
-            deep_stagnation_ratio=0.4,         # Reduced from 0.6 - deep_stuck after 17-18 iterations
+            stagnation_ratio=0.1,              # Reduced from 0.15 - stuck after 4 iterations
+            deep_stagnation_ratio=0.35,        # Reduced from 0.4 - deep_stuck after 14-15 iterations
         ),
     )
 

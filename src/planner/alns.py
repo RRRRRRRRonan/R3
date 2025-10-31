@@ -380,13 +380,20 @@ class MinimalALNS:
     def _build_action_mask(self, state: str) -> List[bool]:
         """Filter operator pairs that violate expert guidance for the state.
 
-        Implements Action Masking based on expert knowledge:
-        1. Explore: Avoid expensive operators, focus on fast iterations
-        2. Stuck: Allow matheuristic but don't force (let Q-learning decide)
-        3. Deep_stuck: Force matheuristic repairs to escape local optimum
+        CRITICAL INSIGHT: We REMOVED the explore-phase LP blocking that was
+        preventing Q-learning from ever discovering LP's value. The previous
+        implementation had a fatal flaw:
+        - Explore phase: LP blocked by mask
+        - By the time 'stuck' was reached, epsilon had decayed to ~0
+        - Q-learning never got a chance to learn LP's ROI
 
-        Key insight: Aggressive destroy (high removal ratio) MUST pair with
-        powerful repair operators, otherwise the solution quality will collapse.
+        New strategy:
+        1. Explore: ALLOW ALL operators - let Q-learning learn through ROI rewards
+        2. Stuck: ALLOW ALL operators - Q-learning should prefer LP by now
+        3. Deep_stuck: FORCE matheuristic - guaranteed escape from local optimum
+
+        The ROI-aware reward function is sufficient to guide learning without
+        heavy-handed action masking.
         """
 
         if not self._use_q_learning:
@@ -403,22 +410,21 @@ class MinimalALNS:
             allowed = True
             is_matheuristic_repair = repair in matheuristic_repairs
 
-            # Rule 1: Explore phase - avoid expensive operators
-            # Let Q-learning explore with fast, cheap operators first
+            # Rule 1: Explore phase - ALLOW ALL (removed LP blocking!)
+            # Q-learning needs to try LP early to learn its ROI value
+            # The ROI-aware reward will naturally discourage wasteful LP usage
             if state == 'explore':
-                if is_matheuristic_repair:
-                    allowed = False
-
-            # Rule 2: Stuck phase - allow matheuristic but give Q-learning choice
-            # This is the learning phase where Q-agent should discover
-            # that matheuristic operators can help escape stagnation
-            elif state == 'stuck':
-                # Allow both cheap and expensive operators
-                # Q-learning will learn which one works better through rewards
+                # Allow everything - trust the ROI-aware rewards
                 pass
 
-            # Rule 3: Deep stuck - force matheuristic to escape
-            # At this point we know heuristics aren't working, need heavy artillery
+            # Rule 2: Stuck phase - ALLOW ALL
+            # Q-learning should have learned LP's value by now
+            elif state == 'stuck':
+                # Allow everything - Q-learning decides based on learned Q-values
+                pass
+
+            # Rule 3: Deep stuck - FORCE matheuristic (only strict rule)
+            # At this point we override Q-learning for guaranteed escape
             elif state == 'deep_stuck':
                 if not is_matheuristic_repair:
                     allowed = False
