@@ -105,27 +105,41 @@ class MatheuristicALNS(MinimalALNS):
 
         repair_usage = {op: 0 for op in self.repair_operators}
         destroy_usage = {op: 0 for op in ("random_removal", "partial_removal")}
+        consecutive_no_improve = 0
+
+        self._prepare_stagnation_thresholds(max_iterations)
 
         self._log(f"初始成本: {best_cost:.2f}m")
         self._log(f"总迭代次数: {max_iterations}")
         if self.use_adaptive:
-            self._log("使用自应算子选择 ✓ (Destroy + Repair)")
+            if self._use_q_learning:
+                self._log("使用Q-Learning算子选择 ✓ (Destroy + Repair)")
+            elif self.adaptation_mode == "roulette":
+                self._log("使用自适应算子选择 ✓ (Destroy + Repair)")
 
         for iteration in range(max_iterations):
-            destroy_operator, destroyed_route, removed_task_ids = self._apply_destroy_operator(current_route)
-            destroy_usage[destroy_operator] += 1
+            q_state = self._determine_state(consecutive_no_improve)
+            (
+                destroy_operator,
+                repair_operator,
+                destroyed_route,
+                removed_task_ids,
+                candidate_route,
+                q_action,
+                action_runtime,
+            ) = self._execute_destroy_repair(current_route, state=q_state)
 
-            repair_operator, candidate_route = self._apply_repair_operator(destroyed_route, removed_task_ids)
+            destroy_usage[destroy_operator] += 1
             repair_usage[repair_operator] += 1
 
             self._segment_optimizer._ensure_schedule(candidate_route)
             self._segment_optimizer._ensure_schedule(current_route)
+            previous_cost = self._safe_evaluate(current_route)
             candidate_cost = self._safe_evaluate(candidate_route)
-            current_cost = self._safe_evaluate(current_route)
 
-            improvement = current_cost - candidate_cost
+            improvement = previous_cost - candidate_cost
 
-            is_accepted = self.accept_solution(candidate_cost, current_cost, temperature)
+            is_accepted = self.accept_solution(candidate_cost, previous_cost, temperature)
             is_new_best = False
 
             if is_accepted:
@@ -143,7 +157,7 @@ class MatheuristicALNS(MinimalALNS):
                         current_route = improved_route
                         current_cost = improved_cost
                         candidate_cost = improved_cost
-                        improvement = max(improvement, current_cost - candidate_cost)
+                        improvement = max(improvement, previous_cost - candidate_cost)
                         self._log(
                             "  ↳ Matheuristic segment re-optimisation accepted"
                         )
@@ -156,7 +170,7 @@ class MatheuristicALNS(MinimalALNS):
                     is_new_best = True
                     self._log(f"迭代 {iteration+1}: 新最优成本 {best_cost:.2f}m")
 
-            if self.use_adaptive:
+            if self.use_adaptive and self.adaptation_mode == "roulette":
                 self._update_adaptive_weights(
                     repair_operator=repair_operator,
                     destroy_operator=destroy_operator,
@@ -164,6 +178,27 @@ class MatheuristicALNS(MinimalALNS):
                     is_new_best=is_new_best,
                     is_accepted=is_accepted,
                 )
+
+            if is_new_best:
+                consecutive_no_improve = 0
+            else:
+                consecutive_no_improve += 1
+
+            if (
+                self._use_q_learning
+                and q_state is not None
+                and q_action is not None
+            ):
+                reward = self._compute_q_reward(
+                    improvement=improvement,
+                    is_new_best=is_new_best,
+                    is_accepted=is_accepted,
+                    action_cost=action_runtime,
+                    repair_operator=repair_operator,
+                )
+                next_state = self._determine_state(consecutive_no_improve)
+                self._q_agent.update(q_state, q_action, reward, next_state)
+                self._q_agent.decay_epsilon()
 
             self._update_elite_pool(current_route)
 
@@ -203,7 +238,7 @@ class MatheuristicALNS(MinimalALNS):
             f"最终最优成本: {best_cost:.2f}m (改进 {self._safe_evaluate(initial_route)-best_cost:.2f}m)"
         )
 
-        if self.use_adaptive and self.verbose:
+        if self.use_adaptive and self.adaptation_mode == "roulette" and self.verbose:
             self._log("\n" + "=" * 70)
             self._log("Repair算子自适应统计")
             self._log("=" * 70)
@@ -214,6 +249,9 @@ class MatheuristicALNS(MinimalALNS):
                 self._log("Destroy算子自适应统计")
                 self._log("=" * 70)
                 self._log(self.adaptive_destroy_selector.format_statistics())
+
+        if self._use_q_learning:
+            self._log_q_learning_statistics()
 
         return best_route
 

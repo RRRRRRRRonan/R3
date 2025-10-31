@@ -1,0 +1,51 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<svg width='900' height='500' xmlns='http://www.w3.org/2000/svg'>
+  <rect width='900' height='500' fill='white'/>
+  <style> .axis { stroke: #333; stroke-width: 2; }
+          .grid { stroke: #ccc; stroke-width: 1; stroke-dasharray: 4 4; }
+          .label { font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 16px; fill: #333; }
+          .legend { font-size: 15px; } </style>
+  <line class='axis' x1='70' y1='70' x2='70' y2='430' />
+  <line class='axis' x1='70' y1='430' x2='830' y2='430' />
+  <line class='grid' x1='70' y1='430.00' x2='830' y2='430.00' />
+  <text class='label' x='55' y='435.00' text-anchor='end'>0.0</text>
+  <line class='grid' x1='70' y1='358.00' x2='830' y2='358.00' />
+  <text class='label' x='55' y='363.00' text-anchor='end'>12.5</text>
+  <line class='grid' x1='70' y1='286.00' x2='830' y2='286.00' />
+  <text class='label' x='55' y='291.00' text-anchor='end'>25.0</text>
+  <line class='grid' x1='70' y1='214.00' x2='830' y2='214.00' />
+  <text class='label' x='55' y='219.00' text-anchor='end'>37.5</text>
+  <line class='grid' x1='70' y1='142.00' x2='830' y2='142.00' />
+  <text class='label' x='55' y='147.00' text-anchor='end'>50.0</text>
+  <line class='grid' x1='70' y1='70.01' x2='830' y2='70.01' />
+  <text class='label' x='55' y='75.01' text-anchor='end'>62.5</text>
+  <text class='label' x='196.67' y='460' text-anchor='middle'>Small</text>
+  <rect x='101.67' y='373.17' width='50.67' height='56.83' fill='#4B8BBE' />
+  <text class='label' x='127.00' y='367.17' text-anchor='middle'>9.86%</text>
+  <rect x='165.00' y='92.63' width='50.67' height='337.37' fill='#306998' />
+  <text class='label' x='190.33' y='86.63' text-anchor='middle'>58.52%</text>
+  <rect x='228.33' y='70.00' width='50.67' height='360.00' fill='#FFE873' />
+  <text class='label' x='253.67' y='64.00' text-anchor='middle'>62.45%</text>
+  <text class='label' x='450.00' y='460' text-anchor='middle'>Medium</text>
+  <rect x='355.00' y='390.87' width='50.67' height='39.13' fill='#4B8BBE' />
+  <text class='label' x='380.33' y='384.87' text-anchor='middle'>6.79%</text>
+  <rect x='418.33' y='162.53' width='50.67' height='267.47' fill='#306998' />
+  <text class='label' x='443.67' y='156.53' text-anchor='middle'>46.40%</text>
+  <rect x='481.67' y='259.84' width='50.67' height='170.16' fill='#FFE873' />
+  <text class='label' x='507.00' y='253.84' text-anchor='middle'>29.52%</text>
+  <text class='label' x='703.33' y='460' text-anchor='middle'>Large</text>
+  <rect x='608.33' y='389.17' width='50.67' height='40.83' fill='#4B8BBE' />
+  <text class='label' x='633.67' y='383.17' text-anchor='middle'>7.08%</text>
+  <rect x='671.67' y='274.08' width='50.67' height='155.92' fill='#306998' />
+  <text class='label' x='697.00' y='268.08' text-anchor='middle'>27.05%</text>
+  <rect x='735.00' y='390.11' width='50.67' height='39.89' fill='#FFE873' />
+  <text class='label' x='760.33' y='384.11' text-anchor='middle'>6.92%</text>
+  <rect x='610' y='50' width='18' height='18' fill='#4B8BBE' />
+  <text class='label legend' x='636' y='64'>Minimal ALNS</text>
+  <rect x='610' y='74' width='18' height='18' fill='#306998' />
+  <text class='label legend' x='636' y='88'>Matheuristic ALNS</text>
+  <rect x='610' y='98' width='18' height='18' fill='#FFE873' />
+  <text class='label legend' x='636' y='112'>Matheuristic + Q-learning</text>
+  <text class='label' x='450.0' y='35.0' text-anchor='middle'>ALNS regression improvements by solver variant</text>
+  <text class='label' x='20' y='250.0' text-anchor='middle' transform='rotate(-90 20,250.0)'>Relative improvement (%)</text>
+</svg>
