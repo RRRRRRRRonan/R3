@@ -29,7 +29,7 @@ from tests.optimization.common import (
     build_scenario,
     get_scale_config,
     get_solver_iterations,
-    run_alns_trial,
+    run_matheuristic_trial,
     run_minimal_trial,
 )
 from tests.optimization.q_learning.utils import run_q_learning_trial
@@ -99,7 +99,8 @@ def run_matheuristic(scale: str, seed: int, iteration_scale: float) -> SolverRes
     scenario = build_scenario(_build_config(scale))
     iterations = _scaled_iterations(scale, "matheuristic", iteration_scale)
     strategy = PartialRechargeMinimalStrategy(safety_margin=0.02, min_margin=0.0)
-    baseline, optimised = run_alns_trial(
+    # Use the NEW run_matheuristic_trial with FULL matheuristic capabilities
+    baseline, optimised = run_matheuristic_trial(
         scenario,
         strategy,
         iterations=iterations,

@@ -24,6 +24,7 @@ from config import (
     LPRepairParams,
     MatheuristicParams,
     OptimizationScenarioDefaults,
+    SegmentOptimizationParams,
     DEFAULT_ALNS_HYPERPARAMETERS,
     DEFAULT_OPTIMIZATION_SCENARIO,
     OPTIMIZATION_SCENARIO_PRESETS,
@@ -253,6 +254,110 @@ def run_minimal_trial(
         random.setstate(state)
 
 
+def run_matheuristic_trial(
+    scenario: Scenario,
+    strategy,
+    *,
+    iterations: int,
+    seed: int = 2024,
+    cost_params: CostParameters | None = None,
+) -> Tuple[float, float]:
+    """Run Matheuristic ALNS with FULL matheuristic capabilities enabled.
+
+    This function uses tuned but fully-enabled matheuristic parameters for
+    fair comparison with Q-learning variant.
+    """
+
+    rng = random.Random(seed)
+    state = random.getstate()
+    random.setstate(rng.getstate())
+    try:
+        task_pool = scenario.create_task_pool()
+        # Use tuned matheuristic parameters that are strong but not extreme
+        hyper_params = replace(
+            DEFAULT_ALNS_HYPERPARAMETERS,
+            destroy_repair=DestroyRepairParams(
+                random_removal_q=2,
+                partial_removal_q=2,
+                remove_cs_probability=0.2,
+            ),
+            matheuristic=MatheuristicParams(
+                elite_pool_size=4,
+                intensification_interval=25,
+                segment_frequency=6,
+                max_elite_trials=2,
+                segment_optimization=SegmentOptimizationParams(
+                    max_segment_tasks=3,
+                    candidate_pool_size=3,
+                    improvement_tolerance=1e-3,
+                    max_permutations=12,
+                    lookahead_window=2,
+                ),
+                lp_repair=LPRepairParams(
+                    time_limit_s=0.3,
+                    max_plans_per_task=4,
+                    improvement_tolerance=1e-4,
+                    skip_penalty=5_000.0,
+                    fractional_threshold=1e-3,
+                ),
+            ),
+        )
+
+        if len(scenario.vehicles) == 1:
+            alns = MatheuristicALNS(
+                distance_matrix=scenario.distance,
+                task_pool=task_pool,
+                repair_mode="adaptive",
+                cost_params=cost_params or CostParameters(),
+                charging_strategy=strategy,
+                use_adaptive=True,
+                verbose=False,
+                hyper_params=hyper_params,
+            )
+            alns.vehicle = deepcopy(scenario.vehicles[0])
+            alns.energy_config = deepcopy(scenario.energy)
+
+            initial_route = create_empty_route(vehicle_id=1, depot_node=scenario.depot)
+            removed_task_ids = [task.task_id for task in scenario.tasks]
+            baseline = alns.greedy_insertion(initial_route, removed_task_ids)
+
+            if hasattr(alns, "_segment_optimizer"):
+                alns._segment_optimizer._ensure_schedule(baseline)
+                baseline_cost = alns._safe_evaluate(baseline)
+            else:
+                baseline_cost = alns.evaluate_cost(baseline)
+
+            optimized = alns.optimize(baseline, max_iterations=iterations)
+
+            if hasattr(alns, "_segment_optimizer"):
+                alns._segment_optimizer._ensure_schedule(optimized)
+                optimized_cost = alns._safe_evaluate(optimized)
+            else:
+                optimized_cost = alns.evaluate_cost(optimized)
+
+            return baseline_cost, optimized_cost
+
+        planner = FleetPlanner(
+            distance_matrix=scenario.distance,
+            depot=scenario.depot,
+            vehicles=scenario.create_vehicles(),
+            task_pool=task_pool,
+            energy_config=deepcopy(scenario.energy),
+            cost_params=cost_params,
+            charging_strategy=strategy,
+            repair_mode="adaptive",
+            use_adaptive=True,
+            verbose=False,
+            alns_class=MatheuristicALNS,
+            alns_hyper_params=hyper_params,
+        )
+        result = planner.plan_routes(max_iterations=iterations)
+
+        return result.initial_cost, result.optimised_cost
+    finally:
+        random.setstate(state)
+
+
 def run_alns_trial(
     scenario: Scenario,
     strategy,
@@ -261,7 +366,11 @@ def run_alns_trial(
     seed: int = 2024,
     cost_params: CostParameters | None = None,
 ) -> Tuple[float, float]:
-    """Run ALNS for a given strategy and return (initial_cost, optimized_cost)."""
+    """Run ALNS for a given strategy and return (initial_cost, optimized_cost).
+
+    NOTE: This function uses MINIMAL matheuristic settings for backwards
+    compatibility. For full matheuristic capabilities, use run_matheuristic_trial().
+    """
 
     rng = random.Random(seed)
     state = random.getstate()

@@ -284,7 +284,20 @@ class MinimalALNS:
         action_cost: float,
         repair_operator: str,
     ) -> float:
+        """Compute Q-learning reward with ROI-aware time penalty.
+
+        The reward function now implements a "Return on Investment" concept:
+        - Expensive operators (matheuristic) MUST deliver high quality to justify cost
+        - Cheap operators can be used more liberally even with modest returns
+        - Time penalty scales based on both action cost AND quality outcome
+
+        This addresses the core issue where Q-learning couldn't learn the value
+        of expensive operators because they were penalized equally regardless of
+        their contribution.
+        """
         params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
+
+        # Step 1: Determine quality-based reward
         if is_new_best:
             quality = params.reward_new_best
         elif improvement > 0:
@@ -294,21 +307,26 @@ class MinimalALNS:
         else:
             quality = params.reward_rejected
 
+        # Step 2: Apply ROI-aware time penalty
         penalty = 0.0
         if action_cost > params.time_penalty_threshold:
             is_matheuristic = repair_operator in self._current_matheuristic_repairs()
-            if quality >= params.reward_improvement:
-                scale = (
-                    params.time_penalty_positive_scale
-                    if is_matheuristic
-                    else params.standard_time_penalty_scale
-                )
+
+            if is_matheuristic:
+                # Matheuristic operators: Demand high returns
+                if quality >= params.reward_new_best:
+                    # Best solution found: minimal penalty, this is exactly what we want
+                    scale = 1.0
+                elif quality >= params.reward_improvement:
+                    # Improvement: moderate penalty, good but could be better
+                    scale = params.time_penalty_positive_scale
+                else:
+                    # No improvement: heavy penalty, expensive operator wasted
+                    scale = params.time_penalty_negative_scale
             else:
-                scale = (
-                    params.time_penalty_negative_scale
-                    if is_matheuristic
-                    else params.standard_time_penalty_scale
-                )
+                # Standard (cheap) operators: lenient penalty
+                scale = params.standard_time_penalty_scale
+
             penalty = action_cost * scale
 
         return quality - penalty
@@ -360,30 +378,56 @@ class MinimalALNS:
         return q, remove_prob
 
     def _build_action_mask(self, state: str) -> List[bool]:
-        """Filter operator pairs that violate expert guidance for the state."""
+        """Filter operator pairs that violate expert guidance for the state.
+
+        CRITICAL INSIGHT: We REMOVED the explore-phase LP blocking that was
+        preventing Q-learning from ever discovering LP's value. The previous
+        implementation had a fatal flaw:
+        - Explore phase: LP blocked by mask
+        - By the time 'stuck' was reached, epsilon had decayed to ~0
+        - Q-learning never got a chance to learn LP's ROI
+
+        New strategy:
+        1. Explore: ALLOW ALL operators - let Q-learning learn through ROI rewards
+        2. Stuck: ALLOW ALL operators - Q-learning should prefer LP by now
+        3. Deep_stuck: FORCE matheuristic - guaranteed escape from local optimum
+
+        The ROI-aware reward function is sufficient to guide learning without
+        heavy-handed action masking.
+        """
 
         if not self._use_q_learning:
             return []
 
         matheuristic_repairs = self._current_matheuristic_repairs()
+        if not matheuristic_repairs:
+            # No matheuristic operators available, allow all
+            return [True] * len(self._q_agent.actions)
+
         mask: List[bool] = []
-        aggressive_destroy = state in {'stuck', 'deep_stuck'} and bool(
-            matheuristic_repairs
-        )
-        force_matheuristic = state == 'deep_stuck' and bool(matheuristic_repairs)
 
         for destroy, repair in self._q_agent.actions:
             allowed = True
+            is_matheuristic_repair = repair in matheuristic_repairs
 
-            if state == 'explore' and repair in matheuristic_repairs:
-                allowed = False
+            # Rule 1: Explore phase - ALLOW ALL (removed LP blocking!)
+            # Q-learning needs to try LP early to learn its ROI value
+            # The ROI-aware reward will naturally discourage wasteful LP usage
+            if state == 'explore':
+                # Allow everything - trust the ROI-aware rewards
+                pass
 
-            if aggressive_destroy and destroy == 'partial_removal':
-                if repair not in matheuristic_repairs:
+            # Rule 2: Stuck phase - ALLOW ALL
+            # Q-learning should have learned LP's value by now
+            elif state == 'stuck':
+                # Allow everything - Q-learning decides based on learned Q-values
+                pass
+
+            # Rule 3: Deep stuck - FORCE matheuristic (only strict rule)
+            # At this point we override Q-learning for guaranteed escape
+            elif state == 'deep_stuck':
+                if not is_matheuristic_repair:
                     allowed = False
-
-            if force_matheuristic and repair not in matheuristic_repairs:
-                allowed = False
 
             mask.append(allowed)
 
