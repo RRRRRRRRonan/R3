@@ -183,22 +183,24 @@ class QLearningParams:
 
     alpha: float = 0.35
     gamma: float = 0.95
-    initial_epsilon: float = 0.02
-    epsilon_decay: float = 0.98
-    epsilon_min: float = 0.005
+    initial_epsilon: float = 0.12
+    epsilon_decay: float = 0.995
+    epsilon_min: float = 0.01
     enable_online_updates: bool = True
     reward_new_best: float = 100.0
-    reward_improvement: float = 30.0
-    reward_accepted: float = 8.0
-    reward_rejected: float = -3.0
-    time_penalty_threshold: float = 0.1
-    time_penalty_positive_scale: float = 1.5
-    time_penalty_negative_scale: float = 15.0
-    standard_time_penalty_scale: float = 0.3
-    stagnation_threshold: int = 200
-    deep_stagnation_threshold: int = 800
-    stagnation_ratio: float = 0.18
-    deep_stagnation_ratio: float = 0.45
+    reward_improvement: float = 36.0
+    reward_accepted: float = 10.0
+    reward_rejected: float = -6.0
+    roi_positive_scale: float = 220.0
+    roi_negative_scale: float = 260.0
+    time_penalty_threshold: float = 0.18
+    time_penalty_positive_scale: float = 1.1
+    time_penalty_negative_scale: float = 6.0
+    standard_time_penalty_scale: float = 0.2
+    stagnation_threshold: int = 160
+    deep_stagnation_threshold: int = 560
+    stagnation_ratio: float = 0.16
+    deep_stagnation_ratio: float = 0.4
 
 
 @dataclass(frozen=True)
