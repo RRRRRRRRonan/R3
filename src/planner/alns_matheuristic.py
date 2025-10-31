@@ -23,7 +23,7 @@ from __future__ import annotations
 import itertools
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import List, Optional, Sequence, Tuple
 
 from config import (
@@ -86,14 +86,67 @@ class MatheuristicALNS(MinimalALNS):
             else:
                 matheuristic_params = DEFAULT_MATHEURISTIC_PARAMS
 
-        self.matheuristic_params = matheuristic_params
-        self._segment_optimizer = _SegmentOptimizer(self, matheuristic_params.segment_optimization)
-        self._lp_repair = LPBasedRepair(self, getattr(matheuristic_params, 'lp_repair', DEFAULT_LP_REPAIR_PARAMS))
+        tuned_params = self._adapt_matheuristic_params(matheuristic_params)
+        self.matheuristic_params = tuned_params
+        self._segment_optimizer = _SegmentOptimizer(self, tuned_params.segment_optimization)
+        self._lp_repair = LPBasedRepair(self, getattr(tuned_params, 'lp_repair', DEFAULT_LP_REPAIR_PARAMS))
         self._accepted_since_segment = 0
         self._elite_pool: List[_EliteRoute] = []
 
+    def _adapt_matheuristic_params(self, params: MatheuristicParams) -> MatheuristicParams:
+        """Produce a scenario-aware copy of the matheuristic parameters."""
+
+        scale = self._scenario_scale
+        segment = params.segment_optimization
+        lp_params = getattr(params, "lp_repair", DEFAULT_LP_REPAIR_PARAMS)
+
+        updates = {}
+        segment_updates = {}
+        lp_updates = {}
+
+        if scale == "medium":
+            updates["segment_frequency"] = max(3, params.segment_frequency - 1)
+            updates["intensification_interval"] = max(32, params.intensification_interval - 8)
+            segment_updates = {
+                "max_segment_tasks": max(segment.max_segment_tasks, 5),
+                "candidate_pool_size": max(segment.candidate_pool_size, 6),
+                "max_permutations": max(segment.max_permutations, 60),
+                "lookahead_window": max(segment.lookahead_window, 4),
+            }
+        elif scale == "large":
+            updates["segment_frequency"] = max(3, params.segment_frequency - 2)
+            updates["intensification_interval"] = max(28, params.intensification_interval - 12)
+            updates["elite_pool_size"] = params.elite_pool_size + 2
+            updates["max_elite_trials"] = params.max_elite_trials + 1
+            segment_updates = {
+                "max_segment_tasks": max(segment.max_segment_tasks, 6),
+                "candidate_pool_size": max(segment.candidate_pool_size, 8),
+                "max_permutations": max(segment.max_permutations, 96),
+                "lookahead_window": max(segment.lookahead_window, 5),
+            }
+            lp_updates = {
+                "time_limit_s": max(lp_params.time_limit_s, 0.9),
+                "max_plans_per_task": max(lp_params.max_plans_per_task, 8),
+            }
+
+        if segment_updates:
+            segment = replace(segment, **segment_updates)
+        if lp_updates:
+            lp_params = replace(lp_params, **lp_updates)
+        if updates or segment_updates or lp_updates:
+            params = replace(
+                params,
+                segment_optimization=segment,
+                lp_repair=lp_params,
+                **updates,
+            )
+        return params
+
     def optimize(self, initial_route: Route, max_iterations: int = 100) -> Route:
         """Run ALNS with matheuristic intensification steps."""
+
+        self._maybe_reconfigure_q_agent(initial_route)
+        max_iterations = self._normalise_iteration_budget(max_iterations)
 
         current_route = initial_route.copy()
         best_route = initial_route.copy()
@@ -195,6 +248,7 @@ class MatheuristicALNS(MinimalALNS):
                     is_accepted=is_accepted,
                     action_cost=action_runtime,
                     repair_operator=repair_operator,
+                    previous_cost=previous_cost,
                 )
                 next_state = self._determine_state(consecutive_no_improve)
                 self._q_agent.update(q_state, q_action, reward, next_state)
