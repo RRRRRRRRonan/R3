@@ -2,47 +2,47 @@
   "small": {
     "minimal": {
       "baseline_cost": 35791.98834297467,
-      "optimised_cost": 32263.472061810797,
-      "improvement_ratio": 0.09858396933280343
+      "optimised_cost": 33690.764268531915,
+      "improvement_ratio": 0.05870654779801266
     },
     "matheuristic": {
       "baseline_cost": 35353.06872427369,
-      "optimised_cost": 14662.859226050912,
-      "improvement_ratio": 0.5852450789941389
+      "optimised_cost": 33505.71202655589,
+      "improvement_ratio": 0.05225449343947301
     },
     "q_learning": {
       "baseline_cost": 35791.98834297467,
-      "optimised_cost": 13439.539722231635,
-      "improvement_ratio": 0.6245098318247084
+      "optimised_cost": 26821.38579572093,
+      "improvement_ratio": 0.25063157881293036
     }
   },
   "medium": {
     "minimal": {
       "baseline_cost": 39317.523459731936,
-      "optimised_cost": 36648.89480816822,
-      "improvement_ratio": 0.06787377272876467
+      "optimised_cost": 37099.25939941936,
+      "improvement_ratio": 0.0564192213831695
     },
     "matheuristic": {
       "baseline_cost": 35102.79961678669,
-      "optimised_cost": 18815.156995749574,
-      "improvement_ratio": 0.46399839325773085
+      "optimised_cost": 24448.00319546266,
+      "improvement_ratio": 0.3035312435942785
     },
     "q_learning": {
       "baseline_cost": 39317.523459731936,
-      "optimised_cost": 27711.65734170778,
-      "improvement_ratio": 0.2951830404555008
+      "optimised_cost": 27667.661529247263,
+      "improvement_ratio": 0.29630202783286136
     }
   },
   "large": {
     "minimal": {
       "baseline_cost": 60709.91270867346,
-      "optimised_cost": 56409.98706307864,
-      "improvement_ratio": 0.07082740616394431
+      "optimised_cost": 55034.429036512,
+      "improvement_ratio": 0.09348528796930085
     },
     "matheuristic": {
       "baseline_cost": 52400.91557396012,
-      "optimised_cost": 38227.263953999165,
-      "improvement_ratio": 0.27048480860903784
+      "optimised_cost": 37550.07361614077,
+      "improvement_ratio": 0.28340806253391615
     },
     "q_learning": {
       "baseline_cost": 60709.91270867346,
