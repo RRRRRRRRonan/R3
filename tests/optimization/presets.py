@@ -31,8 +31,11 @@ class ScalePreset:
 
 ALNS_TEST_PRESETS: Dict[str, ScalePreset] = {
     "small": ScalePreset(
-        scenario_overrides={"num_tasks": 10, "num_charging": 1, "seed": 11},
-        iterations=IterationPreset(minimal=16, matheuristic=28, q_learning=28),
+        # Increased difficulty: 10→15 tasks for meaningful optimization
+        # Previous: 10 tasks had limited optimization space (greedy was already good)
+        scenario_overrides={"num_tasks": 15, "num_charging": 1, "seed": 11},
+        # Increased iterations to allow more optimization on harder problem
+        iterations=IterationPreset(minimal=24, matheuristic=40, q_learning=40),
     ),
     "medium": ScalePreset(
         scenario_overrides={"num_tasks": 24, "num_charging": 1, "seed": 19},

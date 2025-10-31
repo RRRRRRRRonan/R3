@@ -67,28 +67,37 @@ def run_q_learning_trial(
             ),
         ),
         q_learning=QLearningParams(
-            alpha=0.1,
+            # CRITICAL FIX: Faster learning for online setting
+            alpha=0.25,  # Increased from 0.1 - learn faster in limited iterations
             gamma=0.9,
-            # Reduced initial exploration for faster convergence
-            initial_epsilon=0.2,  # Reduced from 0.4
-            epsilon_decay=0.85,   # Faster decay from 0.92
-            epsilon_min=0.05,
+
+            # CRITICAL FIX: Minimize exploration for large-scale problems
+            # Problem: Previous ε=0.2 meant 20% random actions in early iterations
+            # Solution: Start near-greedy, decay aggressively
+            initial_epsilon=0.05,  # Reduced from 0.2 (75% reduction)
+            epsilon_decay=0.5,     # Reduced from 0.85 - rapid decay to pure exploitation
+            epsilon_min=0.01,      # Lower floor for minimal exploration
             enable_online_updates=True,
+
             # Reward structure optimized for ROI-aware learning
             reward_new_best=50.0,
             reward_improvement=20.0,
             reward_accepted=5.0,
             reward_rejected=-2.0,
-            # Time penalty thresholds
+
+            # Time penalty thresholds - encourage matheuristic when it delivers
             time_penalty_threshold=0.1,
-            time_penalty_positive_scale=2.5,  # Moderate penalty for expensive+good
-            time_penalty_negative_scale=7.5,  # Heavy penalty for expensive+bad
-            standard_time_penalty_scale=0.75, # Light penalty for cheap operators
-            # State transition thresholds (scaled by iterations)
-            stagnation_threshold=200,
-            deep_stagnation_threshold=800,
-            stagnation_ratio=0.25,
-            deep_stagnation_ratio=0.6,
+            time_penalty_positive_scale=2.0,   # Reduced from 2.5 - less penalty for good results
+            time_penalty_negative_scale=10.0,  # Increased from 7.5 - heavier penalty for waste
+            standard_time_penalty_scale=0.5,   # Reduced from 0.75 - cheaper ops are cheap
+
+            # CRITICAL FIX: Earlier state transitions for large-scale problems
+            # Problem: Previous ratio=0.25 meant stuck after 11 iterations (too late!)
+            # Solution: Transition earlier to use matheuristic sooner
+            stagnation_threshold=200,          # Legacy absolute threshold (unused if ratio set)
+            deep_stagnation_threshold=800,     # Legacy absolute threshold (unused if ratio set)
+            stagnation_ratio=0.15,             # Reduced from 0.25 - stuck after 6-7 iterations
+            deep_stagnation_ratio=0.4,         # Reduced from 0.6 - deep_stuck after 17-18 iterations
         ),
     )
 
