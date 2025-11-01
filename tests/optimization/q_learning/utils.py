@@ -74,13 +74,13 @@ def run_q_learning_trial(
             # BALANCED EXPLORATION: Allow sufficient exploration to discover optimal strategies
             # FIX: Increase epsilon from 0.02 to 0.10 for better exploration-exploitation balance
             # With 40-44 iterations, 10% exploration = 4-4.4 exploration steps
-            initial_epsilon=0.10,  # Balanced exploration (10%)
+            initial_epsilon=0.12,  # Balanced exploration (10%)
             epsilon_decay=0.96,    # Moderate decay - gradually shift to exploitation
             epsilon_min=0.01,      # Reasonable floor to maintain some exploration
             enable_online_updates=True,
 
             # Reward structure optimized for ROI-aware learning
-            reward_new_best=100.0,     # Doubled from 50 - stronger signal for success
+            reward_new_best=150.0,     # Doubled from 50 - stronger signal for success
             reward_improvement=30.0,   # Increased from 20
             reward_accepted=8.0,       # Increased from 5
             reward_rejected=-3.0,      # More negative from -2
@@ -90,11 +90,11 @@ def run_q_learning_trial(
             # This allows Q-learning to learn LP's true value without over-penalizing time cost
             time_penalty_threshold=0.15,  # Increased threshold before penalties apply
             time_penalty_positive_scale=1.2,   # Reduced penalty for successful LP
-            time_penalty_negative_scale=8.0,   # CRITICAL FIX: Reduced from 15.0
+            time_penalty_negative_scale=6.0,   # CRITICAL FIX: Reduced from 15.0
             standard_time_penalty_scale=0.3,   # Keep cheap for greedy
 
             # Adaptive state transitions - adjusted for better learning dynamics
-            stagnation_threshold=180,    # Slightly earlier transition to stuck
+            stagnation_threshold=100,    # Slightly earlier transition to stuck
             deep_stagnation_threshold=700,  # Earlier transition to deep_stuck
             stagnation_ratio=0.16,       # More responsive to stagnation
             deep_stagnation_ratio=0.40,  # More responsive to deep stagnation

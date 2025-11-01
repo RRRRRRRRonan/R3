@@ -12,8 +12,8 @@
     },
     "q_learning": {
       "baseline_cost": 45355.96578547078,
-      "optimised_cost": 27725.08112081967,
-      "improvement_ratio": 0.3887225056135602
+      "optimised_cost": 24549.268023449004,
+      "improvement_ratio": 0.458742249265188
     }
   },
   "medium": {
@@ -29,8 +29,8 @@
     },
     "q_learning": {
       "baseline_cost": 39317.523459731936,
-      "optimised_cost": 24441.795649390613,
-      "improvement_ratio": 0.37834854541580387
+      "optimised_cost": 21597.403473312967,
+      "improvement_ratio": 0.4506926791705864
     }
   },
   "large": {
@@ -46,8 +46,8 @@
     },
     "q_learning": {
       "baseline_cost": 60709.91270867346,
-      "optimised_cost": 46714.803178727656,
-      "improvement_ratio": 0.23052429011228606
+      "optimised_cost": 46547.2126575959,
+      "improvement_ratio": 0.23328480340664656
     }
   }
 }
