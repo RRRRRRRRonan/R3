@@ -80,12 +80,14 @@ def run_q_learning_trial(
     # Don't provide custom initial Q-values - let it use defaults
     # Matheuristic doesn't provide custom Q-values, so we shouldn't either
 
+    # EXPERIMENT: Try roulette wheel instead of Q-learning
+    # Hypothesis: Q-learning may be learning wrong strategies on Small/Large
+    # If roulette wheel performs better, it confirms Q-learning is the issue
     rng = random.Random(seed)
     state = random.getstate()
     random.setstate(rng.getstate())
     try:
-        # Create MatheuristicALNS with EXACTLY the same config as matheuristic trial
-        # The only difference is we don't override anything - both use default Q-learning
+        # Create MatheuristicALNS with roulette wheel adaptation
         alns = MatheuristicALNS(
             distance_matrix=scenario.distance,
             task_pool=task_pool,
@@ -96,7 +98,20 @@ def run_q_learning_trial(
             verbose=False,
             hyper_params=tuned_hyper,
         )
-        # Don't manually create Q-agent - let MinimalALNS.__init__ do it with defaults
+        # Override adaptation mode to use roulette wheel
+        alns.adaptation_mode = "roulette"
+        alns._use_q_learning = False
+        # Create roulette wheel selectors
+        from planner.operators import AdaptiveOperatorSelector
+        alns.adaptive_repair_selector = AdaptiveOperatorSelector(
+            operators=alns.repair_operators,
+            params=alns.hyper.adaptive_selector
+        )
+        alns.adaptive_destroy_selector = AdaptiveOperatorSelector(
+            operators=list(alns._destroy_operators),
+            params=alns.hyper.adaptive_selector
+        )
+        alns._q_agent = None
         alns.vehicle = deepcopy(scenario.vehicles[0])
         alns.energy_config = deepcopy(scenario.energy)
 

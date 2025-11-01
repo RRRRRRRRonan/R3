@@ -34,21 +34,21 @@ ALNS_TEST_PRESETS: Dict[str, ScalePreset] = {
         # Increased difficulty: 10→15 tasks for meaningful optimization
         # Previous: 10 tasks had limited optimization space (greedy was already good)
         scenario_overrides={"num_tasks": 15, "num_charging": 1, "seed": 11},
-        # Increased iterations to allow more optimization on harder problem
-        iterations=IterationPreset(minimal=24, matheuristic=40, q_learning=50),
+        # CRITICAL: Use SAME iterations for fair comparison
+        # Previous q_learning=50 caused worse performance (over-learning)
+        iterations=IterationPreset(minimal=24, matheuristic=40, q_learning=40),
     ),
     "medium": ScalePreset(
         scenario_overrides={"num_tasks": 24, "num_charging": 1, "seed": 19},
-        # Q-learning now gets SAME iterations as matheuristic for fair comparison
-        # Previously: q_learning=36 while matheuristic=44 (18% less)
-        # Now: both get 44 iterations
-        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=55),
+        # CRITICAL: Use SAME iterations for fair comparison
+        # Previous q_learning=55 but only medium performed well
+        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=44),
     ),
     "large": ScalePreset(
         scenario_overrides={"num_tasks": 30, "num_charging": 3, "seed": 17},
-        # Previously: q_learning=30 while matheuristic=44 (32% less!)
-        # Now: both get 44 iterations
-        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=55),
+        # CRITICAL: Use SAME iterations for fair comparison
+        # Previous q_learning=55 caused worse performance
+        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=44),
     ),
 }
 
