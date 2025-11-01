@@ -71,12 +71,12 @@ def run_q_learning_trial(
             alpha=0.35,  # Increased from 0.25 - learn aggressively in limited iterations
             gamma=0.95,  # Increased from 0.9 - value long-term rewards more
 
-            # ULTRA-LOW EXPLORATION: Trust intelligent initialization
-            # Problem: epsilon=0.15 meant 15% pure random (worse than roulette wheel)
-            # Solution: Near-zero exploration, rely on initial Q-values + occasional exploration
-            initial_epsilon=0.02,  # Minimal exploration (2%)
-            epsilon_decay=0.98,    # Very slow decay - sustain minimal exploration
-            epsilon_min=0.005,     # Lower floor
+            # BALANCED EXPLORATION: Allow sufficient exploration to discover optimal strategies
+            # FIX: Increase epsilon from 0.02 to 0.10 for better exploration-exploitation balance
+            # With 40-44 iterations, 10% exploration = 4-4.4 exploration steps
+            initial_epsilon=0.10,  # Balanced exploration (10%)
+            epsilon_decay=0.96,    # Moderate decay - gradually shift to exploitation
+            epsilon_min=0.01,      # Reasonable floor to maintain some exploration
             enable_online_updates=True,
 
             # Reward structure optimized for ROI-aware learning
@@ -85,23 +85,35 @@ def run_q_learning_trial(
             reward_accepted=8.0,       # Increased from 5
             reward_rejected=-3.0,      # More negative from -2
 
-            # Time penalty thresholds - strongly discourage LP waste
-            time_penalty_threshold=0.1,
-            time_penalty_positive_scale=1.5,   # Reduced from 2.0 - less penalty for LP success
-            time_penalty_negative_scale=15.0,  # Increased from 10.0 - heavy penalty for LP waste
-            standard_time_penalty_scale=0.3,   # Reduced from 0.5 - very cheap for greedy
+            # Time penalty thresholds - REDUCED to encourage LP usage when beneficial
+            # FIX: Reduce time_penalty_negative_scale from 15.0 to 8.0
+            # This allows Q-learning to learn LP's true value without over-penalizing time cost
+            time_penalty_threshold=0.15,  # Increased threshold before penalties apply
+            time_penalty_positive_scale=1.2,   # Reduced penalty for successful LP
+            time_penalty_negative_scale=8.0,   # CRITICAL FIX: Reduced from 15.0
+            standard_time_penalty_scale=0.3,   # Keep cheap for greedy
 
-            # Conservative state transitions - longer learning windows
-            stagnation_threshold=200,
-            deep_stagnation_threshold=800,
-            stagnation_ratio=0.18,       # Increased from 0.1 - stuck after 7-8 iterations
-            deep_stagnation_ratio=0.45,  # Increased from 0.35 - deep_stuck after 18-20 iterations
+            # Adaptive state transitions - adjusted for better learning dynamics
+            stagnation_threshold=180,    # Slightly earlier transition to stuck
+            deep_stagnation_threshold=700,  # Earlier transition to deep_stuck
+            stagnation_ratio=0.16,       # More responsive to stagnation
+            deep_stagnation_ratio=0.40,  # More responsive to deep stagnation
         ),
     )
 
     # Build intelligent initial Q-values to guide early learning
     # Key insight: Give LP higher initial values in stuck/deep_stuck states
     # This provides a "warm start" so Q-learning doesn't waste iterations discovering LP
+
+    # Scale-aware initial Q-values: LP becomes more valuable on larger problems
+    scale = config.num_tasks
+    if scale >= 14:  # large
+        lp_boost = 1.2
+    elif scale >= 10:  # medium
+        lp_boost = 1.1
+    else:  # small
+        lp_boost = 1.0
+
     initial_q_values = {}
     for state in ["explore", "stuck", "deep_stuck"]:
         initial_q_values[state] = {}
@@ -112,18 +124,22 @@ def run_q_learning_trial(
                 # Intelligent initialization based on expected operator value
                 if repair_op == "lp":
                     # LP is powerful but expensive - higher value in stuck states
+                    # Apply scale-aware boost for larger problems
                     if state == "explore":
-                        initial_q_values[state][action] = 15.0   # Moderate initial value
+                        initial_q_values[state][action] = 14.0 * lp_boost   # Moderate initial value
                     elif state == "stuck":
-                        initial_q_values[state][action] = 30.0   # High initial value
+                        initial_q_values[state][action] = 28.0 * lp_boost   # High initial value
                     elif state == "deep_stuck":
-                        initial_q_values[state][action] = 35.0   # Very high initial value
+                        initial_q_values[state][action] = 32.0 * lp_boost   # Very high initial value
                 elif repair_op == "regret2":
-                    # Regret2 is good heuristic
+                    # Regret2 is good heuristic - consistent across scales
                     initial_q_values[state][action] = 12.0
                 elif repair_op == "greedy":
-                    # Greedy is fast and decent
-                    initial_q_values[state][action] = 10.0
+                    # Greedy is fast and decent - slightly favor in explore state
+                    if state == "explore":
+                        initial_q_values[state][action] = 11.0
+                    else:
+                        initial_q_values[state][action] = 10.0
                 else:
                     # Random is baseline
                     initial_q_values[state][action] = 5.0
