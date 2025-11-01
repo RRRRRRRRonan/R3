@@ -12,7 +12,7 @@ from collections import Counter
 import math
 import random
 import time
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from core.route import Route
 from core.task import Task
@@ -180,12 +180,21 @@ class MinimalALNS:
         if requested_iterations != 100:
             return requested_iterations
 
-        recommendations = {
-            "small": 140,
-            "medium": 180,
-            "large": 240,
-        }
-        return recommendations.get(self._scenario_scale, requested_iterations)
+        task_count = self._scenario_task_count
+        if task_count <= 0:
+            # Fall back to coarse defaults when the pool size is unknown.
+            recommendations = {"small": 150, "medium": 220, "large": 320}
+            return recommendations.get(self._scenario_scale, 180)
+
+        if task_count >= 48:
+            return 430
+        if task_count >= 36:
+            return 360
+        if task_count >= 26:
+            return 280
+        if task_count >= 18:
+            return 220
+        return 170
 
     def _maybe_reconfigure_q_agent(self, initial_route: Route) -> None:
         """Rebuild the Q-agent if the scenario scale becomes known later."""
@@ -220,18 +229,37 @@ class MinimalALNS:
         if not self._q_params.enable_online_updates:
             self._q_agent.set_epsilon(self._q_params.epsilon_min)
 
-    def _destroy_fraction_config(self) -> Tuple[Dict[str, float], Dict[str, int]]:
-        """Return destroy fractions/minimums tailored to the scenario scale."""
+    def _destroy_fraction_config(
+        self, task_count: int
+    ) -> Tuple[Dict[str, float], Dict[str, int]]:
+        """Return destroy fractions/minimums tailored to the active route size."""
 
-        if self._scenario_scale == "large":
-            fraction_map = {"explore": 0.24, "stuck": 0.38, "deep_stuck": 0.52}
-            min_remove = {"explore": 4, "stuck": 6, "deep_stuck": 8}
-        elif self._scenario_scale == "medium":
-            fraction_map = {"explore": 0.18, "stuck": 0.32, "deep_stuck": 0.46}
-            min_remove = {"explore": 3, "stuck": 5, "deep_stuck": 7}
-        else:  # small
-            fraction_map = {"explore": 0.16, "stuck": 0.28, "deep_stuck": 0.42}
-            min_remove = {"explore": 2, "stuck": 3, "deep_stuck": 4}
+        base_fraction = {"explore": 0.12, "stuck": 0.22, "deep_stuck": 0.35}
+        base_min_remove = {"explore": 2, "stuck": 3, "deep_stuck": 4}
+
+        # Gradually request stronger destroys on larger routes while capping the
+        # aggressiveness to avoid destabilising the repair phase.
+        if task_count >= 45:
+            size_boost = 0.10
+            min_increment = 3
+        elif task_count >= 28:
+            size_boost = 0.05
+            min_increment = 1
+        else:
+            size_boost = 0.0
+            min_increment = 0
+
+        phase_bias = {"explore": 0.7, "stuck": 1.0, "deep_stuck": 1.3}
+        fraction_map = {
+            phase: min(0.55, base_fraction[phase] + size_boost * phase_bias[phase])
+            for phase in base_fraction
+        }
+
+        min_remove = {
+            phase: base_min_remove[phase] + min_increment
+            for phase in base_min_remove
+        }
+
         return fraction_map, min_remove
 
     def _normalise_initial_q_values(
@@ -269,6 +297,80 @@ class MinimalALNS:
         if scale == "medium":
             return 0.72
         return 1.0
+
+    def _fallback_repair_operator(
+        self,
+        *,
+        state: Optional[str],
+        chosen_repair: str,
+    ) -> Optional[str]:
+        """Return a safeguard repair operator when Q-learning underperforms."""
+
+        if not self._use_q_learning:
+            return None
+
+        phase = self._extract_phase(state)
+        scale = self._scenario_scale
+
+        prefers_lp = (
+            "lp" in self.repair_operators
+            and chosen_repair != "lp"
+            and (phase in {"stuck", "deep_stuck"} or scale == "large")
+        )
+        if prefers_lp:
+            return "lp"
+
+        if "regret2" in self.repair_operators and chosen_repair != "regret2":
+            return "regret2"
+        if "greedy" in self.repair_operators and chosen_repair != "greedy":
+            return "greedy"
+        return None
+
+    def _build_fallback_candidate(
+        self,
+        *,
+        destroyed_route: Route,
+        removed_task_ids: List[int],
+        fallback_operator: str,
+        postprocess: Optional[Callable[[Route], None]] = None,
+    ) -> Tuple[Route, float]:
+        """Construct a fallback candidate and return it with the runtime."""
+
+        route_copy = destroyed_route.copy()
+        start = time.perf_counter()
+        candidate = self._run_repair_operator(
+            fallback_operator,
+            route_copy,
+            list(removed_task_ids),
+        )
+        if postprocess is not None:
+            postprocess(candidate)
+        runtime = time.perf_counter() - start
+        return candidate, runtime
+
+    def _fallback_penalty_value(self) -> float:
+        params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
+        return abs(params.reward_rejected) + params.reward_improvement
+
+    def _log_fallback_usage(
+        self,
+        *,
+        iteration: int,
+        state: Optional[str],
+        chosen: str,
+        fallback: str,
+        original_cost: float,
+        fallback_cost: float,
+    ) -> None:
+        if not self.verbose:
+            return
+
+        phase = self._extract_phase(state)
+        self._log(
+            "  [Q-Guard] 迭代 "
+            f"{iteration + 1}: {phase}阶段将修复算子 {chosen} → {fallback} "
+            f"(成本 {original_cost:.2f} → {fallback_cost:.2f})"
+        )
 
     def _scenario_roi_multiplier(self, improvement: float) -> float:
         if improvement <= 0:
@@ -604,7 +706,7 @@ class MinimalALNS:
         if task_count == 0:
             return None
 
-        fraction_map, min_remove = self._destroy_fraction_config()
+        fraction_map, min_remove = self._destroy_fraction_config(task_count)
 
         fraction = fraction_map.get(phase, fraction_map['explore'])
         candidate_q = int(math.ceil(task_count * fraction))
@@ -618,14 +720,13 @@ class MinimalALNS:
         q = max(1, min(task_count, q))
 
         base_prob = self.hyper.destroy_repair.remove_cs_probability
-        if self._scenario_scale == 'large':
-            prob_adjust = {'explore': 0.05, 'stuck': 0.2, 'deep_stuck': 0.35}
-        elif self._scenario_scale == 'medium':
-            prob_adjust = {'explore': 0.02, 'stuck': 0.18, 'deep_stuck': 0.32}
-        else:
-            prob_adjust = {'explore': 0.0, 'stuck': 0.15, 'deep_stuck': 0.28}
+        stagnation_boost = {"explore": 0.0, "stuck": 0.14, "deep_stuck": 0.28}
+        scale_bonus = 0.05 if task_count >= 45 else 0.02 if task_count >= 28 else 0.0
 
-        remove_prob = min(1.0, max(0.0, base_prob + prob_adjust.get(phase, 0.0)))
+        remove_prob = min(
+            1.0,
+            max(0.0, base_prob + stagnation_boost.get(phase, 0.0) + scale_bonus),
+        )
 
         if task_count <= 1:
             remove_prob = 0.0
@@ -807,12 +908,46 @@ class MinimalALNS:
                 action_runtime,
             ) = self._execute_destroy_repair(current_route, state=q_state)
 
-            destroy_usage[destroy_operator] += 1
-            repair_usage[repair_operator] += 1
-
             # 评估成本
             previous_cost = self.evaluate_cost(current_route)
             candidate_cost = self.evaluate_cost(candidate_route)
+            original_candidate_cost = candidate_cost
+            original_repair_operator = repair_operator
+
+            fallback_used = False
+
+            if (
+                self._use_q_learning
+                and q_action is not None
+            ):
+                fallback_operator = self._fallback_repair_operator(
+                    state=q_state,
+                    chosen_repair=repair_operator,
+                )
+                if fallback_operator and fallback_operator != repair_operator:
+                    fallback_route, fallback_runtime = self._build_fallback_candidate(
+                        destroyed_route=destroyed_route,
+                        removed_task_ids=removed_task_ids,
+                        fallback_operator=fallback_operator,
+                    )
+                    fallback_cost = self.evaluate_cost(fallback_route)
+                    if fallback_cost + 1e-6 < candidate_cost:
+                        candidate_route = fallback_route
+                        candidate_cost = fallback_cost
+                        repair_operator = fallback_operator
+                        action_runtime = fallback_runtime
+                        fallback_used = True
+                        self._log_fallback_usage(
+                            iteration=iteration,
+                            state=q_state,
+                            chosen=original_repair_operator,
+                            fallback=fallback_operator,
+                            original_cost=original_candidate_cost,
+                            fallback_cost=fallback_cost,
+                        )
+
+            destroy_usage[destroy_operator] += 1
+            repair_usage[repair_operator] += 1
 
             # 计算改进量
             improvement = previous_cost - candidate_cost
@@ -856,6 +991,8 @@ class MinimalALNS:
                     repair_operator=repair_operator,
                     previous_cost=previous_cost,
                 )
+                if fallback_used:
+                    reward = min(reward, -self._fallback_penalty_value())
                 next_state = self._determine_state(consecutive_no_improve)
                 self._q_agent.update(q_state, q_action, reward, next_state)
                 self._q_agent.decay_epsilon()
