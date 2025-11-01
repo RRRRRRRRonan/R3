@@ -9,7 +9,7 @@ solution.
 """
 
 from typing import List, Tuple, Optional, Dict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from copy import deepcopy
 
 from config import DEFAULT_VEHICLE_DYNAMICS
@@ -734,23 +734,40 @@ class Route:
         return "\n".join(lines)
     
     
-    def copy(self) -> 'Route':
+    def copy(self, include_visits: bool = False) -> 'Route':
+        """Return a lightweight copy of the route.
+
+        Historically we relied on :func:`copy.deepcopy` which recursively
+        duplicated every node and visit structure.  The optimisation heuristics
+        clone routes thousands of times while probing destroy/repair
+        combinations, so the recursive deepcopy turned into a significant hot
+        spot.  Nodes are immutable dataclasses which means we can safely reuse
+        the same instances across copies.  ``RouteNodeVisit`` entries, on the
+        other hand, may be mutated when recomputing schedules, therefore we
+        create shallow copies for them only when explicitly requested.
+
+        Args:
+            include_visits: When ``True`` the existing visit log is duplicated.
+                Callers that only need the node sequence can leave the default
+                ``False`` to skip copying schedule information.
+
+        Returns:
+            Route: an independent instance that shares immutable node objects
+            but owns its own visit list when requested.
         """
-        深拷贝路径
-        
-        为什么需要：
-            ALNS的destroy-repair会频繁创建路径的副本
-            因为我们要"试错"——尝试很多种组合，最后选最好的
-            
-        使用场景：
-            temp_route = current_route.copy()
-            temp_route.remove_task(task1)  # 不影响原路径
-        
-        返回：
-            完全独立的Route对象
-        """
-        from copy import deepcopy
-        return deepcopy(self)
+
+        nodes_copy = list(self.nodes)
+        visits_copy: Optional[List[RouteNodeVisit]] = None
+        if include_visits and self.visits is not None:
+            visits_copy = [replace(visit) for visit in self.visits]
+
+        return Route(
+            vehicle_id=self.vehicle_id,
+            nodes=nodes_copy,
+            visits=visits_copy,
+            is_feasible=self.is_feasible,
+            infeasibility_info=self.infeasibility_info,
+        )
     
     def insert_task(self, task: Task, position: Tuple[int, int]) -> None:
         """
@@ -896,7 +913,7 @@ class Route:
         pickup_pos, delivery_pos = insert_position
         
         # 构建临时路径
-        temp_nodes = [deepcopy(node) for node in self.nodes]
+        temp_nodes = list(self.nodes)
         temp_nodes.insert(pickup_pos, task.pickup_node)
         temp_nodes.insert(delivery_pos, task.delivery_node)
         
@@ -1129,17 +1146,44 @@ class Route:
         """
         pickup_pos, delivery_pos = position
         
-        # 原始距离
-        original_distance = self.calculate_total_distance(distance_matrix)
-        
-        # 创建临时路径
-        temp_route = self.copy()
-        temp_route.insert_task(task, position)
-        
-        # 新距离
-        new_distance = temp_route.calculate_total_distance(distance_matrix)
-        
-        return new_distance - original_distance
+        if pickup_pos <= 0 or pickup_pos >= len(self.nodes):
+            raise ValueError(
+                f"Pickup position {pickup_pos} is outside the route bounds"
+            )
+
+        if delivery_pos <= pickup_pos or delivery_pos > len(self.nodes):
+            raise ValueError(
+                f"Delivery position {delivery_pos} must be after pickup position"
+            )
+
+        get_distance = distance_matrix.get_distance
+
+        prev_pickup = self.nodes[pickup_pos - 1]
+        next_pickup = self.nodes[pickup_pos]
+
+        cost_delta = (
+            get_distance(prev_pickup.node_id, task.pickup_node.node_id)
+            + get_distance(task.pickup_node.node_id, next_pickup.node_id)
+            - get_distance(prev_pickup.node_id, next_pickup.node_id)
+        )
+
+        def node_after_pickup(index: int):
+            if index == pickup_pos:
+                return task.pickup_node
+            if index < pickup_pos:
+                return self.nodes[index]
+            return self.nodes[index - 1]
+
+        prev_delivery = node_after_pickup(delivery_pos - 1)
+        next_delivery = node_after_pickup(delivery_pos)
+
+        cost_delta += (
+            get_distance(prev_delivery.node_id, task.delivery_node.node_id)
+            + get_distance(task.delivery_node.node_id, next_delivery.node_id)
+            - get_distance(prev_delivery.node_id, next_delivery.node_id)
+        )
+
+        return cost_delta
 
 
 

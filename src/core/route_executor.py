@@ -56,7 +56,7 @@ class RouteExecutor:
         返回:
             Route: 带有visits记录的路径副本
         """
-        executed_route = route.copy()
+        executed_route = route.copy(include_visits=False)
         visits = []
 
         # 初始状态
