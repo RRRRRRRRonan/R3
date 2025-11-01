@@ -63,6 +63,7 @@ class MatheuristicALNS(MinimalALNS):
         use_adaptive: bool = True,
         *,
         verbose: bool = True,
+        adaptation_mode: str = "q_learning",  # NEW: Allow override
         hyper_params: Optional[ALNSHyperParameters] = None,
         matheuristic_params: Optional[MatheuristicParams] = None,
     ) -> None:
@@ -76,6 +77,7 @@ class MatheuristicALNS(MinimalALNS):
             charging_strategy=charging_strategy,
             use_adaptive=use_adaptive,
             verbose=verbose,
+            adaptation_mode=adaptation_mode,  # NEW: Pass through
             hyper_params=hyper_params,
             repair_operators=('greedy', 'regret2', 'random', 'lp'),
         )

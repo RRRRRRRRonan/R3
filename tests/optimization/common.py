@@ -312,6 +312,7 @@ def run_matheuristic_trial(
                 charging_strategy=strategy,
                 use_adaptive=True,
                 verbose=False,
+                adaptation_mode="roulette",  # Use roulette wheel for matheuristic baseline
                 hyper_params=hyper_params,
             )
             alns.vehicle = deepcopy(scenario.vehicles[0])
