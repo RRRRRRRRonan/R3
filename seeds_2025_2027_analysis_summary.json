@@ -1,0 +1,49 @@
+{
+  "overall_stats": {
+    "Matheuristic ALNS": {
+      "mean": 33.504444444444445,
+      "std": 8.204914854998666,
+      "min": 22.87,
+      "max": 48.31,
+      "count": 9
+    },
+    "Minimal ALNS": {
+      "mean": 9.12,
+      "std": 1.458552364503928,
+      "min": 7.08,
+      "max": 12.19,
+      "count": 9
+    },
+    "Matheuristic + Q-learning": {
+      "mean": 37.128750000000004,
+      "std": 10.257799036412663,
+      "min": 17.01,
+      "max": 53.56,
+      "count": 8
+    }
+  },
+  "q_learning": {
+    "mean": 37.128750000000004,
+    "std": 10.257799036412663,
+    "count": 8
+  },
+  "matheuristic": {
+    "mean": 33.504444444444445,
+    "std": 8.204914854998666,
+    "count": 9
+  },
+  "win_rate": {
+    "q_learning": "6/8",
+    "matheuristic": "2/8"
+  },
+  "recommendation": "RECOMMEND_10SEEDS",
+  "reasons": [
+    "存在高方差情况(CV>20%),需要更多样本评估稳定性",
+    "两种方法差异不明显,需要更多样本确定统计显著性",
+    "当前数据存在缺失,需要补充完整"
+  ],
+  "high_variance_cases": [
+    "Matheuristic + Q-learning @ Medium 规模, CV=50.07%",
+    "Matheuristic ALNS @ Small 规模, CV=22.59%"
+  ]
+}
