@@ -38,20 +38,9 @@ def run_q_learning_trial(
     scenario = build_scenario(config)
     task_pool = scenario.create_task_pool()
 
-    # Use SAME matheuristic strength as the pure matheuristic baseline
-    # This ensures fair comparison - Q-learning's value is in WHEN to use
-    # these operators, not in having weaker operators
-
-    # Scale-aware adjustments for Q-learning parameters
-    scale = config.num_tasks
-    if scale >= 25:  # very large (30 tasks)
-        # Large problems need to enter stuck state earlier to use LP more aggressively
-        stagnation_threshold = 80   # Earlier transition (vs 100 for small/medium)
-        deep_stagnation_threshold = 600
-    else:
-        stagnation_threshold = 100
-        deep_stagnation_threshold = 700
-
+    # Use SAME configuration as matheuristic baseline for fair comparison
+    # The ONLY difference should be that we explicitly use Q-learning
+    # (Matheuristic also uses Q-learning by default, but we make it explicit here)
     tuned_hyper = replace(
         DEFAULT_ALNS_HYPERPARAMETERS,
         destroy_repair=DestroyRepairParams(
@@ -72,121 +61,42 @@ def run_q_learning_trial(
                 lookahead_window=2,
             ),
             lp_repair=LPRepairParams(
-                time_limit_s=0.3,  # Increased from 0.06 to 0.3 (5x stronger)
-                max_plans_per_task=4,  # Increased from 1 to 4 (4x stronger)
+                time_limit_s=0.3,
+                max_plans_per_task=4,
                 improvement_tolerance=1e-4,
                 skip_penalty=5_000.0,
                 fractional_threshold=1e-3,
             ),
         ),
-        q_learning=QLearningParams(
-            # CRITICAL: Higher learning rate for faster convergence
-            alpha=0.35,  # Increased from 0.25 - learn aggressively in limited iterations
-            gamma=0.95,  # Increased from 0.9 - value long-term rewards more
-
-            # BALANCED EXPLORATION: Allow sufficient exploration to discover optimal strategies
-            # FIX: Increase epsilon from 0.02 to 0.10 for better exploration-exploitation balance
-            # With 40-44 iterations, 10% exploration = 4-4.4 exploration steps
-            initial_epsilon=0.12,  # Balanced exploration (10%)
-            epsilon_decay=0.96,    # Moderate decay - gradually shift to exploitation
-            epsilon_min=0.01,      # Reasonable floor to maintain some exploration
-            enable_online_updates=True,
-
-            # Reward structure optimized for ROI-aware learning
-            reward_new_best=150.0,     # Doubled from 50 - stronger signal for success
-            reward_improvement=30.0,   # Increased from 20
-            reward_accepted=8.0,       # Increased from 5
-            reward_rejected=-3.0,      # More negative from -2
-
-            # Time penalty thresholds - REDUCED to encourage LP usage when beneficial
-            # FIX: Reduce time_penalty_negative_scale from 15.0 to 8.0
-            # This allows Q-learning to learn LP's true value without over-penalizing time cost
-            time_penalty_threshold=0.15,  # Increased threshold before penalties apply
-            time_penalty_positive_scale=1.2,   # Reduced penalty for successful LP
-            time_penalty_negative_scale=6.0,   # CRITICAL FIX: Reduced from 15.0
-            standard_time_penalty_scale=0.3,   # Keep cheap for greedy
-
-            # Adaptive state transitions - adjusted for better learning dynamics
-            # Use scale-aware thresholds computed above
-            stagnation_threshold=stagnation_threshold,
-            deep_stagnation_threshold=deep_stagnation_threshold,
-            stagnation_ratio=0.16,       # More responsive to stagnation
-            deep_stagnation_ratio=0.40,  # More responsive to deep stagnation
-        ),
+        # Use DEFAULT Q-learning parameters - don't override!
+        # Matheuristic performs well with defaults, so we should too
     )
-
-    # Build intelligent initial Q-values to guide early learning
-    # Key insight: Give LP higher initial values in stuck/deep_stuck states
-    # This provides a "warm start" so Q-learning doesn't waste iterations discovering LP
-
-    # Scale-aware initial Q-values: LP becomes more valuable on larger problems
-    # CRITICAL: Large-scale problems (30+ tasks) benefit significantly more from LP
-    scale = config.num_tasks
-    if scale >= 25:  # very large (30 tasks)
-        lp_boost = 1.5  # Increased from 1.2 - LP is critical for large problems
-    elif scale >= 14:  # large (16 tasks)
-        lp_boost = 1.3
-    elif scale >= 10:  # medium
-        lp_boost = 1.1
-    else:  # small
-        lp_boost = 1.0
-
-    initial_q_values = {}
-    for state in ["explore", "stuck", "deep_stuck"]:
-        initial_q_values[state] = {}
-        for destroy_op in ["random_removal", "partial_removal"]:
-            for repair_op in ["greedy", "regret2", "random", "lp"]:
-                action = (destroy_op, repair_op)
-
-                # Intelligent initialization based on expected operator value
-                if repair_op == "lp":
-                    # LP is powerful but expensive - higher value in stuck states
-                    # Apply scale-aware boost for larger problems
-                    if state == "explore":
-                        initial_q_values[state][action] = 14.0 * lp_boost   # Moderate initial value
-                    elif state == "stuck":
-                        initial_q_values[state][action] = 28.0 * lp_boost   # High initial value
-                    elif state == "deep_stuck":
-                        initial_q_values[state][action] = 32.0 * lp_boost   # Very high initial value
-                elif repair_op == "regret2":
-                    # Regret2 is good heuristic - consistent across scales
-                    initial_q_values[state][action] = 12.0
-                elif repair_op == "greedy":
-                    # Greedy is fast and decent - slightly favor in explore state
-                    if state == "explore":
-                        initial_q_values[state][action] = 11.0
-                    else:
-                        initial_q_values[state][action] = 10.0
-                else:
-                    # Random is baseline
-                    initial_q_values[state][action] = 5.0
 
     # CRITICAL FIX: Use the SAME charging strategy and cost params as matheuristic
     # This ensures fair comparison with identical baseline quality
     charging_strategy = PartialRechargeMinimalStrategy(safety_margin=0.02, min_margin=0.0)
     cost_params = CostParameters()
 
+    # Don't provide custom initial Q-values - let it use defaults
+    # Matheuristic doesn't provide custom Q-values, so we shouldn't either
+
     rng = random.Random(seed)
     state = random.getstate()
     random.setstate(rng.getstate())
     try:
+        # Create MatheuristicALNS with EXACTLY the same config as matheuristic trial
+        # The only difference is we don't override anything - both use default Q-learning
         alns = MatheuristicALNS(
             distance_matrix=scenario.distance,
             task_pool=task_pool,
             repair_mode="adaptive",
-            cost_params=cost_params,           # ✅ FIX: Add cost params
-            charging_strategy=charging_strategy,  # ✅ FIX: Add charging strategy
+            cost_params=cost_params,
+            charging_strategy=charging_strategy,
             use_adaptive=True,
             verbose=False,
             hyper_params=tuned_hyper,
         )
-        if getattr(alns, "_use_q_learning", False):
-            alns._q_agent = QLearningOperatorAgent(
-                destroy_operators=alns._destroy_operators,
-                repair_operators=alns.repair_operators,
-                params=alns._q_params,
-                initial_q_values=initial_q_values,
-            )
+        # Don't manually create Q-agent - let MinimalALNS.__init__ do it with defaults
         alns.vehicle = deepcopy(scenario.vehicles[0])
         alns.energy_config = deepcopy(scenario.energy)
 
