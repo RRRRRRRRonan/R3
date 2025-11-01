@@ -32,6 +32,8 @@ def run_q_learning_trial(
     Returns the solver instance together with the baseline and optimised costs
     so tests can assert on both solution quality and the learning signals.
     """
+    from strategy.charging_strategies import PartialRechargeMinimalStrategy
+    from config import CostParameters
 
     scenario = build_scenario(config)
     task_pool = scenario.create_task_pool()
@@ -39,6 +41,17 @@ def run_q_learning_trial(
     # Use SAME matheuristic strength as the pure matheuristic baseline
     # This ensures fair comparison - Q-learning's value is in WHEN to use
     # these operators, not in having weaker operators
+
+    # Scale-aware adjustments for Q-learning parameters
+    scale = config.num_tasks
+    if scale >= 25:  # very large (30 tasks)
+        # Large problems need to enter stuck state earlier to use LP more aggressively
+        stagnation_threshold = 80   # Earlier transition (vs 100 for small/medium)
+        deep_stagnation_threshold = 600
+    else:
+        stagnation_threshold = 100
+        deep_stagnation_threshold = 700
+
     tuned_hyper = replace(
         DEFAULT_ALNS_HYPERPARAMETERS,
         destroy_repair=DestroyRepairParams(
@@ -94,8 +107,9 @@ def run_q_learning_trial(
             standard_time_penalty_scale=0.3,   # Keep cheap for greedy
 
             # Adaptive state transitions - adjusted for better learning dynamics
-            stagnation_threshold=100,    # Slightly earlier transition to stuck
-            deep_stagnation_threshold=700,  # Earlier transition to deep_stuck
+            # Use scale-aware thresholds computed above
+            stagnation_threshold=stagnation_threshold,
+            deep_stagnation_threshold=deep_stagnation_threshold,
             stagnation_ratio=0.16,       # More responsive to stagnation
             deep_stagnation_ratio=0.40,  # More responsive to deep stagnation
         ),
@@ -106,9 +120,12 @@ def run_q_learning_trial(
     # This provides a "warm start" so Q-learning doesn't waste iterations discovering LP
 
     # Scale-aware initial Q-values: LP becomes more valuable on larger problems
+    # CRITICAL: Large-scale problems (30+ tasks) benefit significantly more from LP
     scale = config.num_tasks
-    if scale >= 14:  # large
-        lp_boost = 1.2
+    if scale >= 25:  # very large (30 tasks)
+        lp_boost = 1.5  # Increased from 1.2 - LP is critical for large problems
+    elif scale >= 14:  # large (16 tasks)
+        lp_boost = 1.3
     elif scale >= 10:  # medium
         lp_boost = 1.1
     else:  # small
@@ -144,6 +161,11 @@ def run_q_learning_trial(
                     # Random is baseline
                     initial_q_values[state][action] = 5.0
 
+    # CRITICAL FIX: Use the SAME charging strategy and cost params as matheuristic
+    # This ensures fair comparison with identical baseline quality
+    charging_strategy = PartialRechargeMinimalStrategy(safety_margin=0.02, min_margin=0.0)
+    cost_params = CostParameters()
+
     rng = random.Random(seed)
     state = random.getstate()
     random.setstate(rng.getstate())
@@ -152,8 +174,8 @@ def run_q_learning_trial(
             distance_matrix=scenario.distance,
             task_pool=task_pool,
             repair_mode="adaptive",
-            cost_params=None,
-            charging_strategy=None,
+            cost_params=cost_params,           # ✅ FIX: Add cost params
+            charging_strategy=charging_strategy,  # ✅ FIX: Add charging strategy
             use_adaptive=True,
             verbose=False,
             hyper_params=tuned_hyper,
