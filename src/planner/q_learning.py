@@ -192,6 +192,11 @@ class QLearningOperatorAgent:
 
         max_q = max(value for _, value in candidate_items)
         best_actions = [action for action, value in candidate_items if value == max_q]
+
+        # Fallback: if no best actions found (e.g., due to NaN values), pick randomly from candidates
+        if not best_actions:
+            best_actions = [action for action, _ in candidate_items]
+
         return random.choice(best_actions)
 
     def _masked_actions(self, mask: Optional[Sequence[bool]]) -> List[Action]:
