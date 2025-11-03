@@ -1,0 +1,17 @@
+{
+  "failure_case": {
+    "seed": 2027,
+    "scale": "medium",
+    "baseline_cost": 63955.11717097693,
+    "optimised_cost": 14142.16013330171,
+    "improvement": 77.88736733060124
+  },
+  "success_case": {
+    "seed": 2026,
+    "scale": "medium",
+    "baseline_cost": 65809.18133427587,
+    "optimised_cost": 38943.8469893381,
+    "improvement": 40.82307939446332
+  },
+  "gap": -37.064287936137916
+}
