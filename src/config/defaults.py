@@ -181,11 +181,11 @@ class ALNSHyperParameters:
 class QLearningParams:
     """Hyper-parameters for the Q-learning operator agent."""
 
-    alpha: float = 0.35
+    alpha: float = 0.1  # TUNED: Reduced from 0.35 to avoid over-updating Q-values
     gamma: float = 0.95
     initial_epsilon: float = 0.12
     epsilon_decay: float = 0.995
-    epsilon_min: float = 0.01
+    epsilon_min: float = 0.1  # TUNED: Increased from 0.01 to maintain more exploration
     enable_online_updates: bool = True
     reward_new_best: float = 100.0
     reward_improvement: float = 36.0
@@ -199,8 +199,8 @@ class QLearningParams:
     standard_time_penalty_scale: float = 0.2
     stagnation_threshold: int = 160
     deep_stagnation_threshold: int = 560
-    stagnation_ratio: float = 0.16
-    deep_stagnation_ratio: float = 0.4
+    stagnation_ratio: float = 0.25  # TUNED: Increased from 0.16 for more exploration before stuck
+    deep_stagnation_ratio: float = 0.45  # TUNED: Increased from 0.4 proportionally
 
 
 @dataclass(frozen=True)
