@@ -10,9 +10,11 @@ import sys
 from pathlib import Path
 import json
 
-# Add project root to path
+# Add project root and src to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))  # Add src directory
+sys.path.insert(0, str(project_root / "tests"))  # Add tests directory
 
 from tests.optimization.common import ScenarioConfig, build_scenario, run_minimal_trial
 from tests.optimization.presets import get_scale_preset
