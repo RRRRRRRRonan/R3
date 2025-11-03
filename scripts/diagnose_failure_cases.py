@@ -32,8 +32,8 @@ def diagnose_case(seed: int, scale: str, iterations: int = 50):
 
     # 创建场景配置
     config = ScenarioConfig(
-        num_tasks=preset['num_tasks'],
-        num_charging=preset['num_stations'],
+        num_tasks=preset.scenario_overrides['num_tasks'],
+        num_charging=preset.scenario_overrides['num_charging'],
         area_size=(100.0, 100.0),
         vehicle_capacity=150.0,
         battery_capacity=1.5,
