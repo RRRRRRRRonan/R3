@@ -125,6 +125,13 @@ class QLearningOperatorAgent:
                 self.params.epsilon_min, self._epsilon * self.params.epsilon_decay
             )
 
+    def update_params(self, params: QLearningParams) -> None:
+        """Update hyper-parameters used by the learning policy on the fly."""
+
+        self.params = params
+        # Ensure the exploration rate obeys the updated minimum/maximum bounds.
+        self._epsilon = max(params.epsilon_min, min(1.0, self._epsilon))
+
     def set_epsilon(self, value: float) -> None:
         """Manually adjust the exploration rate (used for offline policies)."""
 

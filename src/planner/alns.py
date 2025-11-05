@@ -22,7 +22,7 @@ from physics.energy import EnergyConfig
 from physics.time import TimeConfig
 from planner.operators import AdaptiveOperatorSelector
 from planner.q_learning import Action, QLearningOperatorAgent
-from planner.adaptive_params import get_adaptive_params
+from planner.adaptive_params import AdaptiveQLearningParamsManager
 from config import (
     ALNSHyperParameters,
     CostParameters,
@@ -75,16 +75,24 @@ class MinimalALNS:
         self._use_q_learning = self.use_adaptive and adaptation_mode == 'q_learning'
         self._stagnation_threshold: Optional[int] = None
         self._deep_stagnation_threshold: Optional[int] = None
+        self._iteration_budget: Optional[int] = None
 
         self._scenario_task_count = self._estimate_task_count(task_pool)
         self._scenario_scale = self._infer_scenario_scale(self._scenario_task_count)
         self._q_state_labels = self._build_state_labels()
 
+        self._adaptive_params_manager: Optional[AdaptiveQLearningParamsManager] = None
+
         # Use scale-adaptive parameters if Q-learning is enabled
         # This addresses the "No Free Lunch" problem where unified parameters
         # cannot optimize all problem instances effectively
         if self._use_q_learning or adaptation_mode == 'q_learning':
-            self._q_params: QLearningParams = get_adaptive_params(self._scenario_scale)
+            self._adaptive_params_manager = AdaptiveQLearningParamsManager()
+            self._q_params: QLearningParams = (
+                self._adaptive_params_manager.get_params_for_scale(
+                    self._scenario_scale
+                )
+            )
         else:
             self._q_params: QLearningParams = getattr(
                 self.hyper, 'q_learning', DEFAULT_Q_LEARNING_PARAMS
@@ -224,7 +232,9 @@ class MinimalALNS:
         self._scenario_scale = new_scale
         # Update Q-learning parameters for new scale
         if self._use_q_learning:
-            self._q_params = get_adaptive_params(new_scale)
+            if self._adaptive_params_manager is None:
+                self._adaptive_params_manager = AdaptiveQLearningParamsManager()
+            self._q_params = self._adaptive_params_manager.get_params_for_scale(new_scale)
         self._q_state_labels = self._build_state_labels()
         initial_q_values = (
             self._user_provided_initial_q or self._default_q_learning_initial_q()
@@ -534,6 +544,17 @@ class MinimalALNS:
             params.deep_stagnation_threshold,
             scaled_deep,
         )
+
+    def _apply_q_learning_params(self, params: QLearningParams) -> None:
+        """Apply new Q-learning parameters and refresh derived thresholds."""
+
+        self._q_params = params
+        if not self._use_q_learning:
+            return
+        if hasattr(self, "_q_agent") and self._q_agent is not None:
+            self._q_agent.update_params(params)
+        if self._iteration_budget:
+            self._prepare_stagnation_thresholds(self._iteration_budget)
 
     def _determine_state(self, consecutive_no_improve: int) -> str:
         stuck_threshold = self._stagnation_threshold
@@ -889,12 +910,14 @@ class MinimalALNS:
         current_route = initial_route.copy()
         best_route = initial_route.copy()
         best_cost = self.evaluate_cost(best_route)
+        initial_route_cost = best_cost
 
         temperature = self.initial_temp
 
         repair_usage: Counter[str] = Counter()
         destroy_usage: Counter[str] = Counter()
         consecutive_no_improve = 0
+        self._iteration_budget = max_iterations
 
         self._log(f"初始成本: {best_cost:.2f}m")
         self._log(f"总迭代次数: {max_iterations}")
@@ -1007,6 +1030,29 @@ class MinimalALNS:
                 self._q_agent.update(q_state, q_action, reward, next_state)
                 self._q_agent.decay_epsilon()
 
+            if self._use_q_learning and self._adaptive_params_manager is not None:
+                improvement_ratio = 0.0
+                if initial_route_cost > 0.0:
+                    improvement_ratio = max(
+                        0.0,
+                        min(
+                            1.0,
+                            (initial_route_cost - best_cost) / initial_route_cost,
+                        ),
+                    )
+                iteration_ratio = (
+                    (iteration + 1) / max_iterations if max_iterations > 0 else 1.0
+                )
+                adaptive_params = (
+                    self._adaptive_params_manager.get_performance_adjusted_params(
+                        self._scenario_scale,
+                        improvement_ratio,
+                        iteration_ratio,
+                    )
+                )
+                if adaptive_params != self._q_params:
+                    self._apply_q_learning_params(adaptive_params)
+
             # 降温
             temperature *= self.cooling_rate
 
@@ -1037,6 +1083,8 @@ class MinimalALNS:
                 self._log("Destroy算子自适应统计")
                 self._log("=" * 70)
                 self._log(self.adaptive_destroy_selector.format_statistics())
+
+        self._iteration_budget = None
 
         if self._use_q_learning:
             self._log_q_learning_statistics()

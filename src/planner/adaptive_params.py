@@ -105,6 +105,7 @@ class AdaptiveQLearningParamsManager:
             return {
                 "alpha": 0.35,
                 "epsilon_min": 0.08,
+                "initial_epsilon": max(self.base_params.initial_epsilon, 0.12),
                 "stagnation_ratio": 0.12,
                 "deep_stagnation_ratio": 0.30,
             }
@@ -112,6 +113,7 @@ class AdaptiveQLearningParamsManager:
             return {
                 "alpha": 0.30,
                 "epsilon_min": 0.12,
+                "initial_epsilon": max(self.base_params.initial_epsilon, 0.15),
                 "stagnation_ratio": 0.18,
                 "deep_stagnation_ratio": 0.40,
             }
@@ -119,6 +121,7 @@ class AdaptiveQLearningParamsManager:
             return {
                 "alpha": 0.25,
                 "epsilon_min": 0.15,
+                "initial_epsilon": max(self.base_params.initial_epsilon, 0.18),
                 "stagnation_ratio": 0.22,
                 "deep_stagnation_ratio": 0.48,
             }
@@ -146,19 +149,62 @@ class AdaptiveQLearningParamsManager:
             Currently returns same as get_params_for_scale. Performance-based
             adjustment logic can be implemented here in Phase 2.
         """
-        # Phase 1: Only use scale-based params
-        # Phase 2: Add performance-based dynamic adjustment logic here
         base_adjusted = self.get_params_for_scale(scale)
 
-        # Placeholder for Phase 2 dynamic adjustments:
-        # if improvement_rate < 0.2 and iteration_ratio < 0.5:
-        #     # Poor performance early on: increase exploration
-        #     return replace(base_adjusted, epsilon_min=base_adjusted.epsilon_min * 1.2)
-        # elif improvement_rate > 0.4 and iteration_ratio > 0.5:
-        #     # Good performance late: reduce exploration for convergence
-        #     return replace(base_adjusted, epsilon_min=base_adjusted.epsilon_min * 0.8)
+        improvement_rate = self._clamp(improvement_rate, 0.0, 1.0)
+        iteration_ratio = self._clamp(iteration_ratio, 0.0, 1.0)
 
-        return base_adjusted
+        alpha = base_adjusted.alpha
+        epsilon_min = base_adjusted.epsilon_min
+        epsilon_decay = base_adjusted.epsilon_decay
+        stagnation_ratio = base_adjusted.stagnation_ratio
+        deep_stagnation_ratio = base_adjusted.deep_stagnation_ratio
+
+        # Phase awareness is critical: we encourage additional exploration when the
+        # search stagnates early, and tighten convergence when progress is strong
+        # in the later part of the run.  The thresholds stem from empirical
+        # analysis in the Phase 1.5 diagnostics.
+        if improvement_rate < 0.18:
+            # Underperforming regardless of progress – push the agent to explore.
+            exploration_boost = 1.25 if iteration_ratio < 0.5 else 1.15
+            epsilon_min = min(base_adjusted.initial_epsilon, epsilon_min * exploration_boost)
+            epsilon_decay = min(0.999, epsilon_decay + 0.002)
+            alpha = max(0.18, alpha * 0.9)
+            stagnation_ratio = max(0.08, stagnation_ratio * 0.9)
+            deep_stagnation_ratio = max(
+                stagnation_ratio + 0.08, deep_stagnation_ratio * 0.92
+            )
+        elif improvement_rate > 0.45 and iteration_ratio > 0.5:
+            # Strong performance: reduce random exploration and consolidate gains.
+            epsilon_min = max(0.02, epsilon_min * 0.7)
+            epsilon_decay = max(0.985, epsilon_decay - 0.004)
+            alpha = min(0.5, alpha * 1.12)
+            stagnation_ratio = min(0.6, stagnation_ratio * 1.08)
+            deep_stagnation_ratio = min(
+                0.85, max(deep_stagnation_ratio, stagnation_ratio + 0.12) * 1.05
+            )
+        elif iteration_ratio > 0.7 and improvement_rate < 0.3:
+            # Late-stage stagnation: gently diversify and tighten stuck handling.
+            epsilon_min = min(base_adjusted.initial_epsilon, epsilon_min * 1.1)
+            epsilon_decay = min(0.999, epsilon_decay + 0.0015)
+            alpha = max(0.2, alpha * 0.95)
+            stagnation_ratio = max(0.1, stagnation_ratio * 0.95)
+            deep_stagnation_ratio = max(
+                stagnation_ratio + 0.1, deep_stagnation_ratio * 0.96
+            )
+
+        return replace(
+            base_adjusted,
+            alpha=alpha,
+            epsilon_min=epsilon_min,
+            epsilon_decay=epsilon_decay,
+            stagnation_ratio=stagnation_ratio,
+            deep_stagnation_ratio=deep_stagnation_ratio,
+        )
+
+    @staticmethod
+    def _clamp(value: float, lower: float, upper: float) -> float:
+        return max(lower, min(upper, value))
 
 
 # Convenience function for quick access
