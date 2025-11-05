@@ -74,22 +74,26 @@ class AdaptiveQLearningParamsManager:
     def _get_scale_adjustments(self, scale: ScaleType) -> dict:
         """Get parameter adjustments for the specified scale.
 
-        Parameter rationale:
+        Parameter rationale (Phase 1.5 - Recalibrated after initial testing):
 
         Small scale (15 tasks):
-        - Higher alpha (0.3): Learn quickly from limited search space
-        - Lower epsilon_min (0.05): Reduce exploration once patterns found
-        - Lower stagnation_ratio (0.15): Enter stuck state earlier to leverage LP
+        - Higher alpha (0.35): Fast learning for limited search space
+        - Moderate epsilon_min (0.08): Balanced exploration
+        - Lower stagnation_ratio (0.12): Enter stuck earlier to leverage LP repair
 
         Medium scale (24 tasks):
-        - Moderate alpha (0.2): Balance learning speed and stability
-        - Moderate epsilon_min (0.1): Maintain steady exploration
-        - Moderate stagnation_ratio (0.25): Standard stuck threshold
+        - Higher alpha (0.30): INCREASED from 0.2 - faster learning is critical
+        - Moderate epsilon_min (0.12): Adequate exploration
+        - Lower stagnation_ratio (0.18): DECREASED from 0.25 - earlier LP repair
 
         Large scale (30+ tasks):
-        - Lower alpha (0.15): Avoid Q-value oscillation in large state space
+        - Moderate alpha (0.25): INCREASED from 0.15 - balance learning speed
         - Higher epsilon_min (0.15): Maintain exploration in complex landscape
-        - Higher stagnation_ratio (0.35): Give more time before declaring stuck
+        - Lower stagnation_ratio (0.22): DECREASED from 0.35 - earlier LP repair
+
+        Key changes from Phase 1:
+        - All scales: DECREASED stagnation_ratio to trigger LP repair earlier
+        - Medium/Large: INCREASED alpha for faster learning (critical fix)
 
         Args:
             scale: Problem scale
@@ -99,24 +103,24 @@ class AdaptiveQLearningParamsManager:
         """
         if scale == "small":
             return {
-                "alpha": 0.3,
-                "epsilon_min": 0.05,
-                "stagnation_ratio": 0.15,
-                "deep_stagnation_ratio": 0.35,  # Proportional to stagnation_ratio
+                "alpha": 0.35,
+                "epsilon_min": 0.08,
+                "stagnation_ratio": 0.12,
+                "deep_stagnation_ratio": 0.30,
             }
         elif scale == "medium":
             return {
-                "alpha": 0.2,
-                "epsilon_min": 0.1,
-                "stagnation_ratio": 0.25,
-                "deep_stagnation_ratio": 0.45,
+                "alpha": 0.30,
+                "epsilon_min": 0.12,
+                "stagnation_ratio": 0.18,
+                "deep_stagnation_ratio": 0.40,
             }
         else:  # large
             return {
-                "alpha": 0.15,
+                "alpha": 0.25,
                 "epsilon_min": 0.15,
-                "stagnation_ratio": 0.35,
-                "deep_stagnation_ratio": 0.55,
+                "stagnation_ratio": 0.22,
+                "deep_stagnation_ratio": 0.48,
             }
 
     def get_performance_adjusted_params(
