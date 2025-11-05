@@ -1,0 +1,53 @@
+{
+  "small": {
+    "minimal": {
+      "baseline_cost": 45355.96578547078,
+      "optimised_cost": 41015.62903961462,
+      "improvement_ratio": 0.09569494708558336
+    },
+    "matheuristic": {
+      "baseline_cost": 48349.40944584828,
+      "optimised_cost": 46732.74980034337,
+      "improvement_ratio": 0.03343700913897571
+    },
+    "q_learning": {
+      "baseline_cost": 48349.40944584828,
+      "optimised_cost": 28773.02060125774,
+      "improvement_ratio": 0.404894063215317
+    }
+  },
+  "medium": {
+    "minimal": {
+      "baseline_cost": 39317.523459731936,
+      "optimised_cost": 36146.2163899323,
+      "improvement_ratio": 0.08065887143292771
+    },
+    "matheuristic": {
+      "baseline_cost": 35102.79961678669,
+      "optimised_cost": 16192.87558097139,
+      "improvement_ratio": 0.538701307082421
+    },
+    "q_learning": {
+      "baseline_cost": 35102.79961678669,
+      "optimised_cost": 21019.869089797343,
+      "improvement_ratio": 0.4011910924692934
+    }
+  },
+  "large": {
+    "minimal": {
+      "baseline_cost": 60709.91270867346,
+      "optimised_cost": 54950.744741019524,
+      "improvement_ratio": 0.09486371682480016
+    },
+    "matheuristic": {
+      "baseline_cost": 52400.91557396012,
+      "optimised_cost": 37550.07361614077,
+      "improvement_ratio": 0.28340806253391615
+    },
+    "q_learning": {
+      "baseline_cost": 52400.91557396012,
+      "optimised_cost": 48031.1105907087,
+      "improvement_ratio": 0.08339176778473952
+    }
+  }
+}
