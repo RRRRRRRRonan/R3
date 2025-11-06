@@ -1474,8 +1474,9 @@ class MinimalALNS:
         vehicle = self.vehicle
         energy_config = self.energy_config
 
-        # 模拟电池消耗
-        current_battery = vehicle.battery_capacity  # 满电出发
+        # 模拟电池消耗 - CRITICAL FIX: Use initial_battery instead of full capacity
+        # This must match the assumption used by ensure_route_schedule/compute_schedule
+        current_battery = vehicle.initial_battery  # 使用实际初始电量而非满电
 
         for i in range(len(route.nodes) - 1):
             current_node = route.nodes[i]
