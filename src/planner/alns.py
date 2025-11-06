@@ -541,100 +541,78 @@ class MinimalALNS:
         return self._compose_state_label('explore')
 
     def _default_q_learning_initial_q(self) -> Dict[str, Dict[Action, float]]:
-        """Return expert-informed initial Q-values for destroy/repair pairs."""
+        """Return conservative scale-aware initial Q-values for destroy/repair pairs.
 
-        default_value = 8.5
-        scale = self._scenario_scale
+        Phase 1.1 Stability Fix: Conservative base + scale-specific adjustments.
 
-        common = {
-            'explore': {'regret2': 15.0, 'greedy': 13.0, 'lp': 12.0, 'random': 6.0},
-            'stuck': {'lp': 26.0, 'regret2': 16.0, 'greedy': 11.0, 'random': 6.0},
-            'deep_stuck': {'lp': 34.0, 'regret2': 14.0, 'greedy': 10.0, 'random': 6.0},
-        }
-
-        scale_bias = {
-            'small': {
-                'explore': {'lp': 6.0, 'regret2': 1.0},
-                'stuck': {'lp': 8.0, 'regret2': 1.0},
-                'deep_stuck': {'lp': 10.0},
-            },
-            'medium': {
-                'explore': {'lp': 4.0},
-                'stuck': {'lp': 6.0},
-                'deep_stuck': {'lp': 8.0},
-            },
-            'large': {
-                'explore': {'lp': 9.0, 'regret2': -1.0},
-                'stuck': {'lp': 12.0},
-                'deep_stuck': {'lp': 14.0},
-            },
-        }
-
-        adjustments = scale_bias.get(scale, {})
-
-        initial_values: Dict[str, Dict[Action, float]] = {}
-        for phase, repair_map in common.items():
-            label = self._compose_state_label(phase)
-            phase_adjust = adjustments.get(phase, {})
-            state_values: Dict[Action, float] = {}
-            for destroy in self._destroy_operators:
-                for repair in self.repair_operators:
-                    base = repair_map.get(repair, default_value)
-                    bonus = phase_adjust.get(repair, 0.0)
-                    state_values[(destroy, repair)] = base + bonus
-            initial_values[label] = state_values
-        return initial_values
-
-    def _default_q_learning_initial_q(self) -> Dict[str, Dict[Action, float]]:
-        """Return conservative initial Q-values for destroy/repair pairs.
-
-        Phase 1 Stability Fix: Conservative initialization to reduce LP bias.
-
-        Original values (caused seed sensitivity):
-        - explore: LP=15, greedy=10 (1.5x gap)
-        - stuck: LP=30, greedy=10 (3.0x gap)
-        - deep_stuck: LP=35, greedy=10 (3.5x gap)
-
-        Conservative values (improved generalization):
+        Base values (conservative, reduced LP bias):
         - explore: LP=12, greedy=9 (1.3x gap)
         - stuck: LP=15, greedy=10 (1.5x gap)
         - deep_stuck: LP=20, greedy=10 (2.0x gap)
 
-        This allows Q-learning to discover optimal strategies through experience
-        rather than relying on strong prior assumptions that may not generalize
-        across different seeds and problem instances.
+        Scale adjustments (critical for large problems):
+        - large: LP gets +9/+12/+14 bonuses in explore/stuck/deep_stuck
+        - This helps Q-learning discover that LP is essential for large-scale instances
+
+        Combined approach: Conservative base prevents excessive LP bias on small/medium,
+        while scale adjustments ensure LP is properly prioritized on large instances.
         """
 
         base_values = {
             'explore': {
-                'lp': 12.0,      # ↓ from 15.0 (reduced LP bias)
+                'lp': 12.0,      # Conservative base (reduced from 15.0)
                 'regret2': 10.0,
                 'greedy': 9.0,
                 'random': 5.0,
             },
             'stuck': {
-                'lp': 15.0,      # ↓ from 30.0 (reduced LP bias)
+                'lp': 15.0,      # Conservative base (reduced from 30.0)
                 'regret2': 12.0,
                 'greedy': 10.0,
                 'random': 5.0,
             },
             'deep_stuck': {
-                'lp': 20.0,      # ↓ from 35.0 (reduced LP bias)
+                'lp': 20.0,      # Conservative base (reduced from 35.0)
                 'regret2': 12.0,
                 'greedy': 10.0,
                 'random': 5.0,
             },
         }
+
+        # Scale-specific adjustments to prioritize LP on larger instances
+        scale_adjustments = {
+            'small': {
+                'explore': {'lp': 0.0},   # No adjustment needed
+                'stuck': {'lp': 0.0},
+                'deep_stuck': {'lp': 0.0},
+            },
+            'medium': {
+                'explore': {'lp': 3.0},   # Modest LP boost
+                'stuck': {'lp': 4.0},
+                'deep_stuck': {'lp': 5.0},
+            },
+            'large': {
+                'explore': {'lp': 9.0},   # Strong LP boost (12+9=21)
+                'stuck': {'lp': 12.0},     # (15+12=27)
+                'deep_stuck': {'lp': 14.0}, # (20+14=34)
+            },
+        }
+
         default_value = 8.0
+        scale = self._scenario_scale
+        adjustments = scale_adjustments.get(scale, scale_adjustments['small'])
 
         initial_values: Dict[str, Dict[Action, float]] = {}
         for state, repair_map in base_values.items():
+            state_adjust = adjustments.get(state, {})
+            state_label = self._compose_state_label(state)
             state_values: Dict[Action, float] = {}
             for destroy in self._destroy_operators:
                 for repair in self.repair_operators:
-                    value = repair_map.get(repair, default_value)
-                    state_values[(destroy, repair)] = value
-            initial_values[state] = state_values
+                    base = repair_map.get(repair, default_value)
+                    bonus = state_adjust.get(repair, 0.0)
+                    state_values[(destroy, repair)] = base + bonus
+            initial_values[state_label] = state_values
         return initial_values
 
     def _compute_q_reward(
