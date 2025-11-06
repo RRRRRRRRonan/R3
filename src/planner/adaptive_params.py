@@ -160,37 +160,45 @@ class AdaptiveQLearningParamsManager:
         stagnation_ratio = base_adjusted.stagnation_ratio
         deep_stagnation_ratio = base_adjusted.deep_stagnation_ratio
 
-        # Phase awareness is critical: we encourage additional exploration when the
-        # search stagnates early, and tighten convergence when progress is strong
-        # in the later part of the run.  The thresholds stem from empirical
-        # analysis in the Phase 1.5 diagnostics.
-        if improvement_rate < 0.18:
-            # Underperforming regardless of progress – push the agent to explore.
-            exploration_boost = 1.25 if iteration_ratio < 0.5 else 1.15
-            epsilon_min = min(base_adjusted.initial_epsilon, epsilon_min * exploration_boost)
+        # Empirical observation (10-seed regression, seeds 2025-2034): even强的求解
+        # 组合整体改进幅度通常只有 3%-8%。此前以 18%/45% 为门槛的判据会把所有
+        # 运行都当成“表现不佳”，导致 epsilon 长期维持在较高水平，而 alpha 反而被
+        # 压低到 0.18，Q-learning 难以沉淀学习成果。这里把进展阈值对齐到真实数值
+        # 范围，并修正调度逻辑：
+        #   - 进展不足时提高学习率、延缓衰减并适度拉低卡滞阈值
+        #   - 有持续改进时收紧探索并适度放宽阈值
+        #   - 后期停滞时再度加大探索，同时保持学习率不要崩塌
+
+        if improvement_rate < 0.03:
+            # 明显欠收敛：提高探索和学习步长，提前触发LP修复。
+            exploration_boost = 1.35 if iteration_ratio < 0.4 else 1.2
+            epsilon_min = min(
+                base_adjusted.initial_epsilon, epsilon_min * exploration_boost
+            )
+            epsilon_decay = min(0.999, epsilon_decay + 0.003)
+            alpha = min(0.55, alpha * 1.12)
+            stagnation_ratio = max(0.06, stagnation_ratio * 0.85)
+            deep_stagnation_ratio = max(
+                stagnation_ratio + 0.08, deep_stagnation_ratio * 0.88
+            )
+        elif improvement_rate > 0.12 and iteration_ratio > 0.35:
+            # 稳定改善：降低随机性并逐步延长停滞阈值，保护已学偏好。
+            epsilon_min = max(0.015, epsilon_min * 0.65)
+            epsilon_decay = max(0.984, epsilon_decay - 0.0045)
+            alpha = min(0.48, alpha * 1.05)
+            stagnation_ratio = min(0.55, stagnation_ratio * 1.12)
+            deep_stagnation_ratio = min(
+                0.82,
+                max(deep_stagnation_ratio * 1.08, stagnation_ratio + 0.14),
+            )
+        elif iteration_ratio > 0.65 and improvement_rate < 0.06:
+            # 后期停滞：温和增加探索、维持足够学习率，防止陷入局部最优。
+            epsilon_min = min(base_adjusted.initial_epsilon, epsilon_min * 1.15)
             epsilon_decay = min(0.999, epsilon_decay + 0.002)
-            alpha = max(0.18, alpha * 0.9)
+            alpha = max(0.22, alpha * 0.97)
             stagnation_ratio = max(0.08, stagnation_ratio * 0.9)
             deep_stagnation_ratio = max(
-                stagnation_ratio + 0.08, deep_stagnation_ratio * 0.92
-            )
-        elif improvement_rate > 0.45 and iteration_ratio > 0.5:
-            # Strong performance: reduce random exploration and consolidate gains.
-            epsilon_min = max(0.02, epsilon_min * 0.7)
-            epsilon_decay = max(0.985, epsilon_decay - 0.004)
-            alpha = min(0.5, alpha * 1.12)
-            stagnation_ratio = min(0.6, stagnation_ratio * 1.08)
-            deep_stagnation_ratio = min(
-                0.85, max(deep_stagnation_ratio, stagnation_ratio + 0.12) * 1.05
-            )
-        elif iteration_ratio > 0.7 and improvement_rate < 0.3:
-            # Late-stage stagnation: gently diversify and tighten stuck handling.
-            epsilon_min = min(base_adjusted.initial_epsilon, epsilon_min * 1.1)
-            epsilon_decay = min(0.999, epsilon_decay + 0.0015)
-            alpha = max(0.2, alpha * 0.95)
-            stagnation_ratio = max(0.1, stagnation_ratio * 0.95)
-            deep_stagnation_ratio = max(
-                stagnation_ratio + 0.1, deep_stagnation_ratio * 0.96
+                stagnation_ratio + 0.1, deep_stagnation_ratio * 0.93
             )
 
         return replace(
