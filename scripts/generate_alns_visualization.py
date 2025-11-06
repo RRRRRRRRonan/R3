@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import sys
 from dataclasses import dataclass
@@ -335,6 +336,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    # Configure logging to see LP repair diagnostics
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
     args = parse_args()
 
     print("Collecting ALNS regression metrics...")

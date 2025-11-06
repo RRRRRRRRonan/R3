@@ -15,12 +15,15 @@ and can be solved quickly without relying on external optimisation libraries.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence
 
 from config import LPRepairParams
 from core.route import Route
 from core.task import Task
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -232,6 +235,8 @@ class LPBasedRepair:
         self.params = params
 
     def rebuild(self, partial_route: Route, removed_task_ids: Sequence[int]) -> Route:
+        logger.info(f"[LP REPAIR] rebuild() called with {len(removed_task_ids)} removed tasks: {removed_task_ids}")
+
         if not removed_task_ids:
             return partial_route.copy()
 
@@ -246,10 +251,13 @@ class LPBasedRepair:
         plans: List[_Plan] = []
         plan_by_task: Dict[int, List[_Plan]] = {}
         column_costs: List[float] = []
+        tasks_with_zero_plans = 0
 
         for task in tasks:
             task_plans = self._enumerate_plans(base_route, base_cost, task)
             if not task_plans:
+                tasks_with_zero_plans += 1
+                logger.warning(f"[LP REPAIR] Task {task.task_id} has ZERO feasible plans - adding skip penalty")
                 # Allow the LP to mark the task as skipped with a high penalty.
                 skip_index = len(column_costs)
                 column_costs.append(self.params.skip_penalty)
@@ -273,34 +281,57 @@ class LPBasedRepair:
                 plans.append(plan)
                 plan_by_task.setdefault(task.task_id, []).append(plan)
 
+        logger.info(f"[LP REPAIR] Generated {len(plans)} total plans for {len(tasks)} tasks "
+                   f"(tasks_with_zero_plans={tasks_with_zero_plans})")
+
         if not plans:
+            logger.warning(f"[LP REPAIR] NO PLANS generated - falling back to regret2")
             return self.planner.regret2_insertion(partial_route.copy(), [task.task_id for task in tasks])
 
         A, b = self._build_constraints(plan_by_task, plans)
         solver = SimplexSolver(A, b, column_costs)
         solution = solver.solve()
         if solution is None:
+            logger.warning(f"[LP REPAIR] Simplex solver FAILED - falling back to regret2")
             return self.planner.regret2_insertion(partial_route.copy(), [task.task_id for task in tasks])
 
+        logger.info(f"[LP REPAIR] Simplex solver SUCCESS - analyzing solution")
+
         assignment: Dict[int, _Plan] = {}
+        skipped_tasks = 0
         for task_id, candidate_plans in plan_by_task.items():
             best_plan = max(candidate_plans, key=lambda plan: solution[plan.variable_index])
             if solution[best_plan.variable_index] < self.params.fractional_threshold:
+                skipped_tasks += 1
                 continue
             assignment[task_id] = best_plan
+            logger.info(f"[LP REPAIR] Task {task_id} assigned: pickup_pos={best_plan.pickup_pos}, "
+                       f"delivery_pos={best_plan.delivery_pos}, cost={best_plan.incremental_cost:.2f}")
+
+        logger.info(f"[LP REPAIR] LP assigned {len(assignment)}/{len(tasks)} tasks (skipped={skipped_tasks})")
 
         rebuilt = base_route.copy()
+        regret_fallback_count = 0
         for task in tasks:
             selected = assignment.get(task.task_id)
             if selected is None or selected.pickup_pos < 0:
                 # Fallback to regret insertion for unassigned tasks.
+                regret_fallback_count += 1
                 rebuilt = self.planner.regret2_insertion(rebuilt, [task.task_id])
                 continue
             self._apply_plan(rebuilt, task, selected)
 
         rebuilt_cost = self.planner.evaluate_cost(rebuilt)
+        cost_improvement = base_cost - rebuilt_cost
+        logger.info(f"[LP REPAIR] Rebuilt route: base_cost={base_cost:.2f}, "
+                   f"rebuilt_cost={rebuilt_cost:.2f}, improvement={cost_improvement:.2f}, "
+                   f"regret_fallbacks={regret_fallback_count}")
+
         if rebuilt_cost + self.params.improvement_tolerance >= base_cost:
+            logger.warning(f"[LP REPAIR] NO IMPROVEMENT - falling back to full regret2 rebuild")
             return self.planner.regret2_insertion(partial_route.copy(), [task.task_id for task in tasks])
+
+        logger.info(f"[LP REPAIR] SUCCESS - returning improved route")
         return rebuilt
 
     # ------------------------------------------------------------------
@@ -316,22 +347,41 @@ class LPBasedRepair:
         """
         plans: List[_Plan] = []
         max_pickup = len(base_route.nodes)
+
+        # Diagnostic counters
+        total_positions_tried = 0
+        battery_infeasible_count = 0
+        charging_insertion_attempts = 0
+        charging_insertion_successes = 0
+        insertion_errors = 0
+
         for pickup_pos in range(1, max_pickup):
             for delivery_pos in range(pickup_pos + 1, max_pickup + 1):
+                total_positions_tried += 1
                 candidate = base_route.copy()
                 try:
                     candidate.insert_task(task, (pickup_pos, delivery_pos))
                 except ValueError:
+                    insertion_errors += 1
                     continue
 
                 # PHASE 0 FIX: Try to make infeasible routes feasible by adding charging
                 if not self.planner.ensure_route_schedule(candidate):
+                    battery_infeasible_count += 1
                     # Battery infeasible - try inserting charging stations
                     if hasattr(self.planner, '_insert_necessary_charging_stations'):
+                        charging_insertion_attempts += 1
+                        original_node_count = len(candidate.nodes)
                         candidate = self.planner._insert_necessary_charging_stations(candidate)
+                        nodes_added = len(candidate.nodes) - original_node_count
+
                         # Re-check feasibility after charging station insertion
                         if not self.planner.ensure_route_schedule(candidate):
                             continue  # Still infeasible, discard this plan
+                        else:
+                            charging_insertion_successes += 1
+                            logger.info(f"[LP REPAIR] Task {task.task_id}: Charging insertion SUCCESS - "
+                                      f"added {nodes_added} nodes, plan now feasible")
                     else:
                         continue  # No charging insertion available, discard
 
@@ -349,6 +399,16 @@ class LPBasedRepair:
                     variable_index=-1,
                 )
                 plans.append(plan)
+
+        # Log diagnostic summary
+        logger.info(f"[LP REPAIR] Task {task.task_id} plan enumeration: "
+                   f"positions_tried={total_positions_tried}, "
+                   f"battery_infeasible={battery_infeasible_count}, "
+                   f"charging_attempts={charging_insertion_attempts}, "
+                   f"charging_successes={charging_insertion_successes}, "
+                   f"insertion_errors={insertion_errors}, "
+                   f"feasible_plans={len(plans)}")
+
         plans.sort(key=lambda plan: plan.incremental_cost)
         return plans
 
