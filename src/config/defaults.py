@@ -15,11 +15,15 @@ from typing import Dict, Tuple
 
 @dataclass(frozen=True)
 class LPRepairParams:
-    """Parameters steering the LP-based repair operator inspired by Singh et al."""
+    """Parameters steering the LP-based repair operator inspired by Singh et al.
+
+    Phase 0 Fix: Increased max_plans_per_task to give LP solver more flexibility
+    and avoid infeasibility due to insufficient plan diversity.
+    """
 
     time_limit_s: float = 0.5
-    max_plans_per_task: int = 6
-    improvement_tolerance: float = 1e-4
+    max_plans_per_task: int = 20  # Increased from 6 to 20 for more LP flexibility
+    improvement_tolerance: float = 0.01  # Relaxed from 1e-4 to accept small improvements
     skip_penalty: float = 5_000.0
     fractional_threshold: float = 1e-3
 

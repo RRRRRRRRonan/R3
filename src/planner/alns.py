@@ -1875,16 +1875,19 @@ class MinimalALNS:
 
         # DIAGNOSTIC: Check both feasibility methods at start
         check_battery = self._check_battery_feasibility(route)
-        ensure_schedule = self.ensure_route_schedule(route.copy())
+        test_route = route.copy()
+        ensure_schedule = self.ensure_route_schedule(test_route)
 
         if check_battery != ensure_schedule:
             logger.warning(f"[CHARGING INSERTION] INCONSISTENCY: _check_battery_feasibility={check_battery}, "
                           f"ensure_route_schedule={ensure_schedule}, nodes={len(route.nodes)}")
 
         while attempts < max_attempts:
-            if self._check_battery_feasibility(route):
+            # CRITICAL FIX: Use ensure_route_schedule instead of _check_battery_feasibility
+            # This ensures consistency with the caller (repair_lp.py) which uses ensure_route_schedule
+            if self.ensure_route_schedule(route):
                 final_node_count = len(route.nodes)
-                logger.info(f"[CHARGING INSERTION] Exiting: battery feasible after {attempts} attempts, "
+                logger.info(f"[CHARGING INSERTION] Exiting: route is feasible after {attempts} attempts, "
                            f"added {final_node_count - initial_node_count} nodes")
                 return route  # 已经可行
 
