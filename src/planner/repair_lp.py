@@ -71,6 +71,12 @@ class SimplexSolver:
 
         self._normalise_rhs()
         tableau, basis = self._build_phase_one_tableau()
+
+        # CRITICAL DIAGNOSTIC: Print initial Phase 1 tableau
+        logger.debug(f"[SIMPLEX] Initial Phase 1 objective row (last 10 entries): {tableau[-1][-10:]}")
+        logger.debug(f"[SIMPLEX] Initial Phase 1 objective value: {tableau[-1][-1]}")
+        logger.debug(f"[SIMPLEX] Initial basis: {basis}")
+
         if not self._run_simplex(tableau, basis):
             logger.warning(f"[SIMPLEX] Phase 1 simplex FAILED (unbounded or cycling)")
             return None
@@ -177,17 +183,27 @@ class SimplexSolver:
     def _run_simplex(self, tableau: List[List[float]], basis: List[int]) -> bool:
         num_rows = len(tableau) - 1
         num_cols = len(tableau[0]) - 1
+        iteration = 0
 
         while True:
             entering_col = self._choose_entering_variable(tableau[-1][:-1])
             if entering_col is None:
+                logger.debug(f"[SIMPLEX] Optimal reached after {iteration} iterations")
                 break
 
             pivot_row = self._choose_pivot_row(tableau, entering_col)
             if pivot_row is None:
+                logger.warning(f"[SIMPLEX] Unbounded at iteration {iteration}")
                 return False
 
+            logger.debug(f"[SIMPLEX] Iteration {iteration}: pivot row={pivot_row}, col={entering_col}, "
+                        f"leaving={basis[pivot_row] if pivot_row < len(basis) else 'N/A'}, entering={entering_col}")
             self._pivot(tableau, basis, pivot_row, entering_col)
+            iteration += 1
+
+            if iteration > 1000:
+                logger.error(f"[SIMPLEX] Max iterations exceeded (cycling suspected)")
+                return False
 
         return True
 
@@ -198,6 +214,11 @@ class SimplexSolver:
             if value > best_value:
                 best_value = value
                 entering_col = idx
+
+        if entering_col is None:
+            # Log why no entering variable found
+            max_rc = max(objective_row) if objective_row else -999
+            logger.debug(f"[SIMPLEX] No entering variable (max reduced cost = {max_rc:.6f}, threshold = {self.epsilon})")
         return entering_col
 
     def _choose_pivot_row(self, tableau: List[List[float]], entering_col: int) -> Optional[int]:
