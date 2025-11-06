@@ -22,7 +22,8 @@ from physics.energy import EnergyConfig
 from physics.time import TimeConfig
 from planner.operators import AdaptiveOperatorSelector
 from planner.q_learning import Action, QLearningOperatorAgent
-from planner.adaptive_params import get_adaptive_params
+# PHASE 1: Removed adaptive_params to use baseline Q-learning parameters
+# from planner.adaptive_params import get_adaptive_params
 from config import (
     ALNSHyperParameters,
     CostParameters,
@@ -80,15 +81,11 @@ class MinimalALNS:
         self._scenario_scale = self._infer_scenario_scale(self._scenario_task_count)
         self._q_state_labels = self._build_state_labels()
 
-        # Use scale-adaptive parameters if Q-learning is enabled
-        # This addresses the "No Free Lunch" problem where unified parameters
-        # cannot optimize all problem instances effectively
-        if self._use_q_learning or adaptation_mode == 'q_learning':
-            self._q_params: QLearningParams = get_adaptive_params(self._scenario_scale)
-        else:
-            self._q_params: QLearningParams = getattr(
-                self.hyper, 'q_learning', DEFAULT_Q_LEARNING_PARAMS
-            )
+        # PHASE 1: Use baseline Q-learning parameters (no scale adaptation)
+        # Original parameters: alpha=0.35, epsilon_min=0.01, stagnation_ratio=0.16
+        self._q_params: QLearningParams = getattr(
+            self.hyper, 'q_learning', DEFAULT_Q_LEARNING_PARAMS
+        )
 
         self._matheuristic_repairs = {
             operator
@@ -222,9 +219,8 @@ class MinimalALNS:
             return
 
         self._scenario_scale = new_scale
-        # Update Q-learning parameters for new scale
-        if self._use_q_learning:
-            self._q_params = get_adaptive_params(new_scale)
+        # PHASE 1: Keep using baseline Q-learning parameters (no scale adaptation)
+        # self._q_params remains unchanged
         self._q_state_labels = self._build_state_labels()
         initial_q_values = (
             self._user_provided_initial_q or self._default_q_learning_initial_q()
