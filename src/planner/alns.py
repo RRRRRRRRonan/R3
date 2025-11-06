@@ -8,7 +8,7 @@ windows, and the three-tier battery threshold model so that candidate solutions
 stay compatible with the vehicle energy configuration and charging strategy.
 """
 
-from collections import Counter
+from collections import Counter, deque
 import math
 import random
 import time
@@ -80,6 +80,11 @@ class MinimalALNS:
         self._scenario_task_count = self._estimate_task_count(task_pool)
         self._scenario_scale = self._infer_scenario_scale(self._scenario_task_count)
         self._q_state_labels = self._build_state_labels()
+
+        # Track improvement history so the stagnation controller and reward
+        # normalisation can reason about the recent optimisation landscape.
+        self._recent_improvements = deque(maxlen=12)
+        self._initial_cost_reference: Optional[float] = None
 
         self._adaptive_params_manager: Optional[AdaptiveQLearningParamsManager] = None
 
@@ -556,6 +561,101 @@ class MinimalALNS:
         if self._iteration_budget:
             self._prepare_stagnation_thresholds(self._iteration_budget)
 
+    # ------------------------------------------------------------------
+    # Learning progress tracking helpers
+    # ------------------------------------------------------------------
+    def _expected_improvement_ratio(self) -> float:
+        """Return the reference improvement ratio for the current scale."""
+
+        # Phase 2 regression analysis showed that typical sustainable
+        # improvements sit in different bands per scale.  We use those
+        # observations to normalise reward shaping and stagnation relief so the
+        # controller understands what "good" progress looks like.
+        scale = self._scenario_scale
+        if scale == "small":
+            return 0.028
+        if scale == "medium":
+            return 0.045
+        return 0.065
+
+    def _normalised_improvement_ratio(self, improvement: float, previous_cost: float) -> float:
+        """Normalise absolute cost gains against the expected improvement band."""
+
+        baseline = max(1.0, previous_cost)
+        if self._initial_cost_reference:
+            baseline = max(baseline, self._initial_cost_reference)
+
+        raw_ratio = improvement / baseline
+        reference = self._expected_improvement_ratio()
+        if reference <= 0:
+            return raw_ratio
+        return raw_ratio / reference
+
+    def _record_improvement_history(self, *, improvement: float, previous_cost: float) -> None:
+        if self._recent_improvements is None:
+            return
+        self._recent_improvements.append(
+            self._normalised_improvement_ratio(improvement, previous_cost)
+        )
+
+    def _rolling_improvement_score(self) -> float:
+        """Return a clipped rolling improvement score for adaptive policies."""
+
+        if not self._recent_improvements:
+            return 0.0
+
+        positive_samples = [max(0.0, value) for value in self._recent_improvements]
+        if not positive_samples:
+            return 0.0
+
+        average = sum(positive_samples) / len(self._recent_improvements)
+        return max(0.0, min(1.0, average))
+
+    def _stagnation_relief_steps(self, improvement: float, previous_cost: float) -> int:
+        """Convert a positive improvement into stagnation relief steps."""
+
+        if improvement <= 0:
+            return 0
+
+        norm_ratio = self._normalised_improvement_ratio(improvement, previous_cost)
+        stuck = self._stagnation_threshold or 4
+
+        if norm_ratio >= 1.6:
+            return max(stuck, 4)
+        if norm_ratio >= 1.0:
+            return max(3, int(math.ceil(stuck * 0.6)))
+        if norm_ratio >= 0.6:
+            return 2
+        return 1
+
+    def _update_stagnation_counter(
+        self,
+        current: int,
+        *,
+        improvement: float,
+        is_new_best: bool,
+        is_accepted: bool,
+        previous_cost: float,
+    ) -> int:
+        """Update the stagnation score with recovery on moderate improvements."""
+
+        if is_new_best:
+            return 0
+
+        if improvement > 0:
+            relief = self._stagnation_relief_steps(improvement, previous_cost)
+            return max(0, current - relief)
+
+        if is_accepted:
+            # Accepted but non-improving solutions still teach the agent about
+            # feasibility; treat them as a soft reset instead of heavy penalty.
+            return max(0, current - 1)
+
+        # Explicit regression: escalate stagnation quicker so the controller can
+        # pivot to diversification or LP-heavy recovery sooner.
+        penalty = 2 if improvement < 0 else 1
+        return current + penalty
+
     def _determine_state(self, consecutive_no_improve: int) -> str:
         stuck_threshold = self._stagnation_threshold
         deep_threshold = self._deep_stagnation_threshold
@@ -649,17 +749,20 @@ class MinimalALNS:
         else:
             quality = params.reward_rejected
 
-        # Step 2: Incorporate relative quality change (ROI boost)
-        baseline_cost = max(previous_cost, 1.0)
-        relative_gain = improvement / baseline_cost
+        # Step 2: Incorporate relative quality change (ROI boost) using
+        # scale-normalised improvement so that small cases are rewarded
+        # proportionally to their achievable gains.
+        normalised_gain = self._normalised_improvement_ratio(
+            improvement, previous_cost
+        )
         if improvement > 0:
             quality += (
-                relative_gain
+                normalised_gain
                 * params.roi_positive_scale
                 * self._scenario_roi_multiplier(improvement)
             )
         elif improvement < 0:
-            quality += relative_gain * params.roi_negative_scale
+            quality += normalised_gain * params.roi_negative_scale
 
         # Step 3: Apply ROI-aware time penalty
         penalty = 0.0
@@ -680,6 +783,9 @@ class MinimalALNS:
                 else:
                     # No improvement: heavy penalty, expensive operator wasted
                     scale = params.time_penalty_negative_scale
+                if improvement > 0 and normalised_gain < 0.85:
+                    shortfall = max(0.0, 0.85 - normalised_gain)
+                    scale *= 1.0 + shortfall * 0.9
             else:
                 # Standard (cheap) operators: lenient penalty
                 scale = params.standard_time_penalty_scale
@@ -876,6 +982,8 @@ class MinimalALNS:
         best_route = initial_route.copy()
         best_cost = self.evaluate_cost(best_route)
         initial_route_cost = best_cost
+        self._initial_cost_reference = best_cost
+        self._recent_improvements.clear()
 
         temperature = self.initial_temp
 
@@ -971,10 +1079,18 @@ class MinimalALNS:
                     is_accepted=is_accepted,
                 )
 
-            if is_new_best:
-                consecutive_no_improve = 0
-            else:
-                consecutive_no_improve += 1
+            self._record_improvement_history(
+                improvement=improvement,
+                previous_cost=previous_cost,
+            )
+
+            consecutive_no_improve = self._update_stagnation_counter(
+                consecutive_no_improve,
+                improvement=improvement,
+                is_new_best=is_new_best,
+                is_accepted=is_accepted,
+                previous_cost=previous_cost,
+            )
 
             if (
                 self._use_q_learning
@@ -1005,6 +1121,9 @@ class MinimalALNS:
                             (initial_route_cost - best_cost) / initial_route_cost,
                         ),
                     )
+                improvement_ratio = max(
+                    improvement_ratio, self._rolling_improvement_score()
+                )
                 iteration_ratio = (
                     (iteration + 1) / max_iterations if max_iterations > 0 else 1.0
                 )
