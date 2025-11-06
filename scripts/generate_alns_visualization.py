@@ -118,11 +118,34 @@ def run_matheuristic(scale: str, seed: int, iteration_scale: float) -> SolverRes
 def run_q_learning(scale: str, seed: int, iteration_scale: float) -> SolverResult:
     config = _build_config(scale)
     iterations = _scaled_iterations(scale, "q_learning", iteration_scale)
-    _, baseline, optimised = run_q_learning_trial(
+    planner, baseline, optimised = run_q_learning_trial(
         config,
         iterations=iterations,
         seed=seed,
     )
+
+    # Print operator statistics for large scale
+    if scale == "large" and hasattr(planner, '_q_agent') and planner._q_agent is not None:
+        print("\n" + "="*70)
+        print(f"Q-LEARNING OPERATOR STATISTICS (Large Scale, seed={seed})")
+        print("="*70)
+        print(planner._q_agent.format_statistics())
+
+        stats = planner._q_agent.statistics()
+        repair_totals = {}
+        for state, state_stats in stats.items():
+            for stat in state_stats:
+                _, repair = stat.action
+                repair_totals[repair] = repair_totals.get(repair, 0) + stat.total_usage
+
+        total_actions = sum(repair_totals.values())
+        print("\nREPAIR OPERATOR USAGE SUMMARY:")
+        print(f"Total selections: {total_actions}")
+        for repair, count in sorted(repair_totals.items(), key=lambda x: x[1], reverse=True):
+            pct = 100 * count / total_actions if total_actions > 0 else 0
+            print(f"  {repair:12s}: {count:5d} times ({pct:5.1f}%)")
+        print("="*70 + "\n")
+
     return SolverResult(
         solver="q_learning",
         scale=scale,
