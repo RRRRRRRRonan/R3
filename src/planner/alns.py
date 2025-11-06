@@ -87,6 +87,9 @@ class MinimalALNS:
         self._initial_cost_reference: Optional[float] = None
 
         self._adaptive_params_manager: Optional[AdaptiveQLearningParamsManager] = None
+        self._q_guard_failures: int = 0
+        self._q_guard_suspended: bool = False
+        self._q_guard_resume_after: Optional[int] = None
 
         # Use scale-adaptive parameters if Q-learning is enabled
         # This addresses the "No Free Lunch" problem where unified parameters
@@ -454,7 +457,7 @@ class MinimalALNS:
     ]:
         destroy_params = self._select_destroy_parameters(current_route, state)
 
-        if self._use_q_learning:
+        if self._use_q_learning and not self._q_guard_suspended:
             if state is None:
                 raise ValueError("state must be provided when using Q-learning adaptation")
             mask = self._build_action_mask(state)
@@ -1004,6 +1007,9 @@ class MinimalALNS:
 
         for iteration in range(max_iterations):
             q_state = self._determine_state(consecutive_no_improve)
+            iteration_ratio = (
+                (iteration + 1) / max_iterations if max_iterations > 0 else 1.0
+            )
             (
                 destroy_operator,
                 repair_operator,
@@ -1092,6 +1098,34 @@ class MinimalALNS:
                 previous_cost=previous_cost,
             )
 
+            improvement_ratio = 0.0
+            if initial_route_cost > 0.0:
+                improvement_ratio = max(
+                    0.0,
+                    min(
+                        1.0,
+                        (initial_route_cost - best_cost) / initial_route_cost,
+                    ),
+                )
+            improvement_ratio = max(
+                improvement_ratio, self._rolling_improvement_score()
+            )
+
+            if self._use_q_learning:
+                self._update_q_guard(
+                    iteration=iteration,
+                    iteration_ratio=iteration_ratio,
+                    improvement=improvement,
+                    improvement_ratio=improvement_ratio,
+                    fallback_used=fallback_used,
+                    q_action=q_action,
+                    is_new_best=is_new_best,
+                )
+                self._maybe_resume_q_learning(
+                    iteration=iteration,
+                    improvement_ratio=improvement_ratio,
+                )
+
             if (
                 self._use_q_learning
                 and q_state is not None
@@ -1112,21 +1146,6 @@ class MinimalALNS:
                 self._q_agent.decay_epsilon()
 
             if self._use_q_learning and self._adaptive_params_manager is not None:
-                improvement_ratio = 0.0
-                if initial_route_cost > 0.0:
-                    improvement_ratio = max(
-                        0.0,
-                        min(
-                            1.0,
-                            (initial_route_cost - best_cost) / initial_route_cost,
-                        ),
-                    )
-                improvement_ratio = max(
-                    improvement_ratio, self._rolling_improvement_score()
-                )
-                iteration_ratio = (
-                    (iteration + 1) / max_iterations if max_iterations > 0 else 1.0
-                )
                 adaptive_params = (
                     self._adaptive_params_manager.get_performance_adjusted_params(
                         self._scenario_scale,
@@ -1174,7 +1193,88 @@ class MinimalALNS:
             self._log_q_learning_statistics()
 
         return best_route
-    
+
+    def _update_q_guard(
+        self,
+        *,
+        iteration: int,
+        iteration_ratio: float,
+        improvement: float,
+        improvement_ratio: float,
+        fallback_used: bool,
+        q_action: Optional[Tuple[str, str]],
+        is_new_best: bool,
+    ) -> None:
+        """Monitor Q-learning productivity and suspend it when harmful."""
+
+        if not self._use_q_learning or q_action is None or self._q_guard_suspended:
+            return
+
+        if is_new_best:
+            # Strong evidence that the policy is useful – rapidly forgive debt.
+            self._q_guard_failures = max(0, self._q_guard_failures - 2)
+            return
+
+        harmful = fallback_used or improvement <= 0.0
+
+        # Persistent low global progress counts as a soft failure when the run is
+        # already well underway.  This captures seeds where Q-learning keeps
+        # oscillating without meaningful gains, e.g. seed 2034 large scale.
+        if not harmful and iteration_ratio >= 0.35 and improvement_ratio < 0.14:
+            harmful = True
+
+        if harmful:
+            self._q_guard_failures += 1
+        else:
+            self._q_guard_failures = max(0, self._q_guard_failures - 1)
+
+        if self._should_suspend_q_learning(iteration_ratio, improvement_ratio):
+            self._suspend_q_learning(iteration)
+
+    def _should_suspend_q_learning(
+        self, iteration_ratio: float, improvement_ratio: float
+    ) -> bool:
+        if self._q_guard_suspended:
+            return False
+        if self._q_guard_failures < 6:
+            return False
+        if iteration_ratio < 0.25:
+            return False
+
+        # Early-mid run: expect at least matheuristic-level gains (~0.18).
+        threshold = 0.18 if iteration_ratio < 0.6 else 0.24
+        return improvement_ratio < threshold
+
+    def _suspend_q_learning(self, iteration: int) -> None:
+        self._q_guard_suspended = True
+        if self._iteration_budget:
+            cooldown = max(18, int(self._iteration_budget * 0.2))
+        else:
+            cooldown = 20
+        self._q_guard_resume_after = iteration + cooldown
+        if self.verbose:
+            self._log(
+                "  [Q-Guard] Q-learning因持续欠收敛被暂停，转入保守算子组合。"
+            )
+
+    def _maybe_resume_q_learning(
+        self, *, iteration: int, improvement_ratio: float
+    ) -> None:
+        if not self._q_guard_suspended:
+            return
+        if self._q_guard_resume_after is None:
+            return
+        if iteration + 1 < self._q_guard_resume_after:
+            return
+
+        # 只有在全局改进达到合理水平时才恢复，让Q-learning在更好基线下继续学习。
+        if improvement_ratio >= 0.26:
+            self._q_guard_suspended = False
+            self._q_guard_failures = 0
+            self._q_guard_resume_after = None
+            if self.verbose:
+                self._log("  [Q-Guard] 全局改进已恢复，Q-learning重新启用。")
+
     def random_removal(
         self,
         route: Route,
