@@ -1780,18 +1780,33 @@ class MinimalALNS:
 
         从距离矩阵中获取所有充电站节点
         排除已经在路径中的充电站
+
+        CRITICAL FIX: Charging station IDs are NOT >= 100!
+        Actual formula: base_cs_id = num_tasks * 2 + 1
+        So we need to dynamically determine the threshold based on task_pool.
         """
         # 获取路径中已有的充电站ID
         existing_cs_ids = set(n.node_id for n in route.nodes if n.is_charging_station())
 
-        # 从距离矩阵的coordinates中找出所有充电站
-        # 充电站节点ID通常 >= 100
+        # 找出所有任务节点的最大ID
+        # Tasks use IDs: 1, 2, ..., num_tasks*2 (pickup and delivery pairs)
+        # Charging stations start from num_tasks*2 + 1
+        max_task_id = 0
+        if hasattr(self.task_pool, 'tasks'):
+            for task in self.task_pool.tasks.values():
+                # Each task has pickup and delivery nodes
+                max_task_id = max(max_task_id, task.pickup_id, task.delivery_id)
+
+        # Charging stations have IDs > max_task_id (and != depot which is 0)
         available_stations = []
 
         if hasattr(self.distance, 'coordinates'):
             for node_id, coords in self.distance.coordinates.items():
-                # 假设充电站ID >= 100，任务节点ID < 100
-                if node_id >= 100 and node_id not in existing_cs_ids:
+                # Node is a charging station if:
+                # 1. ID > max_task_id (so it's not a task node)
+                # 2. ID != 0 (not the depot)
+                # 3. Not already in the route
+                if node_id > max_task_id and node_id != 0 and node_id not in existing_cs_ids:
                     # 创建充电站节点
                     from core.node import create_charging_node
                     cs_node = create_charging_node(node_id=node_id, coordinates=coords)
