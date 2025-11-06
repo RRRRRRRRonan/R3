@@ -561,20 +561,20 @@ class MinimalALNS:
         base_values = {
             'explore': {
                 'lp': 12.0,      # Conservative base (reduced from 15.0)
-                'regret2': 10.0,
-                'greedy': 9.0,
+                'regret2': 11.0, # ↑ from 10.0 - more balanced initial values
+                'greedy': 10.5,  # ↑ from 9.0 - fairer starting chance
                 'random': 5.0,
             },
             'stuck': {
                 'lp': 15.0,      # Conservative base (reduced from 30.0)
-                'regret2': 12.0,
-                'greedy': 10.0,
+                'regret2': 13.0, # ↑ from 12.0 - reduce gap to LP
+                'greedy': 11.5,  # ↑ from 10.0 - better initial position
                 'random': 5.0,
             },
             'deep_stuck': {
                 'lp': 20.0,      # Conservative base (reduced from 35.0)
-                'regret2': 12.0,
-                'greedy': 10.0,
+                'regret2': 14.0, # ↑ from 12.0 - more competitive
+                'greedy': 12.0,  # ↑ from 10.0 - reduce LP dominance
                 'random': 5.0,
             },
         }
@@ -592,9 +592,9 @@ class MinimalALNS:
                 'deep_stuck': {'lp': 5.0},
             },
             'large': {
-                'explore': {'lp': 9.0},   # Strong LP boost (12+9=21)
-                'stuck': {'lp': 12.0},     # (15+12=27)
-                'deep_stuck': {'lp': 14.0}, # (20+14=34)
+                'explore': {'lp': 4.0},    # Moderate LP boost (12+4=16) - reduced to prevent over-commitment
+                'stuck': {'lp': 6.0},      # (15+6=21) - reduced for better exploration
+                'deep_stuck': {'lp': 8.0}, # (20+8=28) - reduced to allow other operators
             },
         }
 
