@@ -586,23 +586,40 @@ class MinimalALNS:
         return initial_values
 
     def _default_q_learning_initial_q(self) -> Dict[str, Dict[Action, float]]:
-        """Return expert-informed initial Q-values for destroy/repair pairs."""
+        """Return conservative initial Q-values for destroy/repair pairs.
+
+        Phase 1 Stability Fix: Conservative initialization to reduce LP bias.
+
+        Original values (caused seed sensitivity):
+        - explore: LP=15, greedy=10 (1.5x gap)
+        - stuck: LP=30, greedy=10 (3.0x gap)
+        - deep_stuck: LP=35, greedy=10 (3.5x gap)
+
+        Conservative values (improved generalization):
+        - explore: LP=12, greedy=9 (1.3x gap)
+        - stuck: LP=15, greedy=10 (1.5x gap)
+        - deep_stuck: LP=20, greedy=10 (2.0x gap)
+
+        This allows Q-learning to discover optimal strategies through experience
+        rather than relying on strong prior assumptions that may not generalize
+        across different seeds and problem instances.
+        """
 
         base_values = {
             'explore': {
-                'lp': 15.0,
-                'regret2': 12.0,
-                'greedy': 10.0,
+                'lp': 12.0,      # ↓ from 15.0 (reduced LP bias)
+                'regret2': 10.0,
+                'greedy': 9.0,
                 'random': 5.0,
             },
             'stuck': {
-                'lp': 30.0,
+                'lp': 15.0,      # ↓ from 30.0 (reduced LP bias)
                 'regret2': 12.0,
                 'greedy': 10.0,
                 'random': 5.0,
             },
             'deep_stuck': {
-                'lp': 35.0,
+                'lp': 20.0,      # ↓ from 35.0 (reduced LP bias)
                 'regret2': 12.0,
                 'greedy': 10.0,
                 'random': 5.0,
@@ -630,68 +647,53 @@ class MinimalALNS:
         repair_operator: str,
         previous_cost: float,
     ) -> float:
-        """Compute Q-learning reward with ROI-aware time penalty.
+        """Compute Q-learning reward with simplified penalty structure.
 
-        The reward function now implements a "Return on Investment" concept:
-        - Expensive operators (matheuristic) MUST deliver high quality to justify cost
-        - Cheap operators can be used more liberally even with modest returns
-        - Time penalty scales based on both action cost AND quality outcome
+        Phase 1 Stability Fix: Simplified reward function to improve generalization.
 
-        This addresses the core issue where Q-learning couldn't learn the value
-        of expensive operators because they were penalized equally regardless of
-        their contribution.
+        Changes from original:
+        1. Removed ROI hyperparameters (roi_positive_scale=220, roi_negative_scale=260)
+        2. Natural scaling using relative improvement (no manual tuning needed)
+        3. Simplified time penalty: only for matheuristic, gentler, no penalty for new best
+        4. Removed complex scale factors and scenario multipliers
+
+        This simplification reduces seed variance by avoiding overfitting to specific
+        parameter combinations that don't generalize across different problem instances.
+
+        Reward structure:
+        - New best: 100 points (always)
+        - Improvement: 0-50 points (scaled by relative improvement %)
+        - Accepted (no improvement): 5 points
+        - Rejected: -5 points
+        - Time penalty (matheuristic only): max 20 points
         """
         params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
 
-        # Step 1: Determine quality-based reward
+        # Step 1: Quality-based reward (3-tier system)
         if is_new_best:
             quality = params.reward_new_best
         elif improvement > 0:
-            quality = params.reward_improvement
+            # Natural scaling: relative improvement → proportional reward
+            # 1% improvement → 5 points, 10% improvement → 50 points (capped)
+            baseline_cost = max(previous_cost, 1.0)
+            relative_improvement = improvement / baseline_cost
+            quality = min(params.reward_improvement, relative_improvement * 500.0)
         elif is_accepted:
             quality = params.reward_accepted
         else:
             quality = params.reward_rejected
 
-        # Step 2: Incorporate relative quality change (ROI boost)
-        baseline_cost = max(previous_cost, 1.0)
-        relative_gain = improvement / baseline_cost
-        if improvement > 0:
-            quality += (
-                relative_gain
-                * params.roi_positive_scale
-                * self._scenario_roi_multiplier(improvement)
-            )
-        elif improvement < 0:
-            quality += relative_gain * params.roi_negative_scale
-
-        # Step 3: Apply ROI-aware time penalty
+        # Step 2: Simplified time penalty (only for matheuristic, only if slow)
         penalty = 0.0
-        threshold = self._scenario_time_penalty_threshold(
-            params.time_penalty_threshold
-        )
-        if action_cost > threshold:
-            is_matheuristic = repair_operator in self._current_matheuristic_repairs()
+        is_matheuristic = repair_operator in self._current_matheuristic_repairs()
 
-            if is_matheuristic:
-                # Matheuristic operators: Demand high returns
-                if quality >= params.reward_new_best:
-                    # Best solution found: minimal penalty, this is exactly what we want
-                    scale = 1.0
-                elif quality >= params.reward_improvement:
-                    # Improvement: moderate penalty, good but could be better
-                    scale = params.time_penalty_positive_scale
-                else:
-                    # No improvement: heavy penalty, expensive operator wasted
-                    scale = params.time_penalty_negative_scale
+        if is_matheuristic and action_cost > params.time_penalty_threshold:
+            # No penalty for finding new best (expensive ops justified)
+            if is_new_best:
+                penalty = 0.0
             else:
-                # Standard (cheap) operators: lenient penalty
-                scale = params.standard_time_penalty_scale
-
-            penalty = action_cost * scale
-            penalty *= self._scenario_penalty_factor(
-                is_matheuristic=is_matheuristic
-            )
+                # Gentle penalty: max 20 points (vs original ~100+ points)
+                penalty = min(20.0, action_cost * params.time_penalty_scale)
 
         return quality - penalty
 
