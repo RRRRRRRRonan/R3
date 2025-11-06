@@ -39,3 +39,26 @@ print("="*70)
 print(f"Baseline cost: {baseline_cost:.2f}")
 print(f"Optimized cost: {optimized_cost:.2f}")
 print(f"Improvement: {improvement_ratio*100:.2f}%")
+
+# Print Q-learning operator selection statistics
+if hasattr(planner, '_q_agent') and planner._q_agent is not None:
+    print("\n" + "="*70)
+    print("Q-LEARNING OPERATOR STATISTICS")
+    print("="*70)
+    print(planner._q_agent.format_statistics())
+
+    # Print detailed usage by repair operator
+    print("\n" + "="*70)
+    print("REPAIR OPERATOR USAGE SUMMARY")
+    print("="*70)
+    stats = planner._q_agent.statistics()
+    repair_totals = {}
+    for state, state_stats in stats.items():
+        for stat in state_stats:
+            _, repair = stat.action
+            repair_totals[repair] = repair_totals.get(repair, 0) + stat.total_usage
+
+    total_actions = sum(repair_totals.values())
+    for repair, count in sorted(repair_totals.items(), key=lambda x: x[1], reverse=True):
+        pct = 100 * count / total_actions if total_actions > 0 else 0
+        print(f"  {repair:12s}: {count:5d} times ({pct:5.1f}%)")
