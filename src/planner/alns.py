@@ -1867,32 +1867,53 @@ class MinimalALNS:
         返回:
             修复后的路径
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        initial_node_count = len(route.nodes)
         attempts = 0
+
+        # DIAGNOSTIC: Check both feasibility methods at start
+        check_battery = self._check_battery_feasibility(route)
+        ensure_schedule = self.ensure_route_schedule(route.copy())
+
+        if check_battery != ensure_schedule:
+            logger.warning(f"[CHARGING INSERTION] INCONSISTENCY: _check_battery_feasibility={check_battery}, "
+                          f"ensure_route_schedule={ensure_schedule}, nodes={len(route.nodes)}")
 
         while attempts < max_attempts:
             if self._check_battery_feasibility(route):
+                final_node_count = len(route.nodes)
+                logger.info(f"[CHARGING INSERTION] Exiting: battery feasible after {attempts} attempts, "
+                           f"added {final_node_count - initial_node_count} nodes")
                 return route  # 已经可行
 
             # 找到电量耗尽或临界位置
             depletion_pos = self._find_battery_depletion_position(route)
 
+            logger.info(f"[CHARGING INSERTION] Attempt {attempts+1}: depletion_pos={depletion_pos}")
+
             if depletion_pos == -1:
                 # 找不到耗尽位置，但可行性检查失败，可能是临界值问题
                 # 尝试在路径末尾附近插入充电站
                 depletion_pos = len(route.nodes) - 1
+                logger.info(f"[CHARGING INSERTION] No depletion found, using end position {depletion_pos}")
 
             # 找到最优充电站
             best_station, best_insert_pos = self._find_best_charging_station(route, depletion_pos)
 
             if best_station is None or best_insert_pos is None:
                 # 找不到可用的充电站，无法修复
+                logger.warning(f"[CHARGING INSERTION] No charging station found, giving up after {attempts} attempts")
                 return route
 
             # 插入充电站
+            logger.info(f"[CHARGING INSERTION] Inserting station at position {best_insert_pos}")
             route.nodes.insert(best_insert_pos, best_station)
 
             attempts += 1
 
+        logger.warning(f"[CHARGING INSERTION] Max attempts ({max_attempts}) reached, added {len(route.nodes) - initial_node_count} nodes")
         return route
 
     def _estimate_charging_and_time(self, route: Route) -> tuple[float, float]:

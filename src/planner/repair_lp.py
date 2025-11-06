@@ -67,24 +67,33 @@ class SimplexSolver:
     def solve(self) -> Optional[List[float]]:
         """Solve the LP and return the optimal variable values if feasible."""
 
+        logger.debug(f"[SIMPLEX] Starting solve: {self.m} constraints, {self.n} variables")
+
         self._normalise_rhs()
         tableau, basis = self._build_phase_one_tableau()
         if not self._run_simplex(tableau, basis):
+            logger.warning(f"[SIMPLEX] Phase 1 simplex FAILED (unbounded or cycling)")
             return None
 
         # Phase 1 optimal value should be zero; otherwise infeasible.
-        if tableau[-1][-1] < -self.epsilon:
+        phase1_value = tableau[-1][-1]
+        logger.debug(f"[SIMPLEX] Phase 1 complete: objective={phase1_value:.6f}")
+        if phase1_value < -self.epsilon:
+            logger.warning(f"[SIMPLEX] LP INFEASIBLE: phase 1 objective={phase1_value:.6f} < {-self.epsilon}")
             return None
 
         self._remove_artificial_columns(tableau, basis)
         self._initialise_phase_two_objective(tableau, basis)
         if not self._run_simplex(tableau, basis):
+            logger.warning(f"[SIMPLEX] Phase 2 simplex FAILED (unbounded or cycling)")
             return None
 
         solution = [0.0] * self.n
         for row_index, var_index in enumerate(basis):
             if var_index < self.n:
                 solution[var_index] = tableau[row_index][-1]
+
+        logger.debug(f"[SIMPLEX] SUCCESS: solution found")
         return solution
 
     # ------------------------------------------------------------------

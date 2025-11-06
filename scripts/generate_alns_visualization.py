@@ -338,7 +338,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     # Configure logging to see LP repair diagnostics
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,  # Changed to DEBUG to see simplex details
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
