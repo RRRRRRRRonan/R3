@@ -74,7 +74,7 @@ class AdaptiveQLearningParamsManager:
     def _get_scale_adjustments(self, scale: ScaleType) -> dict:
         """Get parameter adjustments for the specified scale.
 
-        Parameter rationale (Phase 1.5 - Recalibrated after initial testing):
+        Parameter rationale (Phase 1.5c - Ultra-conservative Large + Optimized Medium):
 
         Small scale (15 tasks):
         - Higher alpha (0.35): Fast learning for limited search space
@@ -82,18 +82,25 @@ class AdaptiveQLearningParamsManager:
         - Lower stagnation_ratio (0.12): Enter stuck earlier to leverage LP repair
 
         Medium scale (24 tasks):
-        - Higher alpha (0.30): INCREASED from 0.2 - faster learning is critical
+        - Higher alpha (0.35): INCREASED from 0.30 - maximize learning speed
         - Moderate epsilon_min (0.12): Adequate exploration
-        - Lower stagnation_ratio (0.18): DECREASED from 0.25 - earlier LP repair
+        - Lower stagnation_ratio (0.15): DECREASED from 0.18 - even earlier LP repair
 
-        Large scale (30+ tasks):
-        - Moderate alpha (0.25): INCREASED from 0.15 - balance learning speed
-        - Higher epsilon_min (0.15): Maintain exploration in complex landscape
-        - Lower stagnation_ratio (0.22): DECREASED from 0.35 - earlier LP repair
+        Large scale (30+ tasks) - ULTRA-CONSERVATIVE to prevent collapse:
+        - Lower alpha (0.12): DECREASED from 0.25 - prevent Q-value oscillation
+        - Higher epsilon_min (0.15): Maintain exploration
+        - Higher stagnation_ratio (0.40): INCREASED from 0.22 - much more exploration time
 
-        Key changes from Phase 1:
-        - All scales: DECREASED stagnation_ratio to trigger LP repair earlier
-        - Medium/Large: INCREASED alpha for faster learning (critical fix)
+        Key insights from Phase 1.5 failures:
+        - Seed 2034 Large collapsed (4.45%) with aggressive params (α=0.25, stag=0.22)
+        - 2/3 Large seeds performed better with conservative params
+        - Medium scale improvements need even more aggressive optimization
+        - Large scale requires ULTRA-conservative approach (even more than Phase 1)
+
+        Phase 1.5c changes:
+        - Small: Keep stable (no change)
+        - Medium: More aggressive (α 0.30→0.35, stag 0.18→0.15)
+        - Large: ULTRA-conservative (α 0.25→0.12, stag 0.22→0.40)
 
         Args:
             scale: Problem scale
@@ -110,17 +117,17 @@ class AdaptiveQLearningParamsManager:
             }
         elif scale == "medium":
             return {
-                "alpha": 0.30,
+                "alpha": 0.35,              # INCREASED from 0.30
                 "epsilon_min": 0.12,
-                "stagnation_ratio": 0.18,
-                "deep_stagnation_ratio": 0.40,
+                "stagnation_ratio": 0.15,   # DECREASED from 0.18
+                "deep_stagnation_ratio": 0.35,
             }
-        else:  # large
+        else:  # large - ULTRA-CONSERVATIVE
             return {
-                "alpha": 0.25,
+                "alpha": 0.12,              # DECREASED from 0.25 (prevent collapse)
                 "epsilon_min": 0.15,
-                "stagnation_ratio": 0.22,
-                "deep_stagnation_ratio": 0.48,
+                "stagnation_ratio": 0.40,   # INCREASED from 0.22 (more exploration)
+                "deep_stagnation_ratio": 0.60,
             }
 
     def get_performance_adjusted_params(
