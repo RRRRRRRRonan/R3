@@ -616,41 +616,6 @@ class MinimalALNS:
             initial_values[label] = state_values
         return initial_values
 
-    def _default_q_learning_initial_q(self) -> Dict[str, Dict[Action, float]]:
-        """Return expert-informed initial Q-values for destroy/repair pairs."""
-
-        base_values = {
-            'explore': {
-                'lp': 15.0,
-                'regret2': 12.0,
-                'greedy': 10.0,
-                'random': 5.0,
-            },
-            'stuck': {
-                'lp': 30.0,
-                'regret2': 12.0,
-                'greedy': 10.0,
-                'random': 5.0,
-            },
-            'deep_stuck': {
-                'lp': 35.0,
-                'regret2': 12.0,
-                'greedy': 10.0,
-                'random': 5.0,
-            },
-        }
-        default_value = 8.0
-
-        initial_values: Dict[str, Dict[Action, float]] = {}
-        for state, repair_map in base_values.items():
-            state_values: Dict[Action, float] = {}
-            for destroy in self._destroy_operators:
-                for repair in self.repair_operators:
-                    value = repair_map.get(repair, default_value)
-                    state_values[(destroy, repair)] = value
-            initial_values[state] = state_values
-        return initial_values
-
     def _compute_q_reward(
         self,
         *,
