@@ -427,12 +427,23 @@ class LPBasedRepair:
         A: List[List[float]] = []
         b: List[float] = []
 
+        logger.debug(f"[LP CONSTRAINTS] Building constraints for {len(task_ids)} tasks, {num_vars} variables")
+
         for task_id in task_ids:
             row = [0.0] * num_vars
+            task_plan_count = 0
             for plan in plan_by_task[task_id]:
-                row[plan.variable_index] = 1.0
+                if 0 <= plan.variable_index < num_vars:
+                    row[plan.variable_index] = 1.0
+                    task_plan_count += 1
+                else:
+                    logger.error(f"[LP CONSTRAINTS] INVALID variable_index={plan.variable_index} for task {task_id}, num_vars={num_vars}")
             A.append(row)
             b.append(1.0)
+
+            row_sum = sum(row)
+            logger.debug(f"[LP CONSTRAINTS] Task {task_id}: {task_plan_count} plans, row_sum={row_sum}, "
+                        f"variable_indices={[p.variable_index for p in plan_by_task[task_id]]}")
 
         return A, b
 

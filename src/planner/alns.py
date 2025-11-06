@@ -1898,12 +1898,15 @@ class MinimalALNS:
                           f"ensure_route_schedule={ensure_schedule}, nodes={len(route.nodes)}")
 
         while attempts < max_attempts:
-            # CRITICAL FIX: Use ensure_route_schedule instead of _check_battery_feasibility
-            # This ensures consistency with the caller (repair_lp.py) which uses ensure_route_schedule
-            if self.ensure_route_schedule(route):
+            # CRITICAL FIX: Use ensure_route_schedule with a COPY to avoid side effects
+            # ensure_route_schedule modifies route.visits, so we must use a copy for checking
+            test_route = route.copy()
+            if self.ensure_route_schedule(test_route):
                 final_node_count = len(route.nodes)
                 logger.info(f"[CHARGING INSERTION] Exiting: route is feasible after {attempts} attempts, "
                            f"added {final_node_count - initial_node_count} nodes")
+                # Now compute schedule for the original route before returning
+                self.ensure_route_schedule(route)
                 return route  # 已经可行
 
             # 找到电量耗尽或临界位置
