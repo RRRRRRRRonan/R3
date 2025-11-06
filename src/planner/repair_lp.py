@@ -208,17 +208,22 @@ class SimplexSolver:
         return True
 
     def _choose_entering_variable(self, objective_row: Sequence[float]) -> Optional[int]:
+        """Choose entering variable for MINIMIZATION LP.
+
+        CRITICAL FIX: We are solving a minimization problem (minimize cost).
+        The entering variable should have the most NEGATIVE reduced cost.
+        """
         entering_col = None
-        best_value = self.epsilon
+        best_value = -self.epsilon  # For minimization: most negative
         for idx, value in enumerate(objective_row):
-            if value > best_value:
+            if value < best_value:  # Choose most negative (minimization!)
                 best_value = value
                 entering_col = idx
 
         if entering_col is None:
             # Log why no entering variable found
-            max_rc = max(objective_row) if objective_row else -999
-            logger.debug(f"[SIMPLEX] No entering variable (max reduced cost = {max_rc:.6f}, threshold = {self.epsilon})")
+            min_rc = min(objective_row) if objective_row else 999
+            logger.debug(f"[SIMPLEX] No entering variable (min reduced cost = {min_rc:.6f}, threshold = {-self.epsilon})")
         return entering_col
 
     def _choose_pivot_row(self, tableau: List[List[float]], entering_col: int) -> Optional[int]:
