@@ -308,6 +308,12 @@ class LPBasedRepair:
     # ------------------------------------------------------------------
 
     def _enumerate_plans(self, base_route: Route, base_cost: float, task: Task) -> List[_Plan]:
+        """Enumerate feasible insertion plans for a task.
+
+        Phase 0 Fix: When a plan is battery-infeasible, try inserting charging stations
+        to make it feasible instead of immediately discarding it. This is critical for
+        large-scale instances where battery constraints are tight.
+        """
         plans: List[_Plan] = []
         max_pickup = len(base_route.nodes)
         for pickup_pos in range(1, max_pickup):
@@ -317,8 +323,18 @@ class LPBasedRepair:
                     candidate.insert_task(task, (pickup_pos, delivery_pos))
                 except ValueError:
                     continue
+
+                # PHASE 0 FIX: Try to make infeasible routes feasible by adding charging
                 if not self.planner.ensure_route_schedule(candidate):
-                    continue
+                    # Battery infeasible - try inserting charging stations
+                    if hasattr(self.planner, '_insert_necessary_charging_stations'):
+                        candidate = self.planner._insert_necessary_charging_stations(candidate)
+                        # Re-check feasibility after charging station insertion
+                        if not self.planner.ensure_route_schedule(candidate):
+                            continue  # Still infeasible, discard this plan
+                    else:
+                        continue  # No charging insertion available, discard
+
                 candidate_cost = self.planner.evaluate_cost(candidate)
                 if candidate_cost == float("inf"):
                     continue
