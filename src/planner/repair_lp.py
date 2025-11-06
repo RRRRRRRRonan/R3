@@ -298,6 +298,35 @@ class LPBasedRepair:
             return self.planner.regret2_insertion(partial_route.copy(), [task.task_id for task in tasks])
 
         A, b = self._build_constraints(plan_by_task, plans)
+
+        # CRITICAL DIAGNOSTIC: Verify constraint matrix and test a simple solution
+        logger.debug(f"[LP VERIFY] Constraint matrix A: {len(A)} rows x {len(A[0]) if A else 0} cols")
+        logger.debug(f"[LP VERIFY] RHS vector b: {b}")
+
+        # Test if a simple solution (select first plan for each task) satisfies constraints
+        test_solution = [0.0] * len(plans)
+        for task_id, task_plans in plan_by_task.items():
+            if task_plans:
+                first_plan_idx = task_plans[0].variable_index
+                test_solution[first_plan_idx] = 1.0
+
+        # Verify test solution
+        for row_idx, (row, rhs) in enumerate(zip(A, b)):
+            row_result = sum(a * x for a, x in zip(row, test_solution))
+            task_id = list(plan_by_task.keys())[row_idx] if row_idx < len(plan_by_task) else -1
+            if abs(row_result - rhs) > 1e-6:
+                logger.error(f"[LP VERIFY] CONSTRAINT VIOLATION! Task {task_id} row {row_idx}: "
+                           f"Ax={row_result:.6f}, b={rhs:.6f}, diff={abs(row_result - rhs):.6f}")
+            else:
+                logger.debug(f"[LP VERIFY] Task {task_id} row {row_idx}: Ax={row_result:.6f}, b={rhs:.6f} ✓")
+
+        # Check for zero rows
+        for row_idx, row in enumerate(A):
+            row_sum = sum(row)
+            if row_sum < 1e-9:
+                task_id = list(plan_by_task.keys())[row_idx] if row_idx < len(plan_by_task) else -1
+                logger.error(f"[LP VERIFY] ZERO ROW! Task {task_id} row {row_idx} has sum={row_sum}")
+
         solver = SimplexSolver(A, b, column_costs)
         solution = solver.solve()
         if solution is None:
