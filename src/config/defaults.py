@@ -198,10 +198,10 @@ class QLearningParams:
     alpha: float = 0.35
     gamma: float = 0.95
 
-    # Adaptive epsilon (Phase 1.4 balanced: zero bias + moderate exploration)
-    initial_epsilon: float = 0.35        # ↑ from 0.30 (high initial exploration)
-    epsilon_decay: float = 0.9997        # ↓ from 0.9998 (slower decay)
-    epsilon_min: float = 0.28            # ↓ from 0.35 (balanced exploration - not too aggressive)
+    # Adaptive epsilon (Phase 1.5: Reduced exploration to allow more exploitation)
+    initial_epsilon: float = 0.30        # ↓ from 0.35 (moderate initial exploration)
+    epsilon_decay: float = 0.9994        # ↓ from 0.9997 (faster decay for more late-stage exploitation)
+    epsilon_min: float = 0.20            # ↓ from 0.28 (reduce random exploration waste)
     enable_online_updates: bool = True
 
     # Simplified rewards (Phase 1 improvement: removed ROI scaling)
