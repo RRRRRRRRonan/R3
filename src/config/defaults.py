@@ -21,8 +21,8 @@ class LPRepairParams:
     and avoid infeasibility due to insufficient plan diversity.
     """
 
-    time_limit_s: float = 0.5
-    max_plans_per_task: int = 20  # Increased from 6 to 20 for more LP flexibility
+    time_limit_s: float = 0.4
+    max_plans_per_task: int = 15  # Reduced from 20 to improve LP performance (Phase 1.4)
     improvement_tolerance: float = 0.01  # Relaxed from 1e-4 to accept small improvements
     skip_penalty: float = 5_000.0
     fractional_threshold: float = 1e-3
@@ -198,10 +198,10 @@ class QLearningParams:
     alpha: float = 0.35
     gamma: float = 0.95
 
-    # Adaptive epsilon (Phase 1.4 improvement: maximum exploration with zero initial bias)
-    initial_epsilon: float = 0.40        # ↑ from 0.30 (very high initial exploration)
-    epsilon_decay: float = 0.9999        # ↓ from 0.9998 (almost no decay)
-    epsilon_min: float = 0.35            # ↑ from 0.25 (force 35% exploration to overcome any emerging bias)
+    # Adaptive epsilon (Phase 1.4 balanced: zero bias + moderate exploration)
+    initial_epsilon: float = 0.35        # ↑ from 0.30 (high initial exploration)
+    epsilon_decay: float = 0.9997        # ↓ from 0.9998 (slower decay)
+    epsilon_min: float = 0.28            # ↓ from 0.35 (balanced exploration - not too aggressive)
     enable_online_updates: bool = True
 
     # Simplified rewards (Phase 1 improvement: removed ROI scaling)
