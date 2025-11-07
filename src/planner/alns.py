@@ -558,43 +558,46 @@ class MinimalALNS:
         while scale adjustments ensure LP is properly prioritized on large instances.
         """
 
+        # Phase 1.4: COMPLETE equality - zero initial bias
+        # All operators start at exactly 10.0 to force pure learning
         base_values = {
             'explore': {
-                'lp': 11.0,      # Nearly flat base to force learning (Phase 1.3)
-                'regret2': 10.5, # Minimal gap between operators
-                'greedy': 10.5,  # Equal with regret2 to break LP dominance
-                'random': 8.0,   # ↑ from 5.0 - give random a chance
+                'lp': 10.0,      # Complete equality (Phase 1.4)
+                'regret2': 10.0, # All operators equal
+                'greedy': 10.0,  # Zero bias
+                'random': 10.0,  # Random gets equal chance
             },
             'stuck': {
-                'lp': 13.0,      # Flatter hierarchy (Phase 1.3)
-                'regret2': 12.5, # Near-equal starting point
-                'greedy': 12.0,  # Competitive with regret2
-                'random': 9.0,   # ↑ from 5.0 - more exploration
+                'lp': 10.0,      # Complete equality (Phase 1.4)
+                'regret2': 10.0, # All operators equal
+                'greedy': 10.0,  # Zero bias
+                'random': 10.0,  # Random gets equal chance
             },
             'deep_stuck': {
-                'lp': 15.0,      # Reduced LP advantage (Phase 1.3)
-                'regret2': 14.5, # Almost equal
-                'greedy': 14.0,  # Close competition
-                'random': 10.0,  # ↑ from 5.0 - diversify deep_stuck
+                'lp': 10.0,      # Complete equality (Phase 1.4)
+                'regret2': 10.0, # All operators equal
+                'greedy': 10.0,  # Zero bias
+                'random': 10.0,  # Random gets equal chance
             },
         }
 
-        # Scale-specific adjustments to prioritize LP on larger instances
+        # Phase 1.4: Remove ALL scale-specific adjustments
+        # Let Q-learning discover operator value through experience
         scale_adjustments = {
             'small': {
-                'explore': {'lp': 0.0},   # No adjustment needed
+                'explore': {'lp': 0.0},
                 'stuck': {'lp': 0.0},
                 'deep_stuck': {'lp': 0.0},
             },
             'medium': {
-                'explore': {'lp': 3.0},   # Modest LP boost
-                'stuck': {'lp': 4.0},
-                'deep_stuck': {'lp': 5.0},
+                'explore': {'lp': 0.0},   # No bias
+                'stuck': {'lp': 0.0},
+                'deep_stuck': {'lp': 0.0},
             },
             'large': {
-                'explore': {'lp': 2.0},    # Minimal LP boost (11+2=13) - Phase 1.3: force learning over bias
-                'stuck': {'lp': 3.0},      # (13+3=16) - let Q-learning discover LP value
-                'deep_stuck': {'lp': 4.0}, # (15+4=19) - rely on learning, not initialization
+                'explore': {'lp': 0.0},    # Zero bias - pure learning (Phase 1.4)
+                'stuck': {'lp': 0.0},      # Let experience guide selection
+                'deep_stuck': {'lp': 0.0}, # Trust Q-learning, not initialization
             },
         }
 

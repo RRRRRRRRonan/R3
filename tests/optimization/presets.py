@@ -46,10 +46,11 @@ ALNS_TEST_PRESETS: Dict[str, ScalePreset] = {
     ),
     "large": ScalePreset(
         scenario_overrides={"num_tasks": 30, "num_charging": 3, "seed": 17},
-        # Phase 1.3: Increased q_learning iterations to allow sufficient exploration
-        # With epsilon_min=0.25 and slower decay, more iterations needed for convergence
-        # 44 iterations insufficient for Q-learning to overcome initial bias and learn
-        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=75),
+        # Phase 1.4: Further increased iterations for pure learning with zero bias
+        # With epsilon_min=0.35 and complete Q-value equality (all 10.0)
+        # Need extensive iterations for Q-learning to discover operator values purely through experience
+        # 35% exploration means 35 random selections per 100 iterations - need more total iterations
+        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=100),
     ),
 }
 
