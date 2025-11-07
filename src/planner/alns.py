@@ -560,22 +560,22 @@ class MinimalALNS:
 
         base_values = {
             'explore': {
-                'lp': 12.0,      # Conservative base (reduced from 15.0)
-                'regret2': 11.0, # ↑ from 10.0 - more balanced initial values
-                'greedy': 10.5,  # ↑ from 9.0 - fairer starting chance
-                'random': 5.0,
+                'lp': 11.0,      # Nearly flat base to force learning (Phase 1.3)
+                'regret2': 10.5, # Minimal gap between operators
+                'greedy': 10.5,  # Equal with regret2 to break LP dominance
+                'random': 8.0,   # ↑ from 5.0 - give random a chance
             },
             'stuck': {
-                'lp': 15.0,      # Conservative base (reduced from 30.0)
-                'regret2': 13.0, # ↑ from 12.0 - reduce gap to LP
-                'greedy': 11.5,  # ↑ from 10.0 - better initial position
-                'random': 5.0,
+                'lp': 13.0,      # Flatter hierarchy (Phase 1.3)
+                'regret2': 12.5, # Near-equal starting point
+                'greedy': 12.0,  # Competitive with regret2
+                'random': 9.0,   # ↑ from 5.0 - more exploration
             },
             'deep_stuck': {
-                'lp': 20.0,      # Conservative base (reduced from 35.0)
-                'regret2': 14.0, # ↑ from 12.0 - more competitive
-                'greedy': 12.0,  # ↑ from 10.0 - reduce LP dominance
-                'random': 5.0,
+                'lp': 15.0,      # Reduced LP advantage (Phase 1.3)
+                'regret2': 14.5, # Almost equal
+                'greedy': 14.0,  # Close competition
+                'random': 10.0,  # ↑ from 5.0 - diversify deep_stuck
             },
         }
 
@@ -592,9 +592,9 @@ class MinimalALNS:
                 'deep_stuck': {'lp': 5.0},
             },
             'large': {
-                'explore': {'lp': 4.0},    # Moderate LP boost (12+4=16) - reduced to prevent over-commitment
-                'stuck': {'lp': 6.0},      # (15+6=21) - reduced for better exploration
-                'deep_stuck': {'lp': 8.0}, # (20+8=28) - reduced to allow other operators
+                'explore': {'lp': 2.0},    # Minimal LP boost (11+2=13) - Phase 1.3: force learning over bias
+                'stuck': {'lp': 3.0},      # (13+3=16) - let Q-learning discover LP value
+                'deep_stuck': {'lp': 4.0}, # (15+4=19) - rely on learning, not initialization
             },
         }
 
