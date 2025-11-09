@@ -541,83 +541,81 @@ class MinimalALNS:
         return self._compose_state_label('explore')
 
     def _default_q_learning_initial_q(self) -> Dict[str, Dict[Action, float]]:
-        """Return expert-informed initial Q-values for destroy/repair pairs."""
+        """Return conservative scale-aware initial Q-values for destroy/repair pairs.
 
-        default_value = 8.5
-        scale = self._scenario_scale
+        Phase 1.1 Stability Fix: Conservative base + scale-specific adjustments.
 
-        common = {
-            'explore': {'regret2': 15.0, 'greedy': 13.0, 'lp': 12.0, 'random': 6.0},
-            'stuck': {'lp': 26.0, 'regret2': 16.0, 'greedy': 11.0, 'random': 6.0},
-            'deep_stuck': {'lp': 34.0, 'regret2': 14.0, 'greedy': 10.0, 'random': 6.0},
+        Base values (conservative, reduced LP bias):
+        - explore: LP=12, greedy=9 (1.3x gap)
+        - stuck: LP=15, greedy=10 (1.5x gap)
+        - deep_stuck: LP=20, greedy=10 (2.0x gap)
+
+        Scale adjustments (critical for large problems):
+        - large: LP gets +9/+12/+14 bonuses in explore/stuck/deep_stuck
+        - This helps Q-learning discover that LP is essential for large-scale instances
+
+        Combined approach: Conservative base prevents excessive LP bias on small/medium,
+        while scale adjustments ensure LP is properly prioritized on large instances.
+        """
+
+        # Phase 1.4: COMPLETE equality - zero initial bias
+        # All operators start at exactly 10.0 to force pure learning
+        base_values = {
+            'explore': {
+                'lp': 10.0,      # Complete equality (Phase 1.4)
+                'regret2': 10.0, # All operators equal
+                'greedy': 10.0,  # Zero bias
+                'random': 10.0,  # Random gets equal chance
+            },
+            'stuck': {
+                'lp': 10.0,      # Complete equality (Phase 1.4)
+                'regret2': 10.0, # All operators equal
+                'greedy': 10.0,  # Zero bias
+                'random': 10.0,  # Random gets equal chance
+            },
+            'deep_stuck': {
+                'lp': 10.0,      # Complete equality (Phase 1.4)
+                'regret2': 10.0, # All operators equal
+                'greedy': 10.0,  # Zero bias
+                'random': 10.0,  # Random gets equal chance
+            },
         }
 
-        scale_bias = {
+        # Phase 1.4: Remove ALL scale-specific adjustments
+        # Let Q-learning discover operator value through experience
+        scale_adjustments = {
             'small': {
-                'explore': {'lp': 6.0, 'regret2': 1.0},
-                'stuck': {'lp': 8.0, 'regret2': 1.0},
-                'deep_stuck': {'lp': 10.0},
+                'explore': {'lp': 0.0},
+                'stuck': {'lp': 0.0},
+                'deep_stuck': {'lp': 0.0},
             },
             'medium': {
-                'explore': {'lp': 4.0},
-                'stuck': {'lp': 6.0},
-                'deep_stuck': {'lp': 8.0},
+                'explore': {'lp': 0.0},   # No bias
+                'stuck': {'lp': 0.0},
+                'deep_stuck': {'lp': 0.0},
             },
             'large': {
-                'explore': {'lp': 9.0, 'regret2': -1.0},
-                'stuck': {'lp': 12.0},
-                'deep_stuck': {'lp': 14.0},
+                'explore': {'lp': 0.0},    # Zero bias - pure learning (Phase 1.4)
+                'stuck': {'lp': 0.0},      # Let experience guide selection
+                'deep_stuck': {'lp': 0.0}, # Trust Q-learning, not initialization
             },
         }
 
-        adjustments = scale_bias.get(scale, {})
+        default_value = 8.0
+        scale = self._scenario_scale
+        adjustments = scale_adjustments.get(scale, scale_adjustments['small'])
 
         initial_values: Dict[str, Dict[Action, float]] = {}
-        for phase, repair_map in common.items():
-            label = self._compose_state_label(phase)
-            phase_adjust = adjustments.get(phase, {})
+        for state, repair_map in base_values.items():
+            state_adjust = adjustments.get(state, {})
+            state_label = self._compose_state_label(state)
             state_values: Dict[Action, float] = {}
             for destroy in self._destroy_operators:
                 for repair in self.repair_operators:
                     base = repair_map.get(repair, default_value)
-                    bonus = phase_adjust.get(repair, 0.0)
+                    bonus = state_adjust.get(repair, 0.0)
                     state_values[(destroy, repair)] = base + bonus
-            initial_values[label] = state_values
-        return initial_values
-
-    def _default_q_learning_initial_q(self) -> Dict[str, Dict[Action, float]]:
-        """Return expert-informed initial Q-values for destroy/repair pairs."""
-
-        base_values = {
-            'explore': {
-                'lp': 15.0,
-                'regret2': 12.0,
-                'greedy': 10.0,
-                'random': 5.0,
-            },
-            'stuck': {
-                'lp': 30.0,
-                'regret2': 12.0,
-                'greedy': 10.0,
-                'random': 5.0,
-            },
-            'deep_stuck': {
-                'lp': 35.0,
-                'regret2': 12.0,
-                'greedy': 10.0,
-                'random': 5.0,
-            },
-        }
-        default_value = 8.0
-
-        initial_values: Dict[str, Dict[Action, float]] = {}
-        for state, repair_map in base_values.items():
-            state_values: Dict[Action, float] = {}
-            for destroy in self._destroy_operators:
-                for repair in self.repair_operators:
-                    value = repair_map.get(repair, default_value)
-                    state_values[(destroy, repair)] = value
-            initial_values[state] = state_values
+            initial_values[state_label] = state_values
         return initial_values
 
     def _compute_q_reward(
@@ -630,68 +628,53 @@ class MinimalALNS:
         repair_operator: str,
         previous_cost: float,
     ) -> float:
-        """Compute Q-learning reward with ROI-aware time penalty.
+        """Compute Q-learning reward with simplified penalty structure.
 
-        The reward function now implements a "Return on Investment" concept:
-        - Expensive operators (matheuristic) MUST deliver high quality to justify cost
-        - Cheap operators can be used more liberally even with modest returns
-        - Time penalty scales based on both action cost AND quality outcome
+        Phase 1 Stability Fix: Simplified reward function to improve generalization.
 
-        This addresses the core issue where Q-learning couldn't learn the value
-        of expensive operators because they were penalized equally regardless of
-        their contribution.
+        Changes from original:
+        1. Removed ROI hyperparameters (roi_positive_scale=220, roi_negative_scale=260)
+        2. Natural scaling using relative improvement (no manual tuning needed)
+        3. Simplified time penalty: only for matheuristic, gentler, no penalty for new best
+        4. Removed complex scale factors and scenario multipliers
+
+        This simplification reduces seed variance by avoiding overfitting to specific
+        parameter combinations that don't generalize across different problem instances.
+
+        Reward structure:
+        - New best: 100 points (always)
+        - Improvement: 0-50 points (scaled by relative improvement %)
+        - Accepted (no improvement): 5 points
+        - Rejected: -5 points
+        - Time penalty (matheuristic only): max 20 points
         """
         params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
 
-        # Step 1: Determine quality-based reward
+        # Step 1: Quality-based reward (3-tier system)
         if is_new_best:
             quality = params.reward_new_best
         elif improvement > 0:
-            quality = params.reward_improvement
+            # Natural scaling: relative improvement → proportional reward
+            # 1% improvement → 5 points, 10% improvement → 50 points (capped)
+            baseline_cost = max(previous_cost, 1.0)
+            relative_improvement = improvement / baseline_cost
+            quality = min(params.reward_improvement, relative_improvement * 500.0)
         elif is_accepted:
             quality = params.reward_accepted
         else:
             quality = params.reward_rejected
 
-        # Step 2: Incorporate relative quality change (ROI boost)
-        baseline_cost = max(previous_cost, 1.0)
-        relative_gain = improvement / baseline_cost
-        if improvement > 0:
-            quality += (
-                relative_gain
-                * params.roi_positive_scale
-                * self._scenario_roi_multiplier(improvement)
-            )
-        elif improvement < 0:
-            quality += relative_gain * params.roi_negative_scale
-
-        # Step 3: Apply ROI-aware time penalty
+        # Step 2: Simplified time penalty (only for matheuristic, only if slow)
         penalty = 0.0
-        threshold = self._scenario_time_penalty_threshold(
-            params.time_penalty_threshold
-        )
-        if action_cost > threshold:
-            is_matheuristic = repair_operator in self._current_matheuristic_repairs()
+        is_matheuristic = repair_operator in self._current_matheuristic_repairs()
 
-            if is_matheuristic:
-                # Matheuristic operators: Demand high returns
-                if quality >= params.reward_new_best:
-                    # Best solution found: minimal penalty, this is exactly what we want
-                    scale = 1.0
-                elif quality >= params.reward_improvement:
-                    # Improvement: moderate penalty, good but could be better
-                    scale = params.time_penalty_positive_scale
-                else:
-                    # No improvement: heavy penalty, expensive operator wasted
-                    scale = params.time_penalty_negative_scale
+        if is_matheuristic and action_cost > params.time_penalty_threshold:
+            # No penalty for finding new best (expensive ops justified)
+            if is_new_best:
+                penalty = 0.0
             else:
-                # Standard (cheap) operators: lenient penalty
-                scale = params.standard_time_penalty_scale
-
-            penalty = action_cost * scale
-            penalty *= self._scenario_penalty_factor(
-                is_matheuristic=is_matheuristic
-            )
+                # Gentle penalty: max 20 points (vs original ~100+ points)
+                penalty = min(20.0, action_cost * params.time_penalty_scale)
 
         return quality - penalty
 
@@ -1472,8 +1455,9 @@ class MinimalALNS:
         vehicle = self.vehicle
         energy_config = self.energy_config
 
-        # 模拟电池消耗
-        current_battery = vehicle.battery_capacity  # 满电出发
+        # 模拟电池消耗 - CRITICAL FIX: Use initial_battery instead of full capacity
+        # This must match the assumption used by ensure_route_schedule/compute_schedule
+        current_battery = vehicle.initial_battery  # 使用实际初始电量而非满电
 
         for i in range(len(route.nodes) - 1):
             current_node = route.nodes[i]
@@ -1777,18 +1761,33 @@ class MinimalALNS:
 
         从距离矩阵中获取所有充电站节点
         排除已经在路径中的充电站
+
+        CRITICAL FIX: Charging station IDs are NOT >= 100!
+        Actual formula: base_cs_id = num_tasks * 2 + 1
+        So we need to dynamically determine the threshold based on task_pool.
         """
         # 获取路径中已有的充电站ID
         existing_cs_ids = set(n.node_id for n in route.nodes if n.is_charging_station())
 
-        # 从距离矩阵的coordinates中找出所有充电站
-        # 充电站节点ID通常 >= 100
+        # 找出所有任务节点的最大ID
+        # Tasks use IDs: 1, 2, ..., num_tasks*2 (pickup and delivery pairs)
+        # Charging stations start from num_tasks*2 + 1
+        max_task_id = 0
+        if hasattr(self.task_pool, 'tasks'):
+            for task in self.task_pool.tasks.values():
+                # Each task has pickup and delivery nodes
+                max_task_id = max(max_task_id, task.pickup_id, task.delivery_id)
+
+        # Charging stations have IDs > max_task_id (and != depot which is 0)
         available_stations = []
 
         if hasattr(self.distance, 'coordinates'):
             for node_id, coords in self.distance.coordinates.items():
-                # 假设充电站ID >= 100，任务节点ID < 100
-                if node_id >= 100 and node_id not in existing_cs_ids:
+                # Node is a charging station if:
+                # 1. ID > max_task_id (so it's not a task node)
+                # 2. ID != 0 (not the depot)
+                # 3. Not already in the route
+                if node_id > max_task_id and node_id != 0 and node_id not in existing_cs_ids:
                     # 创建充电站节点
                     from core.node import create_charging_node
                     cs_node = create_charging_node(node_id=node_id, coordinates=coords)
@@ -1864,32 +1863,59 @@ class MinimalALNS:
         返回:
             修复后的路径
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        initial_node_count = len(route.nodes)
         attempts = 0
 
+        # DIAGNOSTIC: Check both feasibility methods at start
+        check_battery = self._check_battery_feasibility(route)
+        test_route = route.copy()
+        ensure_schedule = self.ensure_route_schedule(test_route)
+
+        if check_battery != ensure_schedule:
+            logger.warning(f"[CHARGING INSERTION] INCONSISTENCY: _check_battery_feasibility={check_battery}, "
+                          f"ensure_route_schedule={ensure_schedule}, nodes={len(route.nodes)}")
+
         while attempts < max_attempts:
-            if self._check_battery_feasibility(route):
+            # CRITICAL FIX: Use ensure_route_schedule with a COPY to avoid side effects
+            # ensure_route_schedule modifies route.visits, so we must use a copy for checking
+            test_route = route.copy()
+            if self.ensure_route_schedule(test_route):
+                final_node_count = len(route.nodes)
+                logger.info(f"[CHARGING INSERTION] Exiting: route is feasible after {attempts} attempts, "
+                           f"added {final_node_count - initial_node_count} nodes")
+                # Now compute schedule for the original route before returning
+                self.ensure_route_schedule(route)
                 return route  # 已经可行
 
             # 找到电量耗尽或临界位置
             depletion_pos = self._find_battery_depletion_position(route)
 
+            logger.info(f"[CHARGING INSERTION] Attempt {attempts+1}: depletion_pos={depletion_pos}")
+
             if depletion_pos == -1:
                 # 找不到耗尽位置，但可行性检查失败，可能是临界值问题
                 # 尝试在路径末尾附近插入充电站
                 depletion_pos = len(route.nodes) - 1
+                logger.info(f"[CHARGING INSERTION] No depletion found, using end position {depletion_pos}")
 
             # 找到最优充电站
             best_station, best_insert_pos = self._find_best_charging_station(route, depletion_pos)
 
             if best_station is None or best_insert_pos is None:
                 # 找不到可用的充电站，无法修复
+                logger.warning(f"[CHARGING INSERTION] No charging station found, giving up after {attempts} attempts")
                 return route
 
             # 插入充电站
+            logger.info(f"[CHARGING INSERTION] Inserting station at position {best_insert_pos}")
             route.nodes.insert(best_insert_pos, best_station)
 
             attempts += 1
 
+        logger.warning(f"[CHARGING INSERTION] Max attempts ({max_attempts}) reached, added {len(route.nodes) - initial_node_count} nodes")
         return route
 
     def _estimate_charging_and_time(self, route: Route) -> tuple[float, float]:

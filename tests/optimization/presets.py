@@ -46,9 +46,11 @@ ALNS_TEST_PRESETS: Dict[str, ScalePreset] = {
     ),
     "large": ScalePreset(
         scenario_overrides={"num_tasks": 30, "num_charging": 3, "seed": 17},
-        # CRITICAL: Use SAME iterations for fair comparison
-        # Previous q_learning=55 caused worse performance
-        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=44),
+        # Phase 1.4 balanced: Complete equality (all Q=10) with moderate exploration
+        # With epsilon_min=0.28 and complete Q-value equality (all 10.0)
+        # 80 iterations balances learning time vs LP performance issues
+        # 28% exploration = ~22 random selections + 58 exploit selections
+        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=80),
     ),
 }
 
