@@ -114,10 +114,9 @@ def run_single_experiment(
     charging_strategy = PartialRechargeMinimalStrategy(safety_margin=0.02, min_margin=0.0)
     cost_params = CostParameters()
 
-    # Set random seed
-    rng = random.Random(seed)
+    # Set random seed and save original state
     state = random.getstate()
-    random.setstate(rng.getstate())
+    random.seed(seed)
 
     start_time = time.time()
 
