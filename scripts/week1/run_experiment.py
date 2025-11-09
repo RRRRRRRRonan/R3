@@ -114,102 +114,97 @@ def run_single_experiment(
     charging_strategy = PartialRechargeMinimalStrategy(safety_margin=0.02, min_margin=0.0)
     cost_params = CostParameters()
 
-    # Set random seed and save original state
-    state = random.getstate()
+    # Set random seed for reproducibility
     random.seed(seed)
 
     start_time = time.time()
 
-    try:
-        # Create ALNS with Q-learning
-        alns = MatheuristicALNS(
-            distance_matrix=scenario.distance,
-            task_pool=task_pool,
-            repair_mode="adaptive",
-            cost_params=cost_params,
-            charging_strategy=charging_strategy,
-            use_adaptive=True,
-            verbose=verbose,
-            adaptation_mode="q_learning",
-            hyper_params=tuned_hyper,
-        )
+    # Create ALNS with Q-learning
+    alns = MatheuristicALNS(
+        distance_matrix=scenario.distance,
+        task_pool=task_pool,
+        repair_mode="adaptive",
+        cost_params=cost_params,
+        charging_strategy=charging_strategy,
+        use_adaptive=True,
+        verbose=verbose,
+        adaptation_mode="q_learning",
+        hyper_params=tuned_hyper,
+    )
 
-        # CRITICAL: Inject initialization strategy into Q-agent
-        # The Q-agent is created in MatheuristicALNS.__init__, so we need to
-        # recreate it with our custom initialization
-        from planner.q_learning import QLearningOperatorAgent
+    # CRITICAL: Inject initialization strategy into Q-agent
+    # The Q-agent is created in MatheuristicALNS.__init__, so we need to
+    # recreate it with our custom initialization
+    from planner.q_learning import QLearningOperatorAgent
 
-        alns._q_agent = QLearningOperatorAgent(
-            destroy_operators=alns._destroy_operators,
-            repair_operators=alns.repair_operators,
-            params=alns.hyper.q_learning,
-            init_strategy=q_init,  # Use our custom init strategy
-        )
+    alns._q_agent = QLearningOperatorAgent(
+        destroy_operators=alns._destroy_operators,
+        repair_operators=alns.repair_operators,
+        params=alns.hyper.q_learning,
+        init_strategy=q_init,  # Use our custom init strategy
+    )
 
-        alns.vehicle = scenario.vehicles[0]
-        alns.energy_config = scenario.energy
+    alns.vehicle = scenario.vehicles[0]
+    alns.energy_config = scenario.energy
 
-        # Create baseline solution
-        initial_route = create_empty_route(vehicle_id=1, depot_node=scenario.depot)
-        removed_task_ids = [task.task_id for task in scenario.tasks]
-        baseline = alns.greedy_insertion(initial_route, removed_task_ids)
+    # Create baseline solution
+    initial_route = create_empty_route(vehicle_id=1, depot_node=scenario.depot)
+    removed_task_ids = [task.task_id for task in scenario.tasks]
+    baseline = alns.greedy_insertion(initial_route, removed_task_ids)
 
-        if hasattr(alns, "_segment_optimizer"):
-            alns._segment_optimizer._ensure_schedule(baseline)
-            baseline_cost = alns._safe_evaluate(baseline)
-        else:
-            baseline_cost = alns.evaluate_cost(baseline)
+    if hasattr(alns, "_segment_optimizer"):
+        alns._segment_optimizer._ensure_schedule(baseline)
+        baseline_cost = alns._safe_evaluate(baseline)
+    else:
+        baseline_cost = alns.evaluate_cost(baseline)
 
-        if verbose:
-            print(f"  Baseline cost: {baseline_cost:.2f}")
+    if verbose:
+        print(f"  Baseline cost: {baseline_cost:.2f}")
 
-        # Optimize
-        optimised_route = alns.optimize(baseline, max_iterations=iterations)
+    # Optimize
+    optimised_route = alns.optimize(baseline, max_iterations=iterations)
 
-        if hasattr(alns, "_segment_optimizer"):
-            alns._segment_optimizer._ensure_schedule(optimised_route)
-            optimised_cost = alns._safe_evaluate(optimised_route)
-        else:
-            optimised_cost = alns.evaluate_cost(optimised_route)
+    if hasattr(alns, "_segment_optimizer"):
+        alns._segment_optimizer._ensure_schedule(optimised_route)
+        optimised_cost = alns._safe_evaluate(optimised_route)
+    else:
+        optimised_cost = alns.evaluate_cost(optimised_route)
 
-        runtime = time.time() - start_time
+    runtime = time.time() - start_time
 
-        if verbose:
-            print(f"  Optimised cost: {optimised_cost:.2f}")
-            print(f"  Improvement: {(1 - optimised_cost / baseline_cost) * 100:.2f}%")
-            print(f"  Runtime: {runtime:.2f}s")
+    if verbose:
+        print(f"  Optimised cost: {optimised_cost:.2f}")
+        print(f"  Improvement: {(1 - optimised_cost / baseline_cost) * 100:.2f}%")
+        print(f"  Runtime: {runtime:.2f}s")
 
-        # Collect Q-learning statistics
-        q_agent = alns._q_agent
-        q_stats = q_agent.statistics()
+    # Collect Q-learning statistics
+    q_agent = alns._q_agent
+    q_stats = q_agent.statistics()
 
-        # Extract Q-values
-        q_values_by_state = {}
-        for state, stats_list in q_stats.items():
-            q_values_by_state[state] = {
-                str(stat.action): stat.average_q_value for stat in stats_list
-            }
-
-        # Calculate improvement ratio
-        improvement_ratio = (baseline_cost - optimised_cost) / baseline_cost
-
-        # Prepare results
-        results = {
-            "scenario": scenario_scale,
-            "init_strategy": init_strategy,
-            "seed": seed,
-            "iterations": iterations,
-            "baseline_cost": float(baseline_cost),
-            "optimised_cost": float(optimised_cost),
-            "improvement_ratio": float(improvement_ratio),
-            "runtime": float(runtime),
-            "final_epsilon": float(q_agent.epsilon),
-            "q_values": q_values_by_state,
-            "experiment_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+    # Extract Q-values
+    q_values_by_state = {}
+    for state, stats_list in q_stats.items():
+        q_values_by_state[state] = {
+            str(stat.action): stat.average_q_value for stat in stats_list
         }
 
-    finally:
-        random.setstate(state)
+    # Calculate improvement ratio
+    improvement_ratio = (baseline_cost - optimised_cost) / baseline_cost
+
+    # Prepare results
+    results = {
+        "scenario": scenario_scale,
+        "init_strategy": init_strategy,
+        "seed": seed,
+        "iterations": iterations,
+        "baseline_cost": float(baseline_cost),
+        "optimised_cost": float(optimised_cost),
+        "improvement_ratio": float(improvement_ratio),
+        "runtime": float(runtime),
+        "final_epsilon": float(q_agent.epsilon),
+        "q_values": q_values_by_state,
+        "experiment_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
 
     return results
 
