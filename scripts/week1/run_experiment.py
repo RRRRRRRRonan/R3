@@ -143,7 +143,7 @@ def run_single_experiment(
         alns._q_agent = QLearningOperatorAgent(
             destroy_operators=alns._destroy_operators,
             repair_operators=alns.repair_operators,
-            params=alns._hyper_params.q_learning,
+            params=alns.hyper.q_learning,
             init_strategy=q_init,  # Use our custom init strategy
         )
 
