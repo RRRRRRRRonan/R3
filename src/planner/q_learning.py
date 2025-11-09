@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from config import QLearningParams
+from planner.q_learning_init import QInitStrategy, initialize_q_table
 
 
 State = str
@@ -34,7 +35,18 @@ class QLearningOperatorAgent:
         *,
         initial_q_values: Optional[Dict[State, Dict[Action, float]]] = None,
         state_labels: Optional[Sequence[State]] = None,
+        init_strategy: QInitStrategy = QInitStrategy.ZERO,
     ) -> None:
+        """Initialize Q-learning agent with configurable initialization strategy.
+
+        Args:
+            destroy_operators: Available destroy operators
+            repair_operators: Available repair operators
+            params: Q-learning parameters
+            initial_q_values: Optional pre-defined Q-values (overrides init_strategy)
+            state_labels: Optional custom state labels
+            init_strategy: Q-table initialization strategy (default: ZERO)
+        """
         self.params = params
         self.destroy_operators: List[str] = list(destroy_operators)
         self.repair_operators: List[str] = list(repair_operators)
@@ -60,17 +72,28 @@ class QLearningOperatorAgent:
             raise ValueError("Q-learning agent requires at least one state label")
 
         self.states: Tuple[State, ...] = states
+        self.init_strategy = init_strategy
 
-        self.q_table: Dict[State, Dict[Action, float]] = {
-            state: {action: 0.0 for action in self.actions} for state in self.states
-        }
+        # Initialize Q-table using specified strategy
         if initial_q_values:
+            # Use provided Q-values (e.g., for transfer learning)
+            self.q_table: Dict[State, Dict[Action, float]] = {
+                state: {action: 0.0 for action in self.actions} for state in self.states
+            }
             for state, action_map in initial_q_values.items():
                 if state not in self.q_table:
                     continue
                 for action, value in action_map.items():
                     if action in self.q_table[state]:
                         self.q_table[state][action] = float(value)
+        else:
+            # Use initialization strategy
+            self.q_table = initialize_q_table(
+                states=self.states,
+                actions=self.actions,
+                strategy=init_strategy,
+            )
+
         self._epsilon = params.initial_epsilon
         self._action_usage: Dict[Action, int] = defaultdict(int)
         self._experience_buffer: List[Tuple[State, Action, float, State]] = []
