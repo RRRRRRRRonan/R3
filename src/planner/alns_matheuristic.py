@@ -24,7 +24,7 @@ import itertools
 import math
 import random
 from dataclasses import dataclass, replace
-from typing import List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from config import (
     ALNSHyperParameters,
@@ -66,8 +66,17 @@ class MatheuristicALNS(MinimalALNS):
         adaptation_mode: str = "q_learning",  # NEW: Allow override
         hyper_params: Optional[ALNSHyperParameters] = None,
         matheuristic_params: Optional[MatheuristicParams] = None,
-    ) -> None:
-        """Initialise the matheuristic ALNS solver."""
+        adapt_matheuristic_params: bool = True,
+        ) -> None:
+        """Initialise the matheuristic ALNS solver.
+
+        Args:
+            adapt_matheuristic_params: When ``True`` (default) the solver will
+                expand the provided parameters to scale-aware defaults for the
+                detected scenario size.  Setting this to ``False`` preserves the
+                caller's values verbatim, which is useful for benchmarking or
+                experimenting with lighter-weight configurations.
+        """
 
         super().__init__(
             distance_matrix=distance_matrix,
@@ -88,7 +97,10 @@ class MatheuristicALNS(MinimalALNS):
             else:
                 matheuristic_params = DEFAULT_MATHEURISTIC_PARAMS
 
-        tuned_params = self._adapt_matheuristic_params(matheuristic_params)
+        if adapt_matheuristic_params:
+            tuned_params = self._adapt_matheuristic_params(matheuristic_params)
+        else:
+            tuned_params = matheuristic_params
         self.matheuristic_params = tuned_params
         self._segment_optimizer = _SegmentOptimizer(self, tuned_params.segment_optimization)
         self._lp_repair = LPBasedRepair(self, getattr(tuned_params, 'lp_repair', DEFAULT_LP_REPAIR_PARAMS))
@@ -144,7 +156,15 @@ class MatheuristicALNS(MinimalALNS):
             )
         return params
 
-    def optimize(self, initial_route: Route, max_iterations: int = 100) -> Route:
+    def optimize(
+        self,
+        initial_route: Route,
+        max_iterations: int = 100,
+        *,
+        progress_callback: Optional[
+            Callable[[int, int, float, str, bool], None]
+        ] = None,
+    ) -> Route:
         """Run ALNS with matheuristic intensification steps."""
 
         self._maybe_reconfigure_q_agent(initial_route)
@@ -173,6 +193,8 @@ class MatheuristicALNS(MinimalALNS):
                 self._log("使用自适应算子选择 ✓ (Destroy + Repair)")
 
         for iteration in range(max_iterations):
+            if progress_callback is not None:
+                progress_callback(iteration, max_iterations, best_cost, "start", False)
             q_state = self._determine_state(consecutive_no_improve)
             (
                 destroy_operator,
@@ -307,9 +329,20 @@ class MatheuristicALNS(MinimalALNS):
                         best_cost = intensified_cost
                         best_route = intensified_route.copy()
                         self._segment_optimizer._ensure_schedule(best_route)
+                        is_new_best = True
+                        consecutive_no_improve = 0
                         self._log(
                             f"  ↳ Elite intensification improved cost to {best_cost:.2f}m"
                         )
+
+            if progress_callback is not None:
+                progress_callback(
+                    iteration,
+                    max_iterations,
+                    best_cost,
+                    "end",
+                    is_new_best,
+                )
 
             temperature *= self.cooling_rate
 
@@ -317,6 +350,9 @@ class MatheuristicALNS(MinimalALNS):
                 self._log(
                     f"  [进度] 已完成 {iteration+1}/{max_iterations} 次迭代, 当前最优: {best_cost:.2f}m"
                 )
+
+        if progress_callback is not None:
+            progress_callback(max_iterations, max_iterations, best_cost, "complete", False)
 
         self._log("\n算子使用统计:")
         self._log(

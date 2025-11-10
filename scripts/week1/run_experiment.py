@@ -14,10 +14,76 @@ Usage:
 import argparse
 import json
 import random
+import sys
 import time
 from dataclasses import replace
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Callable
+
+
+# Ensure the repository's ``src`` package and root directory are importable when
+# the script is executed directly (e.g. ``python scripts/week1/run_experiment.py``).
+# On Windows the working directory is often the repo root, which means only
+# ``scripts/week1`` ends up on ``sys.path`` by default, so modules like
+# ``core`` (under ``src``) and ``tests`` would be missing.  By injecting both
+# directories explicitly we avoid requiring callers to pre-set ``PYTHONPATH``.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_SRC_ROOT = _REPO_ROOT / "src"
+for _path in (str(_REPO_ROOT), str(_SRC_ROOT)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
+
+
+class _NonVerboseProgressPrinter:
+    """Minimal progress reporter used when ``--verbose`` is not supplied."""
+
+    def __init__(self, scenario: str, seed: int) -> None:
+        self._scenario = scenario
+        self._seed = seed
+        self._iteration_start: Optional[float] = None
+
+    @property
+    def _prefix(self) -> str:
+        return f"[Week 1] {self._scenario} seed={self._seed}"
+
+    def __call__(
+        self,
+        iteration: int,
+        total: int,
+        best_cost: float,
+        event: str,
+        is_new_best: bool,
+    ) -> None:
+        now = time.time()
+        if event == "start":
+            self._iteration_start = now
+            print(
+                f"{self._prefix} starting iteration {iteration + 1}/{total}",
+                flush=True,
+            )
+            return
+
+        if event == "end":
+            elapsed = (
+                now - self._iteration_start
+                if self._iteration_start is not None
+                else 0.0
+            )
+            status = "new best" if is_new_best else "best so far"
+            print(
+                f"{self._prefix} iteration {iteration + 1}/{total} finished in "
+                f"{elapsed:.1f}s ({status}: {best_cost:.2f}m)",
+                flush=True,
+            )
+            return
+
+        if event == "complete":
+            print(
+                f"{self._prefix} completed {total} iterations; "
+                f"best cost {best_cost:.2f}m",
+                flush=True,
+            )
+            return
 
 from core.route import create_empty_route
 from planner.alns_matheuristic import MatheuristicALNS
@@ -43,6 +109,7 @@ def run_single_experiment(
     init_strategy: str,
     seed: int,
     verbose: bool = False,
+    adapt_matheuristic: bool = True,
 ) -> Dict[str, Any]:
     """Run a single Q-learning experiment.
 
@@ -51,6 +118,10 @@ def run_single_experiment(
         init_strategy: Q-table initialization strategy
         seed: Random seed for reproducibility
         verbose: Whether to print progress
+        adapt_matheuristic: If ``True`` (default), allow the solver to expand
+            matheuristic hyper-parameters based on the detected scenario scale.
+            Set to ``False`` to keep the lightweight parameters defined in
+            this script for faster but potentially lower-quality runs.
 
     Returns:
         Dictionary containing experiment results
@@ -79,6 +150,8 @@ def run_single_experiment(
         print(f"  Init Strategy: {init_strategy}")
         print(f"  Seed: {seed}")
         print(f"  Iterations: {iterations}")
+        if not adapt_matheuristic:
+            print("  Matheuristic adaptation: disabled (lightweight tuning)")
 
     # Configure hyperparameters - aggressively simplified for stable execution
     # Focus on Q-learning comparison, minimize matheuristic complexity
@@ -120,6 +193,15 @@ def run_single_experiment(
 
     start_time = time.time()
 
+    progress_callback: Optional[Callable[[int, int, float, str, bool], None]] = None
+    progress_printer: Optional[_NonVerboseProgressPrinter] = None
+    if not verbose:
+        progress_printer = _NonVerboseProgressPrinter(
+            scenario=scenario_scale,
+            seed=seed,
+        )
+        progress_callback = progress_printer
+
     # Create ALNS with Q-learning
     alns = MatheuristicALNS(
         distance_matrix=scenario.distance,
@@ -131,6 +213,7 @@ def run_single_experiment(
         verbose=verbose,
         adaptation_mode="q_learning",
         hyper_params=tuned_hyper,
+        adapt_matheuristic_params=adapt_matheuristic,
     )
 
     # CRITICAL: Inject initialization strategy into Q-agent
@@ -163,7 +246,11 @@ def run_single_experiment(
         print(f"  Baseline cost: {baseline_cost:.2f}")
 
     # Optimize
-    optimised_route = alns.optimize(baseline, max_iterations=iterations)
+    optimised_route = alns.optimize(
+        baseline,
+        max_iterations=iterations,
+        progress_callback=progress_callback,
+    )
 
     if hasattr(alns, "_segment_optimizer"):
         alns._segment_optimizer._ensure_schedule(optimised_route)
@@ -245,8 +332,21 @@ def main():
         action="store_true",
         help="Print progress information",
     )
+    parser.add_argument(
+        "--disable_matheuristic_adaptation",
+        action="store_true",
+        help="Keep the lightweight matheuristic hyper-parameters without "
+        "scale-based expansion (speeds up medium runs at the cost of "
+        "solution quality).",
+    )
 
     args = parser.parse_args()
+
+    if not args.verbose:
+        print(
+            f"[Week 1] Running scenario={args.scenario} seed={args.seed} "
+            f"→ {args.output}"
+        )
 
     # Run experiment
     results = run_single_experiment(
@@ -254,6 +354,7 @@ def main():
         init_strategy=args.init_strategy,
         seed=args.seed,
         verbose=args.verbose,
+        adapt_matheuristic=not args.disable_matheuristic_adaptation,
     )
 
     # Save results
@@ -265,6 +366,11 @@ def main():
 
     if args.verbose:
         print(f"\nResults saved to: {args.output}")
+    else:
+        print(
+            f"[Week 1] Completed scenario={args.scenario} seed={args.seed} "
+            f"(runtime: {results['runtime']:.1f}s)"
+        )
 
 
 if __name__ == "__main__":
