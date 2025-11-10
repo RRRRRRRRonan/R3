@@ -80,7 +80,7 @@ def run_single_experiment(
         print(f"  Seed: {seed}")
         print(f"  Iterations: {iterations}")
 
-    # Configure hyperparameters
+    # Configure hyperparameters - optimized for faster execution
     tuned_hyper = replace(
         DEFAULT_ALNS_HYPERPARAMETERS,
         destroy_repair=DestroyRepairParams(
@@ -89,20 +89,20 @@ def run_single_experiment(
             remove_cs_probability=0.2,
         ),
         matheuristic=MatheuristicParams(
-            elite_pool_size=4,
-            intensification_interval=25,
-            segment_frequency=6,
-            max_elite_trials=2,
+            elite_pool_size=2,  # Reduced from 4 for faster execution
+            intensification_interval=30,  # Increased from 25
+            segment_frequency=10,  # Reduced frequency from 6 for faster execution
+            max_elite_trials=1,  # Reduced from 2
             segment_optimization=SegmentOptimizationParams(
-                max_segment_tasks=3,
-                candidate_pool_size=3,
+                max_segment_tasks=2,  # Reduced from 3
+                candidate_pool_size=2,  # Reduced from 3
                 improvement_tolerance=1e-3,
-                max_permutations=12,
-                lookahead_window=2,
+                max_permutations=6,  # Reduced from 12 for faster execution
+                lookahead_window=1,  # Reduced from 2
             ),
             lp_repair=LPRepairParams(
-                time_limit_s=0.3,
-                max_plans_per_task=4,
+                time_limit_s=1.0,  # Increased from 0.3 to avoid premature timeout
+                max_plans_per_task=3,  # Reduced from 4
                 improvement_tolerance=1e-4,
                 skip_penalty=5_000.0,
                 fractional_threshold=1e-3,
