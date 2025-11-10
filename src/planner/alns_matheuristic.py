@@ -66,8 +66,17 @@ class MatheuristicALNS(MinimalALNS):
         adaptation_mode: str = "q_learning",  # NEW: Allow override
         hyper_params: Optional[ALNSHyperParameters] = None,
         matheuristic_params: Optional[MatheuristicParams] = None,
-    ) -> None:
-        """Initialise the matheuristic ALNS solver."""
+        adapt_matheuristic_params: bool = True,
+        ) -> None:
+        """Initialise the matheuristic ALNS solver.
+
+        Args:
+            adapt_matheuristic_params: When ``True`` (default) the solver will
+                expand the provided parameters to scale-aware defaults for the
+                detected scenario size.  Setting this to ``False`` preserves the
+                caller's values verbatim, which is useful for benchmarking or
+                experimenting with lighter-weight configurations.
+        """
 
         super().__init__(
             distance_matrix=distance_matrix,
@@ -88,7 +97,10 @@ class MatheuristicALNS(MinimalALNS):
             else:
                 matheuristic_params = DEFAULT_MATHEURISTIC_PARAMS
 
-        tuned_params = self._adapt_matheuristic_params(matheuristic_params)
+        if adapt_matheuristic_params:
+            tuned_params = self._adapt_matheuristic_params(matheuristic_params)
+        else:
+            tuned_params = matheuristic_params
         self.matheuristic_params = tuned_params
         self._segment_optimizer = _SegmentOptimizer(self, tuned_params.segment_optimization)
         self._lp_repair = LPBasedRepair(self, getattr(tuned_params, 'lp_repair', DEFAULT_LP_REPAIR_PARAMS))

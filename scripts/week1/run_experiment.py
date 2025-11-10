@@ -14,10 +14,24 @@ Usage:
 import argparse
 import json
 import random
+import sys
 import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Dict, Any
+
+
+# Ensure the repository's ``src`` package and root directory are importable when
+# the script is executed directly (e.g. ``python scripts/week1/run_experiment.py``).
+# On Windows the working directory is often the repo root, which means only
+# ``scripts/week1`` ends up on ``sys.path`` by default, so modules like
+# ``core`` (under ``src``) and ``tests`` would be missing.  By injecting both
+# directories explicitly we avoid requiring callers to pre-set ``PYTHONPATH``.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_SRC_ROOT = _REPO_ROOT / "src"
+for _path in (str(_REPO_ROOT), str(_SRC_ROOT)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 from core.route import create_empty_route
 from planner.alns_matheuristic import MatheuristicALNS
@@ -43,6 +57,7 @@ def run_single_experiment(
     init_strategy: str,
     seed: int,
     verbose: bool = False,
+    adapt_matheuristic: bool = True,
 ) -> Dict[str, Any]:
     """Run a single Q-learning experiment.
 
@@ -51,6 +66,10 @@ def run_single_experiment(
         init_strategy: Q-table initialization strategy
         seed: Random seed for reproducibility
         verbose: Whether to print progress
+        adapt_matheuristic: If ``True`` (default), allow the solver to expand
+            matheuristic hyper-parameters based on the detected scenario scale.
+            Set to ``False`` to keep the lightweight parameters defined in
+            this script for faster but potentially lower-quality runs.
 
     Returns:
         Dictionary containing experiment results
@@ -79,6 +98,8 @@ def run_single_experiment(
         print(f"  Init Strategy: {init_strategy}")
         print(f"  Seed: {seed}")
         print(f"  Iterations: {iterations}")
+        if not adapt_matheuristic:
+            print("  Matheuristic adaptation: disabled (lightweight tuning)")
 
     # Configure hyperparameters - optimized for faster execution
     tuned_hyper = replace(
@@ -130,6 +151,7 @@ def run_single_experiment(
         verbose=verbose,
         adaptation_mode="q_learning",
         hyper_params=tuned_hyper,
+        adapt_matheuristic_params=adapt_matheuristic,
     )
 
     # CRITICAL: Inject initialization strategy into Q-agent
@@ -244,6 +266,13 @@ def main():
         action="store_true",
         help="Print progress information",
     )
+    parser.add_argument(
+        "--disable_matheuristic_adaptation",
+        action="store_true",
+        help="Keep the lightweight matheuristic hyper-parameters without "
+        "scale-based expansion (speeds up medium runs at the cost of "
+        "solution quality).",
+    )
 
     args = parser.parse_args()
 
@@ -253,6 +282,7 @@ def main():
         init_strategy=args.init_strategy,
         seed=args.seed,
         verbose=args.verbose,
+        adapt_matheuristic=not args.disable_matheuristic_adaptation,
     )
 
     # Save results
