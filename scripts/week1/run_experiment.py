@@ -80,7 +80,8 @@ def run_single_experiment(
         print(f"  Seed: {seed}")
         print(f"  Iterations: {iterations}")
 
-    # Configure hyperparameters - optimized for faster execution
+    # Configure hyperparameters - aggressively simplified for stable execution
+    # Focus on Q-learning comparison, minimize matheuristic complexity
     tuned_hyper = replace(
         DEFAULT_ALNS_HYPERPARAMETERS,
         destroy_repair=DestroyRepairParams(
@@ -89,21 +90,21 @@ def run_single_experiment(
             remove_cs_probability=0.2,
         ),
         matheuristic=MatheuristicParams(
-            elite_pool_size=2,  # Reduced from 4 for faster execution
-            intensification_interval=30,  # Increased from 25
-            segment_frequency=10,  # Reduced frequency from 6 for faster execution
-            max_elite_trials=1,  # Reduced from 2
+            elite_pool_size=2,
+            intensification_interval=50,  # Increased to reduce frequency
+            segment_frequency=0,  # DISABLED - segment optimization can be slow
+            max_elite_trials=1,
             segment_optimization=SegmentOptimizationParams(
-                max_segment_tasks=2,  # Reduced from 3
-                candidate_pool_size=2,  # Reduced from 3
+                max_segment_tasks=2,
+                candidate_pool_size=2,
                 improvement_tolerance=1e-3,
-                max_permutations=6,  # Reduced from 12 for faster execution
-                lookahead_window=1,  # Reduced from 2
+                max_permutations=4,  # Further reduced
+                lookahead_window=1,
             ),
             lp_repair=LPRepairParams(
-                time_limit_s=1.0,  # Increased from 0.3 to avoid premature timeout
-                max_plans_per_task=3,  # Reduced from 4
-                improvement_tolerance=1e-4,
+                time_limit_s=2.0,  # Increased timeout to prevent hanging
+                max_plans_per_task=2,  # Reduced complexity
+                improvement_tolerance=1e-3,  # Relaxed tolerance
                 skip_penalty=5_000.0,
                 fractional_threshold=1e-3,
             ),
