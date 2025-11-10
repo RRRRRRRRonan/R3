@@ -130,6 +130,7 @@ def run_single_experiment(
         verbose=verbose,
         adaptation_mode="q_learning",
         hyper_params=tuned_hyper,
+        adapt_matheuristic_params=False,
     )
 
     # CRITICAL: Inject initialization strategy into Q-agent
