@@ -40,15 +40,15 @@ ALNS_TEST_PRESETS: Dict[str, ScalePreset] = {
     ),
     "medium": ScalePreset(
         scenario_overrides={"num_tasks": 24, "num_charging": 1, "seed": 19},
-        # REDUCED: 44 → 20 for faster experiments while maintaining comparability
-        # Baseline used 44 iterations - analysis will use first 20 for fair comparison
-        iterations=IterationPreset(minimal=32, matheuristic=20, q_learning=20),
+        # CRITICAL: Use SAME iterations for fair comparison
+        # Previous q_learning=55 but only medium performed well
+        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=44),
     ),
     "large": ScalePreset(
         scenario_overrides={"num_tasks": 30, "num_charging": 3, "seed": 17},
-        # REDUCED: 44 → 20 for faster experiments while maintaining comparability
-        # Baseline used 44 iterations - analysis will use first 20 for fair comparison
-        iterations=IterationPreset(minimal=32, matheuristic=20, q_learning=20),
+        # CRITICAL: Use SAME iterations for fair comparison
+        # Previous q_learning=55 caused worse performance
+        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=44),
     ),
 }
 
