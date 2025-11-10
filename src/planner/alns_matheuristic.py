@@ -24,7 +24,7 @@ import itertools
 import math
 import random
 from dataclasses import dataclass, replace
-from typing import List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from config import (
     ALNSHyperParameters,
@@ -156,7 +156,15 @@ class MatheuristicALNS(MinimalALNS):
             )
         return params
 
-    def optimize(self, initial_route: Route, max_iterations: int = 100) -> Route:
+    def optimize(
+        self,
+        initial_route: Route,
+        max_iterations: int = 100,
+        *,
+        progress_callback: Optional[
+            Callable[[int, int, float, str, bool], None]
+        ] = None,
+    ) -> Route:
         """Run ALNS with matheuristic intensification steps."""
 
         self._maybe_reconfigure_q_agent(initial_route)
@@ -185,6 +193,8 @@ class MatheuristicALNS(MinimalALNS):
                 self._log("使用自适应算子选择 ✓ (Destroy + Repair)")
 
         for iteration in range(max_iterations):
+            if progress_callback is not None:
+                progress_callback(iteration, max_iterations, best_cost, "start", False)
             q_state = self._determine_state(consecutive_no_improve)
             (
                 destroy_operator,
@@ -319,9 +329,20 @@ class MatheuristicALNS(MinimalALNS):
                         best_cost = intensified_cost
                         best_route = intensified_route.copy()
                         self._segment_optimizer._ensure_schedule(best_route)
+                        is_new_best = True
+                        consecutive_no_improve = 0
                         self._log(
                             f"  ↳ Elite intensification improved cost to {best_cost:.2f}m"
                         )
+
+            if progress_callback is not None:
+                progress_callback(
+                    iteration,
+                    max_iterations,
+                    best_cost,
+                    "end",
+                    is_new_best,
+                )
 
             temperature *= self.cooling_rate
 
@@ -329,6 +350,9 @@ class MatheuristicALNS(MinimalALNS):
                 self._log(
                     f"  [进度] 已完成 {iteration+1}/{max_iterations} 次迭代, 当前最优: {best_cost:.2f}m"
                 )
+
+        if progress_callback is not None:
+            progress_callback(max_iterations, max_iterations, best_cost, "complete", False)
 
         self._log("\n算子使用统计:")
         self._log(

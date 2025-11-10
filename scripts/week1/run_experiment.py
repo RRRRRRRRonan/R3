@@ -18,7 +18,7 @@ import sys
 import time
 from dataclasses import replace
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Callable
 
 
 # Ensure the repository's ``src`` package and root directory are importable when
@@ -32,6 +32,58 @@ _SRC_ROOT = _REPO_ROOT / "src"
 for _path in (str(_REPO_ROOT), str(_SRC_ROOT)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
+
+
+class _NonVerboseProgressPrinter:
+    """Minimal progress reporter used when ``--verbose`` is not supplied."""
+
+    def __init__(self, scenario: str, seed: int) -> None:
+        self._scenario = scenario
+        self._seed = seed
+        self._iteration_start: Optional[float] = None
+
+    @property
+    def _prefix(self) -> str:
+        return f"[Week 1] {self._scenario} seed={self._seed}"
+
+    def __call__(
+        self,
+        iteration: int,
+        total: int,
+        best_cost: float,
+        event: str,
+        is_new_best: bool,
+    ) -> None:
+        now = time.time()
+        if event == "start":
+            self._iteration_start = now
+            print(
+                f"{self._prefix} starting iteration {iteration + 1}/{total}",
+                flush=True,
+            )
+            return
+
+        if event == "end":
+            elapsed = (
+                now - self._iteration_start
+                if self._iteration_start is not None
+                else 0.0
+            )
+            status = "new best" if is_new_best else "best so far"
+            print(
+                f"{self._prefix} iteration {iteration + 1}/{total} finished in "
+                f"{elapsed:.1f}s ({status}: {best_cost:.2f}m)",
+                flush=True,
+            )
+            return
+
+        if event == "complete":
+            print(
+                f"{self._prefix} completed {total} iterations; "
+                f"best cost {best_cost:.2f}m",
+                flush=True,
+            )
+            return
 
 from core.route import create_empty_route
 from planner.alns_matheuristic import MatheuristicALNS
@@ -140,6 +192,15 @@ def run_single_experiment(
 
     start_time = time.time()
 
+    progress_callback: Optional[Callable[[int, int, float, str, bool], None]] = None
+    progress_printer: Optional[_NonVerboseProgressPrinter] = None
+    if not verbose:
+        progress_printer = _NonVerboseProgressPrinter(
+            scenario=scenario_scale,
+            seed=seed,
+        )
+        progress_callback = progress_printer
+
     # Create ALNS with Q-learning
     alns = MatheuristicALNS(
         distance_matrix=scenario.distance,
@@ -184,7 +245,11 @@ def run_single_experiment(
         print(f"  Baseline cost: {baseline_cost:.2f}")
 
     # Optimize
-    optimised_route = alns.optimize(baseline, max_iterations=iterations)
+    optimised_route = alns.optimize(
+        baseline,
+        max_iterations=iterations,
+        progress_callback=progress_callback,
+    )
 
     if hasattr(alns, "_segment_optimizer"):
         alns._segment_optimizer._ensure_schedule(optimised_route)
