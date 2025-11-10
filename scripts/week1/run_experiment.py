@@ -276,6 +276,12 @@ def main():
 
     args = parser.parse_args()
 
+    if not args.verbose:
+        print(
+            f"[Week 1] Running scenario={args.scenario} seed={args.seed} "
+            f"→ {args.output}"
+        )
+
     # Run experiment
     results = run_single_experiment(
         scenario_scale=args.scenario,
@@ -294,6 +300,11 @@ def main():
 
     if args.verbose:
         print(f"\nResults saved to: {args.output}")
+    else:
+        print(
+            f"[Week 1] Completed scenario={args.scenario} seed={args.seed} "
+            f"(runtime: {results['runtime']:.1f}s)"
+        )
 
 
 if __name__ == "__main__":
