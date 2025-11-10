@@ -43,6 +43,7 @@ def run_single_experiment(
     init_strategy: str,
     seed: int,
     verbose: bool = False,
+    adapt_matheuristic: bool = True,
 ) -> Dict[str, Any]:
     """Run a single Q-learning experiment.
 
@@ -51,6 +52,10 @@ def run_single_experiment(
         init_strategy: Q-table initialization strategy
         seed: Random seed for reproducibility
         verbose: Whether to print progress
+        adapt_matheuristic: If ``True`` (default), allow the solver to expand
+            matheuristic hyper-parameters based on the detected scenario scale.
+            Set to ``False`` to keep the lightweight parameters defined in
+            this script for faster but potentially lower-quality runs.
 
     Returns:
         Dictionary containing experiment results
@@ -79,6 +84,8 @@ def run_single_experiment(
         print(f"  Init Strategy: {init_strategy}")
         print(f"  Seed: {seed}")
         print(f"  Iterations: {iterations}")
+        if not adapt_matheuristic:
+            print("  Matheuristic adaptation: disabled (lightweight tuning)")
 
     # Configure hyperparameters - optimized for faster execution
     tuned_hyper = replace(
@@ -130,7 +137,7 @@ def run_single_experiment(
         verbose=verbose,
         adaptation_mode="q_learning",
         hyper_params=tuned_hyper,
-        adapt_matheuristic_params=False,
+        adapt_matheuristic_params=adapt_matheuristic,
     )
 
     # CRITICAL: Inject initialization strategy into Q-agent
@@ -245,6 +252,13 @@ def main():
         action="store_true",
         help="Print progress information",
     )
+    parser.add_argument(
+        "--disable_matheuristic_adaptation",
+        action="store_true",
+        help="Keep the lightweight matheuristic hyper-parameters without "
+        "scale-based expansion (speeds up medium runs at the cost of "
+        "solution quality).",
+    )
 
     args = parser.parse_args()
 
@@ -254,6 +268,7 @@ def main():
         init_strategy=args.init_strategy,
         seed=args.seed,
         verbose=args.verbose,
+        adapt_matheuristic=not args.disable_matheuristic_adaptation,
     )
 
     # Save results
