@@ -91,7 +91,7 @@ def init_action_specific(
     """Strategy C: Action-specific initialization.
 
     Gives higher initial Q-values to matheuristic repair operators
-    (greedy_lp, segments) since they are known to be generally effective.
+    (lp) since they are known to be generally effective.
 
     Args:
         state: Current state label
@@ -100,7 +100,7 @@ def init_action_specific(
         actions: All possible actions
 
     Returns:
-        100.0 for matheuristic repairs, 50.0 for others
+        100.0 for matheuristic repairs (lp), 50.0 for others
 
     Theory:
         Incorporating domain knowledge by biasing towards known good
@@ -109,7 +109,8 @@ def init_action_specific(
     destroy_op, repair_op = action
 
     # Matheuristic repair operators get higher initial values
-    matheuristic_repairs = {"greedy_lp", "segments"}
+    # 'lp' uses LP solver for optimization (matheuristic component)
+    matheuristic_repairs = {"lp"}
 
     if repair_op in matheuristic_repairs:
         return 100.0
