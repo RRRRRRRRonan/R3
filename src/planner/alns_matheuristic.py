@@ -26,6 +26,7 @@ import random
 from dataclasses import dataclass, replace
 from typing import Callable, List, Optional, Sequence, Tuple
 
+from planner.epsilon_strategy import EpsilonStrategy
 from config import (
     ALNSHyperParameters,
     CostParameters,
@@ -67,6 +68,7 @@ class MatheuristicALNS(MinimalALNS):
         hyper_params: Optional[ALNSHyperParameters] = None,
         matheuristic_params: Optional[MatheuristicParams] = None,
         adapt_matheuristic_params: bool = True,
+        epsilon_strategy: Optional[EpsilonStrategy] = None,
         ) -> None:
         """Initialise the matheuristic ALNS solver.
 
@@ -89,6 +91,7 @@ class MatheuristicALNS(MinimalALNS):
             adaptation_mode=adaptation_mode,  # NEW: Pass through
             hyper_params=hyper_params,
             repair_operators=('greedy', 'regret2', 'random', 'lp'),
+            epsilon_strategy=epsilon_strategy,
         )
 
         if matheuristic_params is None:

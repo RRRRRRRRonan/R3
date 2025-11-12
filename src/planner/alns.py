@@ -21,6 +21,7 @@ from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
 from physics.time import TimeConfig
 from planner.operators import AdaptiveOperatorSelector
+from planner.epsilon_strategy import EpsilonStrategy
 from planner.q_learning import Action, QLearningOperatorAgent
 from config import (
     ALNSHyperParameters,
@@ -56,6 +57,7 @@ class MinimalALNS:
         hyper_params: Optional[ALNSHyperParameters] = None,
         repair_operators: Optional[Sequence[str]] = None,
         q_learning_initial_q: Optional[Dict[str, Dict[Action, float]]] = None,
+        epsilon_strategy: Optional[EpsilonStrategy] = None,
     ):
         """Initialise the ALNS planner with distance data and candidate tasks."""
         self.distance = distance_matrix
@@ -91,6 +93,7 @@ class MinimalALNS:
 
         normalised_initial_q = self._normalise_initial_q_values(q_learning_initial_q)
         self._user_provided_initial_q = normalised_initial_q
+        self._epsilon_strategy = epsilon_strategy
         if self._use_q_learning:
             initial_q_values = (
                 normalised_initial_q or self._default_q_learning_initial_q()
@@ -101,6 +104,7 @@ class MinimalALNS:
                 params=self._q_params,
                 initial_q_values=initial_q_values,
                 state_labels=self._q_state_labels,
+                epsilon_strategy=epsilon_strategy,
             )
             if not self._q_params.enable_online_updates:
                 self._q_agent.set_epsilon(self._q_params.epsilon_min)
