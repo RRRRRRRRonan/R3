@@ -132,7 +132,7 @@ def run_single_experiment(
     config = get_scale_config(scenario_scale)
     scenario = build_scenario(config)
     task_pool = scenario.create_task_pool()
-    num_requests = len(scenario.requests)
+    num_requests = len(scenario.tasks)  # Each task is a pickup-delivery pair
 
     # Create epsilon strategy
     try:
