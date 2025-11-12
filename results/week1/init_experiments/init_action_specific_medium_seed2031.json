@@ -6,39 +6,39 @@
   "baseline_cost": 43220.30835771936,
   "optimised_cost": 38626.90932251922,
   "improvement_ratio": 0.10627871965147001,
-  "runtime": 131.55605721473694,
+  "runtime": 161.77431297302246,
   "final_epsilon": 0.09624912695661164,
   "q_values": {
     "explore": {
-      "('partial_removal', 'regret2')": 311.93610839418255,
-      "('partial_removal', 'random')": 168.4284583287058,
-      "('random_removal', 'regret2')": 109.87599094948055,
-      "('random_removal', 'greedy')": 50.785235162136566,
+      "('partial_removal', 'lp')": 341.63573510057023,
+      "('partial_removal', 'random')": 179.04853786220204,
+      "('random_removal', 'regret2')": 121.538050180219,
+      "('random_removal', 'lp')": 93.25804548150752,
+      "('random_removal', 'greedy')": 65.19567454261414,
       "('random_removal', 'random')": 50.0,
       "('partial_removal', 'greedy')": 50.0,
-      "('partial_removal', 'lp')": 50.0,
-      "('random_removal', 'lp')": 45.780855601254714
+      "('partial_removal', 'regret2')": 50.0
     },
     "stuck": {
-      "('partial_removal', 'regret2')": 68.40465222613864,
-      "('random_removal', 'greedy')": 50.0,
-      "('random_removal', 'regret2')": 50.0,
-      "('random_removal', 'random')": 50.0,
-      "('random_removal', 'lp')": 50.0,
-      "('partial_removal', 'greedy')": 50.0,
-      "('partial_removal', 'random')": 50.0,
-      "('partial_removal', 'lp')": 50.0
-    },
-    "deep_stuck": {
-      "('partial_removal', 'lp')": 50.083051694127676,
+      "('partial_removal', 'lp')": 99.37452668120012,
       "('random_removal', 'greedy')": 50.0,
       "('random_removal', 'regret2')": 50.0,
       "('random_removal', 'random')": 50.0,
       "('partial_removal', 'greedy')": 50.0,
       "('partial_removal', 'regret2')": 50.0,
       "('partial_removal', 'random')": 50.0,
-      "('random_removal', 'lp')": -378.3512077918656
+      "('random_removal', 'lp')": -6.812264738444441
+    },
+    "deep_stuck": {
+      "('partial_removal', 'lp')": 95.95481277653971,
+      "('random_removal', 'greedy')": 50.0,
+      "('random_removal', 'regret2')": 50.0,
+      "('random_removal', 'random')": 50.0,
+      "('partial_removal', 'greedy')": 50.0,
+      "('partial_removal', 'regret2')": 50.0,
+      "('partial_removal', 'random')": 50.0,
+      "('random_removal', 'lp')": -329.38892908065725
     }
   },
-  "experiment_timestamp": "2025-11-11 13:12:48"
+  "experiment_timestamp": "2025-11-12 12:31:31"
 }

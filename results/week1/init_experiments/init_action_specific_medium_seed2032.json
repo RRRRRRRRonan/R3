@@ -6,39 +6,39 @@
   "baseline_cost": 43220.30835771936,
   "optimised_cost": 38626.90932251922,
   "improvement_ratio": 0.10627871965147001,
-  "runtime": 521.1445791721344,
+  "runtime": 533.6212856769562,
   "final_epsilon": 0.09624912695661164,
   "q_values": {
     "explore": {
-      "('partial_removal', 'lp')": 290.9428072578402,
-      "('random_removal', 'random')": 136.58662044841316,
-      "('random_removal', 'greedy')": 122.04223316404926,
+      "('partial_removal', 'lp')": 330.090514777937,
+      "('random_removal', 'random')": 149.78675762542093,
+      "('random_removal', 'greedy')": 136.19135410642622,
+      "('random_removal', 'lp')": 100.0,
       "('random_removal', 'regret2')": 50.0,
-      "('random_removal', 'lp')": 50.0,
       "('partial_removal', 'greedy')": 50.0,
       "('partial_removal', 'regret2')": 50.0,
       "('partial_removal', 'random')": 50.0
     },
     "stuck": {
-      "('partial_removal', 'greedy')": 65.46756846067105,
-      "('partial_removal', 'lp')": 57.43965442298758,
+      "('partial_removal', 'lp')": 99.61728937627444,
       "('random_removal', 'greedy')": 50.0,
       "('random_removal', 'random')": 50.0,
-      "('random_removal', 'lp')": 50.0,
+      "('partial_removal', 'greedy')": 50.0,
       "('partial_removal', 'regret2')": 50.0,
       "('partial_removal', 'random')": 50.0,
-      "('random_removal', 'regret2')": -37.26236760018749
+      "('random_removal', 'lp')": 0.6537644948318047,
+      "('random_removal', 'regret2')": -27.304381940273046
     },
     "deep_stuck": {
+      "('partial_removal', 'lp')": 92.73696540368633,
       "('random_removal', 'greedy')": 50.0,
       "('random_removal', 'regret2')": 50.0,
       "('random_removal', 'random')": 50.0,
       "('partial_removal', 'greedy')": 50.0,
       "('partial_removal', 'regret2')": 50.0,
       "('partial_removal', 'random')": 50.0,
-      "('partial_removal', 'lp')": 49.45527722699831,
-      "('random_removal', 'lp')": -392.4718200061911
+      "('random_removal', 'lp')": -345.20086700357615
     }
   },
-  "experiment_timestamp": "2025-11-11 13:10:43"
+  "experiment_timestamp": "2025-11-12 09:08:01"
 }

@@ -4,30 +4,30 @@
   "seed": 2028,
   "iterations": 40,
   "baseline_cost": 48349.40944584828,
-  "optimised_cost": 31393.914254416268,
-  "improvement_ratio": 0.3506867071545579,
-  "runtime": 161.25313115119934,
+  "optimised_cost": 29263.995779549987,
+  "improvement_ratio": 0.39473933363496627,
+  "runtime": 171.72292947769165,
   "final_epsilon": 0.0981984145227209,
   "q_values": {
     "explore": {
-      "('random_removal', 'regret2')": 50.0,
-      "('partial_removal', 'random')": 46.38978743075051,
-      "('random_removal', 'greedy')": 39.44651676947661,
-      "('partial_removal', 'regret2')": 34.425,
-      "('random_removal', 'random')": 19.103920941845566,
-      "('partial_removal', 'greedy')": -200.94317224712296,
-      "('random_removal', 'lp')": -240.10616541699065,
-      "('partial_removal', 'lp')": -243.67055150154005
+      "('random_removal', 'greedy')": 69.16971148399927,
+      "('partial_removal', 'greedy')": 50.0,
+      "('partial_removal', 'regret2')": 50.0,
+      "('partial_removal', 'random')": 50.0,
+      "('random_removal', 'random')": 34.425,
+      "('random_removal', 'regret2')": -6.323392936493441,
+      "('partial_removal', 'lp')": -90.47067507270549,
+      "('random_removal', 'lp')": -209.45031651439817
     },
     "stuck": {
-      "('random_removal', 'random')": 50.0,
-      "('partial_removal', 'random')": 37.16177064657272,
-      "('random_removal', 'regret2')": 28.01166749716224,
-      "('random_removal', 'lp')": -13.254706878550643,
-      "('random_removal', 'greedy')": -16.741350276553874,
-      "('partial_removal', 'greedy')": -234.7090907700345,
-      "('partial_removal', 'regret2')": -242.61537843314073,
-      "('partial_removal', 'lp')": -242.9693427268093
+      "('partial_removal', 'regret2')": 69.25,
+      "('random_removal', 'regret2')": 50.0,
+      "('random_removal', 'lp')": 29.60589844390334,
+      "('random_removal', 'greedy')": 26.507702640350118,
+      "('partial_removal', 'random')": 24.30125,
+      "('partial_removal', 'lp')": -219.58023589984379,
+      "('partial_removal', 'greedy')": -262.15526649072166,
+      "('random_removal', 'random')": -291.0245312921507
     },
     "deep_stuck": {
       "('random_removal', 'greedy')": 50.0,
@@ -36,9 +36,9 @@
       "('partial_removal', 'greedy')": 50.0,
       "('partial_removal', 'regret2')": 50.0,
       "('partial_removal', 'random')": 50.0,
-      "('random_removal', 'lp')": -163.41053808158816,
-      "('partial_removal', 'lp')": -373.2128182050822
+      "('partial_removal', 'lp')": -261.5209446691471,
+      "('random_removal', 'lp')": -610.9252269316833
     }
   },
-  "experiment_timestamp": "2025-11-10 21:16:05"
+  "experiment_timestamp": "2025-11-12 00:20:29"
 }
