@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from config import QLearningParams
+from planner.epsilon_strategy import EpsilonStrategy
 from planner.q_learning_init import QInitStrategy, initialize_q_table
 
 
@@ -36,6 +37,7 @@ class QLearningOperatorAgent:
         initial_q_values: Optional[Dict[State, Dict[Action, float]]] = None,
         state_labels: Optional[Sequence[State]] = None,
         init_strategy: QInitStrategy = QInitStrategy.ZERO,
+        epsilon_strategy: Optional[EpsilonStrategy] = None,
     ) -> None:
         """Initialize Q-learning agent with configurable initialization strategy.
 
@@ -46,6 +48,7 @@ class QLearningOperatorAgent:
             initial_q_values: Optional pre-defined Q-values (overrides init_strategy)
             state_labels: Optional custom state labels
             init_strategy: Q-table initialization strategy (default: ZERO)
+            epsilon_strategy: Optional epsilon strategy (default: use params.initial_epsilon)
         """
         self.params = params
         self.destroy_operators: List[str] = list(destroy_operators)
@@ -94,7 +97,16 @@ class QLearningOperatorAgent:
                 strategy=init_strategy,
             )
 
-        self._epsilon = params.initial_epsilon
+        # Initialize epsilon (use strategy if provided, otherwise use params)
+        self.epsilon_strategy = epsilon_strategy
+        if epsilon_strategy:
+            self._epsilon = epsilon_strategy.initial_epsilon
+            self._epsilon_decay = epsilon_strategy.decay_rate
+            self._epsilon_min = epsilon_strategy.min_epsilon
+        else:
+            self._epsilon = params.initial_epsilon
+            self._epsilon_decay = params.epsilon_decay
+            self._epsilon_min = 0.01  # Default min
         self._action_usage: Dict[Action, int] = defaultdict(int)
         self._experience_buffer: List[Tuple[State, Action, float, State]] = []
 
@@ -143,9 +155,9 @@ class QLearningOperatorAgent:
     def decay_epsilon(self) -> None:
         """Decay the exploration rate after each iteration."""
 
-        if self._epsilon > self.params.epsilon_min:
+        if self._epsilon > self._epsilon_min:
             self._epsilon = max(
-                self.params.epsilon_min, self._epsilon * self.params.epsilon_decay
+                self._epsilon_min, self._epsilon * self._epsilon_decay
             )
 
     def set_epsilon(self, value: float) -> None:

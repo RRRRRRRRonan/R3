@@ -1726,3 +1726,374 @@ The combination of scale-aware adaptations and dynamic capabilities positions th
 **Document Version:** 1.0
 **Last Updated:** 2025-11-09
 **Status:** Ready for Implementation
+
+---
+
+# Option A Timeline Adjustment (Updated 2025-11-12)
+
+**Based on Week 1 Experimental Results**
+
+## Week 1 Results Summary
+
+**Completion Date**: 2025-11-12
+**Key Finding**: Q-table initialization has minimal impact on performance (|Cohen's d| < 0.2), except for ACTION_SPECIFIC which significantly **degraded** performance on medium/large scales.
+
+**Detailed Results**:
+
+| Strategy | Small | Medium | Large | Significance |
+|----------|-------|--------|-------|--------------|
+| ZERO (baseline) | 37.70% ± 6.32% | 31.46% ± 18.04% | 25.46% ± 15.14% | - |
+| UNIFORM | 37.72% ± 6.37% | 30.12% ± 17.53% | 24.35% ± 13.36% | ns |
+| ACTION_SPECIFIC | 37.91% ± 15.74% | **23.19% ± 16.40%** | **19.45% ± 11.10%** | **p<0.10, p<0.05** |
+| STATE_SPECIFIC | 38.58% ± 6.30% | 29.36% ± 17.09% | 24.43% ± 13.42% | ns |
+
+**Critical Insight**: Domain knowledge bias (LP operators at 100.0 initial Q-value) caused harmful over-exploration of expensive operators, reducing effective iteration budget.
+
+**Recommendation**: Use ZERO initialization (simplest, most robust). Q-table initialization is NOT a primary lever for scale-dependent performance.
+
+**Full Report**: `docs/experiments/WEEK1_RESULTS.md`
+
+---
+
+## Revised Option A Timeline
+
+**Rationale**: Week 1 demonstrated that Q-table initialization is not the bottleneck. We pivot to testing more impactful components first (epsilon, then reward normalization).
+
+### Phase 1: Quick Exploration Tests (Weeks 2-5)
+
+#### **Week 2: Adaptive Epsilon Strategy** ✅ In Progress (2025-11-12)
+
+**Duration**: 2-3 days  
+**Status**: Design complete, implementation in progress
+
+**Objective**: Test if higher exploration rates improve large-scale performance
+
+**Experiment Design**:
+- 3 epsilon strategies: CURRENT (0.12), SCALE_ADAPTIVE (0.30/0.50/0.70), HIGH_UNIFORM (0.50)
+- 3 scales × 10 seeds × 3 strategies = 90 experiments
+- Quick turnaround for decision making
+
+**Success Criteria**:
+- Large-scale improvement ≥ 5% (25% → 30%+)
+- Statistical significance: p < 0.05, |Cohen's d| > 0.3
+- No degradation on small/medium scales
+
+**Decision Tree**:
+```
+If SCALE_ADAPTIVE improves large by ≥5%:
+  ✅ Adopt for all future experiments
+  ✅ Proceed to Week 5 (Reward Normalization)
+
+Else:
+  ❌ Epsilon not the bottleneck
+  ❌ Skip directly to Week 5
+```
+
+**Deliverables**:
+- `src/planner/epsilon_strategy.py` ✅ Complete
+- Modified `src/planner/q_learning.py` ✅ Complete
+- `docs/experiments/WEEK2_TEST_PLAN.md` ✅ Complete
+- `docs/experiments/WEEK2_RESULTS.md` (pending)
+
+---
+
+#### **Week 5: Scale-Aware Reward Normalization** (PRIORITY)
+
+**Duration**: 5-7 days  
+**Status**: Planned (conditional on Week 2 results)
+
+**Objective**: Address reward magnitude variance across problem scales
+
+**Why This is Critical**:
+1. Current reward function uses absolute improvements (not normalized)
+2. Different scales have different cost magnitudes (35k vs 52k)
+3. Q-learning struggles with non-stationary reward distributions
+
+**Implementation**:
+```python
+# Current (problematic)
+reward = improvement / baseline_cost * roi_scale  # Scale-dependent
+
+# Proposed (normalized)
+reward = (improvement / previous_cost) * scale_factor[scale] * roi_scale
+       + base_reward[event_type] * scale_factor[scale]
+       - time_penalty * scale_penalty[scale]
+```
+
+**Scale Factors**:
+- Small: 1.0 (baseline)
+- Medium: 1.2 (modest boost)
+- Large: 1.5 (significant boost)
+
+**Experiment Design**:
+- Compare OLD_REWARD vs. NEW_REWARD (scale-aware)
+- 3 scales × 10 seeds × 2 reward types = 60 experiments
+- Use best epsilon strategy from Week 2
+
+**Success Criteria**:
+- Large-scale improvement ≥ 8% (25% → 33%+)
+- Reward variance reduction ≥ 50% across scales
+- Convergence speed improvement (Q-values stabilize faster)
+
+**Deliverables**:
+- `src/planner/scale_aware_reward.py`
+- Modified `src/planner/alns.py:623-696`
+- `docs/experiments/WEEK5_RESULTS.md`
+- A/B test comparison report
+
+---
+
+#### **Week 6: Combined Ablation Study**
+
+**Duration**: 3-4 days
+
+**Objective**: Test best epsilon + best reward normalization together
+
+**Experiment Matrix**:
+- 4 configurations:
+  1. Baseline (current epsilon + old reward)
+  2. Best epsilon + old reward
+  3. Current epsilon + new reward
+  4. Best epsilon + new reward (full SAQL)
+- 3 scales × 10 seeds × 4 configs = 120 experiments
+
+**Analysis**:
+- ANOVA to identify component contributions
+- Interaction effects between epsilon and reward
+- Final configuration recommendation
+
+---
+
+### Phase 2: Conditional Extensions (Weeks 3-4 or 7+)
+
+#### **Week 3-4: Seven-State MDP (Conditional)**
+
+**Trigger Condition**: Week 5 (reward normalization) shows ≥8% improvement on large scale
+
+**If Yes**: 7-state MDP may provide additional benefit
+- Implement as originally planned
+- Test 7-state + best epsilon + scale-aware reward
+- Expected additional gain: 2-3%
+
+**If No**: Skip 7-state MDP
+- Problem: If reward normalization doesn't work, finer state space won't help
+- Alternative: Pivot to Phase 3 (Dynamic E-VRP) or reconsider fundamental approach
+
+---
+
+### Phase 3: Dynamic E-VRP (Weeks 8-13)
+
+**No change from original plan** - remains as-is
+
+---
+
+### Phase 4: Experiments & Paper (Weeks 14-21)
+
+**Adjusted Timeline**:
+
+**Week 14-15: Benchmark Experiments**
+- Focus on best configuration from Weeks 2-6
+- Compare against MatheuristicALNS (strong baseline)
+- 56 Schneider instances (if time permits)
+
+**Week 16: Ablation Study Write-Up**
+- Document contribution of each component
+- Week 1: Q-init (minimal impact)
+- Week 2: Epsilon (TBD)
+- Week 5: Reward norm (expected primary contribution)
+- Week 3-4: 7-state (conditional)
+
+**Week 17: Paper Writing (Experiments Section)**
+
+**Weeks 18-21: Revision & Submission** (unchanged)
+
+---
+
+## Decision Points & Contingencies
+
+### Checkpoint 1: After Week 2 (Day 3)
+**Question**: Did adaptive epsilon improve large-scale performance?
+
+**If Yes (≥5% improvement)**:
+- ✅ Adopt SCALE_ADAPTIVE epsilon
+- ✅ Proceed to Week 5 (reward normalization)
+- ✅ Timeline on track
+
+**If No (<5% improvement)**:
+- ❌ Epsilon not the bottleneck
+- ⚡ Skip directly to Week 5 (saves 0 days, but confirms hypothesis)
+- 📝 Document negative result for paper (ablation study)
+
+---
+
+### Checkpoint 2: After Week 5 (Day 7)
+**Question**: Did scale-aware reward normalization work?
+
+**If Yes (≥8% improvement on large)**:
+- ✅ Major breakthrough! Core SAQL contribution validated
+- ✅ Consider Week 3-4 (7-state MDP) for additional 2-3%
+- ✅ Full steam ahead to Phase 3 (Dynamic E-VRP)
+
+**If Partial (3-7% improvement)**:
+- ⚠️ Modest success, but not breakthrough
+- ⚠️ Skip 7-state MDP (diminishing returns)
+- ⚠️ Focus on Dynamic E-VRP (different contribution angle)
+
+**If No (<3% improvement)**:
+- ❌ Major setback: Scale-aware adaptations ineffective
+- ❌ Fundamental reevaluation required
+- ❌ Options:
+  1. Pivot to pure Dynamic E-VRP contribution (anytime SAQL)
+  2. Explore deep Q-learning (neural networks)
+  3. Consider alternative operator selection (UCB, Thompson sampling)
+  4. Reduce scope to anytime optimization + transfer learning
+
+---
+
+### Checkpoint 3: After Week 6 (Day 4)
+**Question**: Do epsilon and reward normalization have interaction effects?
+
+**Analyze**:
+- ANOVA results for component contributions
+- Best individual vs. combined configurations
+- Trade-offs (e.g., high epsilon + scale reward may over-explore)
+
+**Decision**:
+- Lock in final SAQL configuration for Phases 3-4
+- Update paper outline based on validated components
+
+---
+
+## Updated Success Metrics
+
+### Minimal Success (Acceptable for Publication)
+- Large-scale improvement: ≥5% over baseline (25% → 30%+)
+- At least ONE component (epsilon OR reward) shows clear benefit
+- Comprehensive ablation study with negative results documented
+- Dynamic E-VRP contribution (anytime + transfer learning)
+
+### Target Success (Strong Publication)
+- Large-scale improvement: ≥10% over baseline (25% → 35%+)
+- BOTH epsilon AND reward normalization contribute significantly
+- 7-state MDP adds incremental benefit
+- Dynamic E-VRP with sub-second response times
+
+### Stretch Success (Top-Tier Publication)
+- Large-scale improvement: ≥15% over baseline (25% → 40%+)
+- All SAQL components validated
+- Competitive with or exceeding Matheuristic ALNS on all scales
+- Dynamic E-VRP with transfer learning shows 20%+ speedup
+
+---
+
+## Resource Allocation
+
+**Total Time Budget**: 840 hours (21 weeks × 40 hours)
+
+**Revised Allocation**:
+- Week 1: ✅ Complete (80 hours)
+- Week 2: 16 hours (2 days × 8 hours)
+- Week 5: 48 hours (6 days × 8 hours)
+- Week 6: 32 hours (4 days × 8 hours)
+- Week 3-4: 56 hours (conditional, 7 days × 8 hours)
+- Weeks 8-21: 608 hours (unchanged from original plan)
+
+**Savings**: If Week 3-4 skipped, +56 hours for Phase 3 or Phase 4
+
+---
+
+## Risk Assessment
+
+### Risk 1: Week 2 Shows No Improvement
+**Probability**: Medium (40%)  
+**Impact**: Low (quick experiment, negative result informative)  
+**Mitigation**: Proceed directly to Week 5, document finding
+
+### Risk 2: Week 5 Shows No Improvement
+**Probability**: Medium-Low (30%)  
+**Impact**: High (core SAQL contribution at risk)  
+**Mitigation**: 
+- Checkpoint 2 decision tree activated
+- Pivot to Dynamic E-VRP as primary contribution
+- Consider fundamental approach change
+
+### Risk 3: Combined Effect Worse Than Individual
+**Probability**: Low (15%)  
+**Impact**: Medium (complicates narrative)  
+**Mitigation**:
+- Use best individual configuration
+- Document interaction effects honestly
+- Frame as "careful tuning required" (practical insight)
+
+### Risk 4: Timeline Slippage
+**Probability**: Medium (35%)  
+**Impact**: Medium (delays paper writing)  
+**Mitigation**:
+- Week 2 is quick (2-3 days), low risk
+- Week 5 checkpoint: if stuck, skip Week 3-4
+- Parallel execution of experiments (3 processes)
+
+---
+
+## Communication Plan
+
+**Weekly Updates**: End of each week
+- Progress against timeline
+- Key findings and decisions
+- Blockers and mitigation plans
+
+**Checkpoint Reviews**: After Weeks 2, 5, 6
+- Formal go/no-go decisions
+- Timeline adjustments
+- Resource reallocation if needed
+
+**Documentation**:
+- All experimental designs in `docs/experiments/WEEKN_TEST_PLAN.md`
+- All results in `docs/experiments/WEEKN_RESULTS.md`
+- Decision rationale in this document (append as we go)
+
+---
+
+## Next Immediate Actions (2025-11-12)
+
+**Today**:
+1. ✅ Complete Week 2 code implementation
+   - `src/planner/epsilon_strategy.py` ✅ Done
+   - Modified `src/planner/q_learning.py` ✅ Done
+   - Modify `src/planner/alns_matheuristic.py` (pass epsilon_strategy)
+2. ✅ Create Week 2 experiment scripts
+   - `scripts/week2/run_experiment.py`
+   - Batch scripts for 3 strategies
+3. ✅ Commit and push Week 2 code
+
+**Tomorrow** (2025-11-13):
+1. Test single Week 2 experiment (verify epsilon values)
+2. Run all 90 experiments (6-8 hours)
+3. Quick spot-check results
+
+**Day After** (2025-11-14):
+1. Run `analyze_epsilon.py` statistical analysis
+2. Create `WEEK2_RESULTS.md`
+3. Make Checkpoint 1 decision
+4. If approved, begin Week 5 design
+
+---
+
+## Summary
+
+**Option A Philosophy**: Test quickly, decide fast, pivot if needed.
+
+**Key Changes from Original Plan**:
+1. **Week 2 prioritized**: Quick epsilon test (2-3 days)
+2. **Week 5 elevated**: Reward normalization is likely the key (priority)
+3. **Week 3-4 conditional**: Only if Week 5 succeeds
+4. **Checkpoints added**: Clear decision gates to avoid wasted effort
+
+**Expected Outcome**: By end of Week 6, we'll know if SAQL is viable. If yes, continue as planned. If no, pivot to Dynamic E-VRP or other contributions.
+
+---
+
+**Option A Status**: ✅ Active  
+**Last Updated**: 2025-11-12  
+**Next Review**: After Week 2 (Checkpoint 1)
+
