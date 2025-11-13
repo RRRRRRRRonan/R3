@@ -166,7 +166,8 @@ def analyze_experiments():
     for scale in ["small", "medium", "large"]:
         print(f"\n{scale.upper()} Scenario:")
         print("-" * 80)
-        print(f"{'Strategy':<20} {'Mean Δ':<15} {'Wilcoxon':<20} {'Cohen\\'s d':<15} {'Effect':<10}")
+        cohens_d_header = "Cohen's d"
+        print(f"{'Strategy':<20} {'Mean Δ':<15} {'Wilcoxon':<20} {cohens_d_header:<15} {'Effect':<10}")
         print("-" * 80)
 
         baseline_values = data[baseline_strategy][scale]
