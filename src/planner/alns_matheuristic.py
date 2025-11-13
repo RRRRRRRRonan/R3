@@ -69,6 +69,7 @@ class MatheuristicALNS(MinimalALNS):
         matheuristic_params: Optional[MatheuristicParams] = None,
         adapt_matheuristic_params: bool = True,
         epsilon_strategy: Optional[EpsilonStrategy] = None,
+        use_scale_aware_reward: bool = False,
         ) -> None:
         """Initialise the matheuristic ALNS solver.
 
@@ -92,6 +93,7 @@ class MatheuristicALNS(MinimalALNS):
             hyper_params=hyper_params,
             repair_operators=('greedy', 'regret2', 'random', 'lp'),
             epsilon_strategy=epsilon_strategy,
+            use_scale_aware_reward=use_scale_aware_reward,
         )
 
         if matheuristic_params is None:
