@@ -70,6 +70,52 @@ def test_matheuristic_alns_populates_elite_pool_and_improves_cost():
     assert len(alns._elite_pool) > 0
 
 
+def test_matheuristic_optimize_emits_progress_events():
+    """A progress callback should receive start/end/complete notifications."""
+
+    scenario = build_scenario(
+        ScenarioConfig.from_defaults(
+            DEFAULT_OPTIMIZATION_SCENARIO,
+            num_tasks=5,
+            num_charging=2,
+            seed=7,
+        )
+    )
+    task_pool = scenario.create_task_pool()
+
+    alns = MatheuristicALNS(
+        distance_matrix=scenario.distance,
+        task_pool=task_pool,
+        repair_mode="adaptive",
+        cost_params=CostParameters(),
+        charging_strategy=None,
+        use_adaptive=True,
+        verbose=False,
+    )
+    alns.vehicle = deepcopy(scenario.vehicles[0])
+    alns.energy_config = deepcopy(scenario.energy)
+
+    baseline = alns.greedy_insertion(
+        create_empty_route(vehicle_id=1, depot_node=scenario.depot),
+        [task.task_id for task in scenario.tasks],
+    )
+
+    events = []
+
+    def progress(iteration, total, best_cost, event, is_new_best):
+        events.append((event, iteration, is_new_best, best_cost))
+
+    iterations = 3
+    alns.optimize(baseline, max_iterations=iterations, progress_callback=progress)
+
+    starts = [event for event in events if event[0] == "start"]
+    ends = [event for event in events if event[0] == "end"]
+
+    assert len(starts) == iterations
+    assert len(ends) == iterations
+    assert events[-1][0] == "complete"
+
+
 def test_lp_repair_operator_improves_weighted_tardiness():
     """The LP-based repair should not regress compared to regret-2 insertion."""
 
