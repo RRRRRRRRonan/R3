@@ -1,0 +1,57 @@
+{
+  "scenario_scale": "small",
+  "num_requests": 15,
+  "reward_type": "old",
+  "seed": 2026,
+  "baseline_cost": 48349.40944584828,
+  "final_cost": 29961.37664285558,
+  "improvement_ratio": 38.03155615289871,
+  "iterations_to_best": 0,
+  "total_iterations": 40,
+  "elapsed_time": 110.47748494148254,
+  "anytime_costs": {},
+  "q_diagnostics": {
+    "final_q_values": {
+      "explore": {
+        "('random_removal', 'greedy')": 75.01377982563804,
+        "('random_removal', 'regret2')": -7.8775625,
+        "('random_removal', 'random')": 10.0,
+        "('random_removal', 'lp')": 10.0,
+        "('partial_removal', 'greedy')": 34.228581976615416,
+        "('partial_removal', 'regret2')": 13.530987031249998,
+        "('partial_removal', 'random')": 10.0,
+        "('partial_removal', 'lp')": 10.0
+      },
+      "stuck": {
+        "('random_removal', 'greedy')": 74.85096666819227,
+        "('random_removal', 'regret2')": 10.0,
+        "('random_removal', 'random')": 10.0,
+        "('random_removal', 'lp')": 10.0,
+        "('partial_removal', 'greedy')": 67.47858197661542,
+        "('partial_removal', 'regret2')": 10.0,
+        "('partial_removal', 'random')": 10.0,
+        "('partial_removal', 'lp')": 10.0
+      },
+      "deep_stuck": {
+        "('random_removal', 'greedy')": 10.0,
+        "('random_removal', 'regret2')": 10.0,
+        "('random_removal', 'random')": 10.0,
+        "('random_removal', 'lp')": -6.697748072440246,
+        "('partial_removal', 'greedy')": 10.0,
+        "('partial_removal', 'regret2')": 10.0,
+        "('partial_removal', 'random')": 10.0,
+        "('partial_removal', 'lp')": -10.948090624999999
+      }
+    },
+    "operator_counts": {
+      "('random_removal', 'regret2')": 2,
+      "('random_removal', 'greedy')": 28,
+      "('partial_removal', 'regret2')": 1,
+      "('partial_removal', 'lp')": 4,
+      "('random_removal', 'lp')": 3,
+      "('partial_removal', 'greedy')": 2
+    },
+    "final_epsilon": 0.34582447689253254
+  },
+  "scale_info": null
+}

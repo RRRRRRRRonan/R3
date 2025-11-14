@@ -1,0 +1,59 @@
+{
+  "scenario_scale": "small",
+  "num_requests": 15,
+  "reward_type": "old",
+  "seed": 2030,
+  "baseline_cost": 48349.40944584828,
+  "final_cost": 32202.651900532175,
+  "improvement_ratio": 33.39597676658409,
+  "iterations_to_best": 0,
+  "total_iterations": 40,
+  "elapsed_time": 86.66299176216125,
+  "anytime_costs": {},
+  "q_diagnostics": {
+    "final_q_values": {
+      "explore": {
+        "('random_removal', 'greedy')": 8.075,
+        "('random_removal', 'regret2')": 63.218251626078775,
+        "('random_removal', 'random')": 10.0,
+        "('random_removal', 'lp')": -10.67625,
+        "('partial_removal', 'greedy')": 43.300477656249996,
+        "('partial_removal', 'regret2')": 8.436756165671191,
+        "('partial_removal', 'random')": -9.424999999999997,
+        "('partial_removal', 'lp')": 5.027735566497714
+      },
+      "stuck": {
+        "('random_removal', 'greedy')": 10.0,
+        "('random_removal', 'regret2')": 64.75008118288378,
+        "('random_removal', 'random')": -9.424999999999997,
+        "('random_removal', 'lp')": 10.0,
+        "('partial_removal', 'greedy')": 106.39537702656364,
+        "('partial_removal', 'regret2')": 10.0,
+        "('partial_removal', 'random')": 10.0,
+        "('partial_removal', 'lp')": 25.644203599484584
+      },
+      "deep_stuck": {
+        "('random_removal', 'greedy')": 10.0,
+        "('random_removal', 'regret2')": 10.0,
+        "('random_removal', 'random')": 10.0,
+        "('random_removal', 'lp')": 10.0,
+        "('partial_removal', 'greedy')": 10.0,
+        "('partial_removal', 'regret2')": 10.0,
+        "('partial_removal', 'random')": 10.0,
+        "('partial_removal', 'lp')": 10.0
+      }
+    },
+    "operator_counts": {
+      "('partial_removal', 'regret2')": 3,
+      "('random_removal', 'lp')": 2,
+      "('partial_removal', 'random')": 1,
+      "('partial_removal', 'lp')": 4,
+      "('partial_removal', 'greedy')": 6,
+      "('random_removal', 'random')": 1,
+      "('random_removal', 'regret2')": 22,
+      "('random_removal', 'greedy')": 1
+    },
+    "final_epsilon": 0.34582447689253254
+  },
+  "scale_info": null
+}

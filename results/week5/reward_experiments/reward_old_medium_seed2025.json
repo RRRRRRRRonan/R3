@@ -1,0 +1,57 @@
+{
+  "scenario_scale": "medium",
+  "num_requests": 24,
+  "reward_type": "old",
+  "seed": 2025,
+  "baseline_cost": 43220.30835771936,
+  "final_cost": 36942.61253653795,
+  "improvement_ratio": 14.524875133289475,
+  "iterations_to_best": 0,
+  "total_iterations": 44,
+  "elapsed_time": 982.7003955841064,
+  "anytime_costs": {},
+  "q_diagnostics": {
+    "final_q_values": {
+      "explore": {
+        "('random_removal', 'greedy')": 144.2540152867675,
+        "('random_removal', 'regret2')": 10.0,
+        "('random_removal', 'random')": 59.32790989143464,
+        "('random_removal', 'lp')": 64.22306052251628,
+        "('partial_removal', 'greedy')": 160.06844494393548,
+        "('partial_removal', 'regret2')": 140.41213613829837,
+        "('partial_removal', 'random')": 10.0,
+        "('partial_removal', 'lp')": 344.4888080318979
+      },
+      "stuck": {
+        "('random_removal', 'greedy')": 10.0,
+        "('random_removal', 'regret2')": 10.0,
+        "('random_removal', 'random')": 10.0,
+        "('random_removal', 'lp')": 10.0,
+        "('partial_removal', 'greedy')": 10.0,
+        "('partial_removal', 'regret2')": 14.592816648437498,
+        "('partial_removal', 'random')": 10.0,
+        "('partial_removal', 'lp')": 10.0
+      },
+      "deep_stuck": {
+        "('random_removal', 'greedy')": 10.0,
+        "('random_removal', 'regret2')": 10.0,
+        "('random_removal', 'random')": 10.0,
+        "('random_removal', 'lp')": -22.051249999999996,
+        "('partial_removal', 'greedy')": 10.0,
+        "('partial_removal', 'regret2')": 10.0,
+        "('partial_removal', 'random')": 10.0,
+        "('partial_removal', 'lp')": 4.575
+      }
+    },
+    "operator_counts": {
+      "('partial_removal', 'lp')": 28,
+      "('random_removal', 'greedy')": 2,
+      "('random_removal', 'lp')": 4,
+      "('random_removal', 'random')": 2,
+      "('partial_removal', 'regret2')": 7,
+      "('partial_removal', 'greedy')": 1
+    },
+    "final_epsilon": 0.34540967422813285
+  },
+  "scale_info": null
+}
