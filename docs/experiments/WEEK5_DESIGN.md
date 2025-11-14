@@ -1719,10 +1719,118 @@ Week 5 is the **pivotal experiment** in the SAQL research plan. The scale-aware 
 
 ---
 
-**Document Status**: ✅ Complete
-**Ready for Implementation**: ✅ Yes
+**Document Status**: ⚠️ Revised to MVP
+**Ready for Implementation**: ✅ Yes (MVP version)
 **Estimated Implementation Start**: 2025-11-13
 **Estimated Completion**: 2025-11-19
+
+---
+
+## IMPLEMENTATION UPDATE (2025-11-14): MVP Simplification
+
+### Background
+
+During initial experimental runs (seeds 2026, 2027), we discovered that the NEW (scale-aware) reward function produced **highly unstable results**:
+
+- seed 2026: NEW 88.88% vs OLD 70.40% (NEW better +18%)
+- seed 2027: NEW 38.24% vs OLD 88.41% (OLD better +50%)
+
+This ±50% variance is **unacceptable** and contradicts the design expectation that small-scale performance should be similar (±2%).
+
+### Root Cause Analysis
+
+We identified **two critical design flaws** in the original implementation:
+
+#### Flaw 1: Convergence Bonus Pollution
+
+```python
+# Original implementation (FLAWED)
+convergence_bonus = 20.0  # Given for ANY improvement > 0
+```
+
+**Problem**: This bonus was given **unconditionally** whenever there was any improvement, even 0.01. This polluted the Q-learning reward signal, making Q-learning unable to distinguish good vs. bad operators.
+
+#### Flaw 2: Previous-cost Normalization Instability
+
+```python
+# Original implementation (FLAWED)
+relative_improvement = improvement / previous_cost  # Denominator changes
+```
+
+**Problem**: Using `previous_cost` as denominator creates non-stationary rewards:
+- Early stage: `previous_cost = 48000` → small multiplier
+- Late stage: `previous_cost = 10000` → **large multiplier** (5x amplification)
+
+This violated the stationarity assumption and caused unpredictable Q-learning behavior.
+
+### MVP Solution
+
+We simplified the reward function to **Minimum Viable Product (MVP)** focusing only on the **core hypothesis**:
+
+> **Core Hypothesis**: Scale-dependent reward amplification (scale_factor) improves Q-learning on large problems.
+
+**MVP Reward Formula**:
+```python
+reward = (improvement / baseline_cost) * 100_000 * scale_factor
+       + (50.0 * scale_factor if is_new_global_best else 0)
+       - (iteration_progress * 15.0 * scale_factor)
+```
+
+**Key Changes**:
+1. ✅ **Keep**: Scale factor amplification (1.0 / 1.3 / 1.6) - **core innovation**
+2. ✅ **Keep**: Global best bonus (scaled)
+3. ✅ **Keep**: Time penalty (scaled)
+4. ✅ **Changed**: Use `baseline_cost` (fixed) instead of `previous_cost` (variable)
+5. ❌ **Removed**: Convergence bonus (had design flaw)
+6. ❌ **Removed**: Variance penalty (unclear benefit)
+
+### Expected MVP Behavior
+
+| Scale | scale_factor | Expected Result |
+|-------|--------------|-----------------|
+| Small | 1.0 | MVP ≈ OLD (±2%) |
+| Medium | 1.3 | MVP slightly better (+2-5%) |
+| Large | 1.6 | MVP significantly better (≥8%) |
+
+### Implementation Files Modified
+
+1. `src/planner/scale_aware_reward.py`
+   - Updated module docstring to indicate MVP version
+   - Modified `compute_reward_components()` to use `baseline_cost`
+   - Set `convergence_bonus = 0.0` (always)
+   - Set `variance_penalty = 0.0` (always)
+
+2. Experimental setup remains unchanged
+   - 60 experiments (3 scales × 2 rewards × 10 seeds)
+   - 1000 iterations per experiment
+   - LP repair configuration: max_plans=15, time=5s
+
+### Decision Rationale
+
+**Why MVP instead of complex fixes?**
+
+1. **Fast to implement** (30 minutes vs. hours of redesign)
+2. **Low risk** (removes problematic components)
+3. **Clear hypothesis test** (isolates scale_factor effect)
+4. **Interpretable results** (simple = easier to explain in paper)
+
+**Principle**: Occam's Razor - "Entities should not be multiplied without necessity"
+
+### Next Steps
+
+1. ✅ Implement MVP version (completed)
+2. Run quick validation test (seed 9999)
+3. Clear old experimental results (40-iteration configs)
+4. Re-run full 60-experiment suite with MVP
+5. Analyze results and decide on Week 5 success/failure
+
+### Success Criteria (Unchanged)
+
+- **Primary**: Large-scale improvement ≥8% (NEW vs OLD)
+- **Secondary**: Small-scale stable (±2%)
+- **Statistical**: p < 0.05, Cohen's d > 0.5
+
+If MVP succeeds, Week 5 is complete. If MVP fails, we know the **core hypothesis itself** is wrong, not just implementation details.
 
 ---
 

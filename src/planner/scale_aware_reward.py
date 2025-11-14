@@ -1,17 +1,21 @@
 """
-Scale-Aware Reward Normalization for Q-Learning ALNS
+Scale-Aware Reward Normalization for Q-Learning ALNS (MVP VERSION)
 
 This module implements reward normalization strategies that adapt to problem scale,
 enabling stable Q-learning convergence across small, medium, and large problem instances.
 
-Key Features:
-1. Scale-dependent reward amplification
-2. Previous-cost normalization for stationarity
+MVP VERSION - Simplified to core features:
+1. Scale-dependent reward amplification (core innovation)
+2. Baseline-cost normalization for stability (changed from previous-cost)
 3. Adaptive bonus/penalty scaling
-4. Variance-aware noise filtering
+
+Removed components (had issues in initial testing):
+- Convergence bonus (gave unconditional rewards, polluted Q-learning signal)
+- Variance penalty (unclear benefit, added complexity)
 
 Author: SAQL Research Team
 Date: 2025-11-13
+Updated: 2025-11-14 (MVP simplification based on experimental feedback)
 """
 
 from dataclasses import dataclass
@@ -168,12 +172,23 @@ class ScaleAwareRewardCalculator:
         """
         Compute reward with detailed component breakdown.
 
+        MVP VERSION: Simplified to only 3 core components
+
+        Key changes from original design:
+        - Changed: Use baseline_cost instead of previous_cost for normalization (more stable)
+        - Removed: convergence_bonus (had design flaw - gave bonus unconditionally)
+        - Removed: variance_penalty (unclear benefit, added complexity)
+
+        This MVP focuses on the core hypothesis: scale-dependent reward amplification
+        improves Q-learning performance on large-scale problems.
+
         Returns:
             RewardComponents with individual component values
         """
         # Component 1: Normalized improvement reward
+        # MVP: Changed from previous_cost to baseline_cost for stability
         if improvement > 0:
-            relative_improvement = improvement / previous_cost
+            relative_improvement = improvement / self.baseline_cost  # MVP: fixed denominator
             improvement_reward = (
                 relative_improvement
                 * self.base_scale
@@ -183,53 +198,40 @@ class ScaleAwareRewardCalculator:
             improvement_reward = 0.0
 
         # Component 2: Global best bonus
+        # MVP: Kept as-is, scaled by problem size
         if is_new_global_best:
             base_bonus = 50.0
             global_best_bonus = base_bonus * self.scale_factors.bonus_scale
         else:
             global_best_bonus = 0.0
 
-        # Component 3: Convergence bonus
-        if self.enable_convergence_bonus:
-            convergence_gap = (previous_cost - self.baseline_cost) / self.baseline_cost
-            if convergence_gap > 0.01:  # Still >1% above baseline
-                base_convergence = 20.0
-            else:
-                base_convergence = 5.0
-            convergence_bonus = base_convergence * self.scale_factors.bonus_scale
-        else:
-            convergence_bonus = 0.0
-
-        # Component 4: Time penalty
+        # Component 3: Time penalty
+        # MVP: Kept as-is, encourages early improvements
         iteration_progress = iteration / self.max_iterations
         base_time_penalty = iteration_progress * 15.0
         time_penalty = base_time_penalty * self.scale_factors.bonus_scale
 
-        # Component 5: Variance penalty
-        if self.enable_variance_penalty and improvement > 0:
-            improvement_magnitude = improvement / self.baseline_cost
-            if improvement_magnitude < 0.001:  # < 0.1% improvement
-                variance_penalty = 5.0 * self.scale_factors.variance_penalty_factor
-            else:
-                variance_penalty = 0.0
-        else:
-            variance_penalty = 0.0
+        # MVP: Removed convergence bonus (always 0)
+        # Original issue: gave ~20 reward even for tiny improvements, polluted Q-learning signal
+        convergence_bonus = 0.0
 
-        # Total reward
+        # MVP: Removed variance penalty (always 0)
+        # Original issue: unclear benefit, added complexity without proven value
+        variance_penalty = 0.0
+
+        # Total reward (MVP: simplified to 3 components)
         total_reward = (
             improvement_reward
             + global_best_bonus
-            + convergence_bonus
             - time_penalty
-            - variance_penalty
         )
 
         return RewardComponents(
             improvement_reward=improvement_reward,
             global_best_bonus=global_best_bonus,
-            convergence_bonus=convergence_bonus,
+            convergence_bonus=convergence_bonus,  # Always 0 in MVP
             time_penalty=time_penalty,
-            variance_penalty=variance_penalty,
+            variance_penalty=variance_penalty,  # Always 0 in MVP
             total_reward=total_reward,
         )
 
