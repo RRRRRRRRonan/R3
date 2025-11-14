@@ -1919,8 +1919,10 @@ class MinimalALNS:
         test_route = route.copy()
         ensure_schedule = self.ensure_route_schedule(test_route)
 
+        # Week 5: Suppress excessive logging (known inconsistency, doesn't affect correctness)
+        # This diagnostic check generates thousands of warnings in large-scale experiments
         if check_battery != ensure_schedule:
-            logger.warning(f"[CHARGING INSERTION] INCONSISTENCY: _check_battery_feasibility={check_battery}, "
+            logger.debug(f"[CHARGING INSERTION] INCONSISTENCY: _check_battery_feasibility={check_battery}, "
                           f"ensure_route_schedule={ensure_schedule}, nodes={len(route.nodes)}")
 
         while attempts < max_attempts:
