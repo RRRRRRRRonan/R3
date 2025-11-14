@@ -99,8 +99,8 @@ def run_single_experiment(
                 lookahead_window=1,
             ),
             lp_repair=LPRepairParams(
-                time_limit_s=2.0,
-                max_plans_per_task=2,
+                time_limit_s=5.0,  # Week 5 design requirement (was 2.0)
+                max_plans_per_task=15,  # CRITICAL FIX: was 2, must be 15 (default)
                 improvement_tolerance=1e-3,
                 skip_penalty=5_000.0,
                 fractional_threshold=1e-3,
