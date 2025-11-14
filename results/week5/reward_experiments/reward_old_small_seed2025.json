@@ -1,0 +1,59 @@
+{
+  "scenario_scale": "small",
+  "num_requests": 15,
+  "reward_type": "old",
+  "seed": 2025,
+  "baseline_cost": 48349.40944584828,
+  "final_cost": 28407.31153150329,
+  "improvement_ratio": 41.24579419461224,
+  "iterations_to_best": 0,
+  "total_iterations": 40,
+  "elapsed_time": 65.66169142723083,
+  "anytime_costs": {},
+  "q_diagnostics": {
+    "final_q_values": {
+      "explore": {
+        "('random_removal', 'greedy')": -30.94983524923594,
+        "('random_removal', 'regret2')": -25.03264083803419,
+        "('random_removal', 'random')": -136.33765671497935,
+        "('random_removal', 'lp')": -128.8130138499876,
+        "('partial_removal', 'greedy')": -205.53528839036127,
+        "('partial_removal', 'regret2')": 6.736135511087957,
+        "('partial_removal', 'random')": -38.590684921874995,
+        "('partial_removal', 'lp')": -175.43837327972966
+      },
+      "stuck": {
+        "('random_removal', 'greedy')": 10.0,
+        "('random_removal', 'regret2')": 12.0,
+        "('random_removal', 'random')": 5.0,
+        "('random_removal', 'lp')": 28.363543290037956,
+        "('partial_removal', 'greedy')": 10.0,
+        "('partial_removal', 'regret2')": 12.0,
+        "('partial_removal', 'random')": 5.0,
+        "('partial_removal', 'lp')": 57.88099368990205
+      },
+      "deep_stuck": {
+        "('random_removal', 'greedy')": 10.0,
+        "('random_removal', 'regret2')": 12.0,
+        "('random_removal', 'random')": 5.0,
+        "('random_removal', 'lp')": 35.0,
+        "('partial_removal', 'greedy')": 10.0,
+        "('partial_removal', 'regret2')": 12.0,
+        "('partial_removal', 'random')": 5.0,
+        "('partial_removal', 'lp')": 35.0
+      }
+    },
+    "operator_counts": {
+      "('partial_removal', 'lp')": 2,
+      "('random_removal', 'lp')": 7,
+      "('partial_removal', 'regret2')": 10,
+      "('random_removal', 'regret2')": 4,
+      "('random_removal', 'greedy')": 11,
+      "('partial_removal', 'greedy')": 1,
+      "('random_removal', 'random')": 2,
+      "('partial_removal', 'random')": 3
+    },
+    "final_epsilon": 0.0981984145227209
+  },
+  "scale_info": null
+}

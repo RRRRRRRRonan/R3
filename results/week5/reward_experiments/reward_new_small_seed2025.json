@@ -1,0 +1,62 @@
+{
+  "scenario_scale": "small",
+  "num_requests": 15,
+  "reward_type": "new",
+  "seed": 2025,
+  "baseline_cost": 48349.40944584828,
+  "final_cost": 28051.359322052762,
+  "improvement_ratio": 41.9820021721868,
+  "iterations_to_best": 0,
+  "total_iterations": 40,
+  "elapsed_time": 101.62244939804077,
+  "anytime_costs": {},
+  "q_diagnostics": {
+    "final_q_values": {
+      "explore": {
+        "('random_removal', 'greedy')": 10.0,
+        "('random_removal', 'regret2')": 12.0,
+        "('random_removal', 'random')": 6630.09897064119,
+        "('random_removal', 'lp')": 1958.9076841393394,
+        "('partial_removal', 'greedy')": 10.0,
+        "('partial_removal', 'regret2')": 12.0,
+        "('partial_removal', 'random')": 5.0,
+        "('partial_removal', 'lp')": 12.9875
+      },
+      "stuck": {
+        "('random_removal', 'greedy')": 10.0,
+        "('random_removal', 'regret2')": 12.0,
+        "('random_removal', 'random')": 5.0,
+        "('random_removal', 'lp')": 4354.600144545208,
+        "('partial_removal', 'greedy')": 10.0,
+        "('partial_removal', 'regret2')": 12.0,
+        "('partial_removal', 'random')": 5.0,
+        "('partial_removal', 'lp')": 30.0
+      },
+      "deep_stuck": {
+        "('random_removal', 'greedy')": 10.0,
+        "('random_removal', 'regret2')": 12.0,
+        "('random_removal', 'random')": 5.0,
+        "('random_removal', 'lp')": 35.0,
+        "('partial_removal', 'greedy')": 10.0,
+        "('partial_removal', 'regret2')": 12.0,
+        "('partial_removal', 'random')": 5.0,
+        "('partial_removal', 'lp')": 35.0
+      }
+    },
+    "operator_counts": {
+      "('partial_removal', 'lp')": 1,
+      "('random_removal', 'lp')": 22,
+      "('random_removal', 'random')": 17
+    },
+    "final_epsilon": 0.0981984145227209
+  },
+  "scale_info": {
+    "num_requests": 15,
+    "scale_category": "small",
+    "reward_amplification": 1.0,
+    "variance_penalty_factor": 1.0,
+    "bonus_scale": 1.0,
+    "baseline_cost": 48349.40944584828,
+    "max_iterations": 1000
+  }
+}

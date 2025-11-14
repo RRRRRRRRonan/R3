@@ -176,7 +176,7 @@ def run_single_experiment(
                 str(state): {str(action): float(q) for action, q in actions.items()}
                 for state, actions in q_agent.q_table.items()
             },
-            "operator_counts": {str(k): int(v) for k, v in q_agent.action_usage.items()},
+            "operator_counts": {str(k): int(v) for k, v in q_agent._action_usage.items()},
             "final_epsilon": float(q_agent.epsilon),
         }
     else:
