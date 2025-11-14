@@ -36,7 +36,7 @@ from config import (
     LPRepairParams,
     DEFAULT_ALNS_HYPERPARAMETERS,
 )
-from strategy.partial_recharge_minimal import PartialRechargeMinimalStrategy
+from strategy.charging_strategies import PartialRechargeMinimalStrategy
 from core.route import create_empty_route
 import random
 
