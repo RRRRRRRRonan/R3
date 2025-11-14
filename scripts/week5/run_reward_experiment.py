@@ -67,15 +67,16 @@ def run_single_experiment(
     task_pool = scenario.create_task_pool()
     num_requests = len(scenario.tasks)
 
-    # Get appropriate iterations for scale
-    iterations = get_solver_iterations(scenario_scale, "q_learning")
+    # Week 5 REQUIRES 1000 iterations (per design document)
+    # DO NOT use get_solver_iterations() - it returns test values (40/44/80)
+    iterations = 1000
 
     if verbose:
         print(f"[Week 5 Experiment]")
         print(f"  Scenario: {scenario_scale}")
         print(f"  Reward Type: {reward_type}")
         print(f"  Seed: {seed}")
-        print(f"  Iterations: {iterations}")
+        print(f"  Iterations: {iterations} (Week 5 requirement)")
 
     # Configure hyperparameters - same as Week 1/2 for consistency
     tuned_hyper = replace(
