@@ -21,6 +21,7 @@ from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
 from physics.time import TimeConfig
 from planner.operators import AdaptiveOperatorSelector
+from planner.epsilon_strategy import EpsilonStrategy
 from planner.q_learning import Action, QLearningOperatorAgent
 from config import (
     ALNSHyperParameters,
@@ -56,6 +57,8 @@ class MinimalALNS:
         hyper_params: Optional[ALNSHyperParameters] = None,
         repair_operators: Optional[Sequence[str]] = None,
         q_learning_initial_q: Optional[Dict[str, Dict[Action, float]]] = None,
+        epsilon_strategy: Optional[EpsilonStrategy] = None,
+        use_scale_aware_reward: bool = False,
     ):
         """Initialise the ALNS planner with distance data and candidate tasks."""
         self.distance = distance_matrix
@@ -91,6 +94,10 @@ class MinimalALNS:
 
         normalised_initial_q = self._normalise_initial_q_values(q_learning_initial_q)
         self._user_provided_initial_q = normalised_initial_q
+        self._epsilon_strategy = epsilon_strategy
+        self.use_scale_aware_reward = use_scale_aware_reward
+        self._reward_calculator = None
+
         if self._use_q_learning:
             initial_q_values = (
                 normalised_initial_q or self._default_q_learning_initial_q()
@@ -101,6 +108,7 @@ class MinimalALNS:
                 params=self._q_params,
                 initial_q_values=initial_q_values,
                 state_labels=self._q_state_labels,
+                epsilon_strategy=epsilon_strategy,
             )
             if not self._q_params.enable_online_updates:
                 self._q_agent.set_epsilon(self._q_params.epsilon_min)
@@ -628,9 +636,10 @@ class MinimalALNS:
         repair_operator: str,
         previous_cost: float,
     ) -> float:
-        """Compute Q-learning reward with simplified penalty structure.
+        """Compute Q-learning reward with ROI-aware time penalty or scale-aware normalization.
 
-        Phase 1 Stability Fix: Simplified reward function to improve generalization.
+        If use_scale_aware_reward=True, uses the scale-aware reward normalization framework.
+        Otherwise, uses the original ROI-aware reward function.
 
         Changes from original:
         1. Removed ROI hyperparameters (roi_positive_scale=220, roi_negative_scale=260)
@@ -648,6 +657,42 @@ class MinimalALNS:
         - Rejected: -5 points
         - Time penalty (matheuristic only): max 20 points
         """
+        # Scale-aware reward path (Week 5 experiments)
+        if self.use_scale_aware_reward:
+            # Initialize reward calculator on first call
+            if self._reward_calculator is None:
+                from planner.scale_aware_reward import ScaleAwareRewardCalculator
+
+                num_requests = self._scenario_task_count
+                baseline_cost = previous_cost  # Use first cost as baseline
+                max_iterations = getattr(self, 'max_iterations', 1000)
+
+                self._reward_calculator = ScaleAwareRewardCalculator(
+                    num_requests=num_requests,
+                    baseline_cost=baseline_cost,
+                    max_iterations=max_iterations,
+                )
+
+            # Compute scale-aware reward
+            if improvement > 0:
+                reward = self._reward_calculator.compute_reward(
+                    improvement=improvement,
+                    previous_cost=previous_cost,
+                    is_new_global_best=is_new_best,
+                    iteration=getattr(self, 'iteration', 0),
+                )
+            elif improvement == 0:
+                reward = self._reward_calculator.compute_no_change_reward(
+                    iteration=getattr(self, 'iteration', 0)
+                )
+            else:  # Worsening
+                reward = self._reward_calculator.compute_worsening_penalty(
+                    iteration=getattr(self, 'iteration', 0)
+                )
+
+            return reward
+
+        # Original ROI-aware reward path
         params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
 
         # Step 1: Quality-based reward (3-tier system)

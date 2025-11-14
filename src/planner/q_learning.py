@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from config import QLearningParams
+from planner.epsilon_strategy import EpsilonStrategy
+from planner.q_learning_init import QInitStrategy, initialize_q_table
 
 
 State = str
@@ -34,7 +36,20 @@ class QLearningOperatorAgent:
         *,
         initial_q_values: Optional[Dict[State, Dict[Action, float]]] = None,
         state_labels: Optional[Sequence[State]] = None,
+        init_strategy: QInitStrategy = QInitStrategy.ZERO,
+        epsilon_strategy: Optional[EpsilonStrategy] = None,
     ) -> None:
+        """Initialize Q-learning agent with configurable initialization strategy.
+
+        Args:
+            destroy_operators: Available destroy operators
+            repair_operators: Available repair operators
+            params: Q-learning parameters
+            initial_q_values: Optional pre-defined Q-values (overrides init_strategy)
+            state_labels: Optional custom state labels
+            init_strategy: Q-table initialization strategy (default: ZERO)
+            epsilon_strategy: Optional epsilon strategy (default: use params.initial_epsilon)
+        """
         self.params = params
         self.destroy_operators: List[str] = list(destroy_operators)
         self.repair_operators: List[str] = list(repair_operators)
@@ -60,18 +75,38 @@ class QLearningOperatorAgent:
             raise ValueError("Q-learning agent requires at least one state label")
 
         self.states: Tuple[State, ...] = states
+        self.init_strategy = init_strategy
 
-        self.q_table: Dict[State, Dict[Action, float]] = {
-            state: {action: 0.0 for action in self.actions} for state in self.states
-        }
+        # Initialize Q-table using specified strategy
         if initial_q_values:
+            # Use provided Q-values (e.g., for transfer learning)
+            self.q_table: Dict[State, Dict[Action, float]] = {
+                state: {action: 0.0 for action in self.actions} for state in self.states
+            }
             for state, action_map in initial_q_values.items():
                 if state not in self.q_table:
                     continue
                 for action, value in action_map.items():
                     if action in self.q_table[state]:
                         self.q_table[state][action] = float(value)
-        self._epsilon = params.initial_epsilon
+        else:
+            # Use initialization strategy
+            self.q_table = initialize_q_table(
+                states=self.states,
+                actions=self.actions,
+                strategy=init_strategy,
+            )
+
+        # Initialize epsilon (use strategy if provided, otherwise use params)
+        self.epsilon_strategy = epsilon_strategy
+        if epsilon_strategy:
+            self._epsilon = epsilon_strategy.initial_epsilon
+            self._epsilon_decay = epsilon_strategy.decay_rate
+            self._epsilon_min = epsilon_strategy.min_epsilon
+        else:
+            self._epsilon = params.initial_epsilon
+            self._epsilon_decay = params.epsilon_decay
+            self._epsilon_min = 0.01  # Default min
         self._action_usage: Dict[Action, int] = defaultdict(int)
         self._experience_buffer: List[Tuple[State, Action, float, State]] = []
 
@@ -120,9 +155,9 @@ class QLearningOperatorAgent:
     def decay_epsilon(self) -> None:
         """Decay the exploration rate after each iteration."""
 
-        if self._epsilon > self.params.epsilon_min:
+        if self._epsilon > self._epsilon_min:
             self._epsilon = max(
-                self.params.epsilon_min, self._epsilon * self.params.epsilon_decay
+                self._epsilon_min, self._epsilon * self._epsilon_decay
             )
 
     def set_epsilon(self, value: float) -> None:

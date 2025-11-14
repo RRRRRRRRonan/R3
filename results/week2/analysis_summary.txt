@@ -1,0 +1,21 @@
+Week 2 Epsilon Strategy Analysis Summary
+================================================================================
+
+SMALL Scenario:
+----------------------------------------
+CURRENT (baseline): 40.97%
+scale_adaptive: 35.70% (-5.27%), ns (p=0.114), d=-0.804
+high_uniform: 35.70% (-5.27%), ns (p=0.203), d=-0.804
+
+MEDIUM Scenario:
+----------------------------------------
+CURRENT (baseline): 25.03%
+scale_adaptive: 23.51% (-1.51%), ns (p=0.398), d=-0.075
+high_uniform: 23.51% (-1.51%), ns (p=0.893), d=-0.075
+
+LARGE Scenario:
+----------------------------------------
+CURRENT (baseline): 16.87%
+scale_adaptive: 15.46% (-1.40%), ns (p=0.109), d=-0.191
+high_uniform: 15.46% (-1.40%), * (p=0.068), d=-0.191
+

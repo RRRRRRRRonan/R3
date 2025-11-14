@@ -1,0 +1,49 @@
+{
+  "scenario": "medium",
+  "epsilon_strategy": "scale_adaptive",
+  "epsilon_config": {
+    "initial": 0.5,
+    "decay": 0.995,
+    "min": 0.05
+  },
+  "seed": 2034,
+  "iterations": 44,
+  "baseline_cost": 43220.30835771936,
+  "optimised_cost": 38626.90932251922,
+  "improvement_ratio": 0.10627871965147001,
+  "runtime": 198.82774806022644,
+  "final_epsilon": 0.40103802898588187,
+  "q_values": {
+    "explore": {
+      "('partial_removal', 'regret2')": 137.34504765745305,
+      "('partial_removal', 'greedy')": 110.90923422321241,
+      "('partial_removal', 'lp')": 102.00883782919942,
+      "('random_removal', 'greedy')": 42.717015883107095,
+      "('partial_removal', 'random')": 10.213659148510214,
+      "('random_removal', 'random')": -17.42600764661192,
+      "('random_removal', 'regret2')": -42.384486000517256,
+      "('random_removal', 'lp')": -87.50766729808285
+    },
+    "stuck": {
+      "('partial_removal', 'lp')": 102.43227883444717,
+      "('partial_removal', 'regret2')": 45.91666624294099,
+      "('partial_removal', 'greedy')": 44.6421310638535,
+      "('random_removal', 'lp')": 30.0,
+      "('random_removal', 'regret2')": 12.0,
+      "('random_removal', 'greedy')": 10.0,
+      "('random_removal', 'random')": 5.0,
+      "('partial_removal', 'random')": 5.0
+    },
+    "deep_stuck": {
+      "('random_removal', 'lp')": 35.0,
+      "('partial_removal', 'lp')": 35.0,
+      "('random_removal', 'regret2')": 12.0,
+      "('partial_removal', 'regret2')": 12.0,
+      "('random_removal', 'greedy')": 10.0,
+      "('partial_removal', 'greedy')": 10.0,
+      "('random_removal', 'random')": 5.0,
+      "('partial_removal', 'random')": 5.0
+    }
+  },
+  "experiment_timestamp": "2025-11-13 10:15:08"
+}
