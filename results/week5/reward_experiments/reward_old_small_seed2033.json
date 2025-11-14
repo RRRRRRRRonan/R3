@@ -1,0 +1,59 @@
+{
+  "scenario_scale": "small",
+  "num_requests": 15,
+  "reward_type": "old",
+  "seed": 2033,
+  "baseline_cost": 48349.40944584828,
+  "final_cost": 30153.19064197542,
+  "improvement_ratio": 37.634831557255666,
+  "iterations_to_best": 0,
+  "total_iterations": 40,
+  "elapsed_time": 121.30958247184753,
+  "anytime_costs": {},
+  "q_diagnostics": {
+    "final_q_values": {
+      "explore": {
+        "('random_removal', 'greedy')": 10.0,
+        "('random_removal', 'regret2')": 64.27714195819115,
+        "('random_removal', 'random')": 7.464556844149554,
+        "('random_removal', 'lp')": 4.217506921068501,
+        "('partial_removal', 'greedy')": 27.528927099376936,
+        "('partial_removal', 'regret2')": 16.853191378586104,
+        "('partial_removal', 'random')": 2.1543124999999987,
+        "('partial_removal', 'lp')": 20.311326783227663
+      },
+      "stuck": {
+        "('random_removal', 'greedy')": 32.64171459203841,
+        "('random_removal', 'regret2')": 10.0,
+        "('random_removal', 'random')": -9.424999999999997,
+        "('random_removal', 'lp')": 10.0,
+        "('partial_removal', 'greedy')": 10.0,
+        "('partial_removal', 'regret2')": 83.88485591590502,
+        "('partial_removal', 'random')": 7.770090150679726,
+        "('partial_removal', 'lp')": 17.23695332147369
+      },
+      "deep_stuck": {
+        "('random_removal', 'greedy')": 10.0,
+        "('random_removal', 'regret2')": 10.0,
+        "('random_removal', 'random')": 10.0,
+        "('random_removal', 'lp')": -19.621755861652098,
+        "('partial_removal', 'greedy')": 10.0,
+        "('partial_removal', 'regret2')": 10.0,
+        "('partial_removal', 'random')": 10.0,
+        "('partial_removal', 'lp')": 41.98964402510647
+      }
+    },
+    "operator_counts": {
+      "('random_removal', 'regret2')": 15,
+      "('partial_removal', 'random')": 2,
+      "('partial_removal', 'regret2')": 6,
+      "('random_removal', 'random')": 2,
+      "('partial_removal', 'greedy')": 1,
+      "('random_removal', 'lp')": 4,
+      "('partial_removal', 'lp')": 9,
+      "('random_removal', 'greedy')": 1
+    },
+    "final_epsilon": 0.34582447689253254
+  },
+  "scale_info": null
+}
