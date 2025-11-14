@@ -101,7 +101,7 @@ def run_single_experiment(
             lp_repair=LPRepairParams(
                 time_limit_s=5.0,  # Week 5 design requirement (was 2.0)
                 max_plans_per_task=15,  # CRITICAL FIX: was 2, must be 15 (default)
-                improvement_tolerance=1e-3,
+                improvement_tolerance=0.01,  # CRITICAL: 1% tolerance (was 1e-3=0.1%, too strict)
                 skip_penalty=5_000.0,
                 fractional_threshold=1e-3,
             ),
