@@ -1834,4 +1834,84 @@ If MVP succeeds, Week 5 is complete. If MVP fails, we know the **core hypothesis
 
 ---
 
+## CRITICAL BUG FIX (2025-11-15): Missing Experiment Tracking
+
+### Background
+
+During result analysis, we discovered that **experimental data was incomplete**:
+- `iterations_to_best` was always 0 (not actual data!)
+- `anytime_costs` was always empty (no cost history!)
+
+Investigation revealed a **critical implementation bug**: The ALNS code never tracked these values.
+
+### Root Cause
+
+The experiment script used:
+```python
+"iterations_to_best": int(getattr(alns, '_iteration_of_best', 0)),
+cost_history = getattr(alns, '_cost_history', [])
+```
+
+But **both `MinimalALNS.optimize()` and `MatheuristicALNS.optimize()` never set these attributes**!
+
+This meant:
+- `iterations_to_best = 0` was just the getattr default, not real data
+- `anytime_costs` was empty because no cost history was tracked
+- **All previous experimental results lacked critical convergence data**
+
+### Fix Implementation
+
+Added tracking to both `alns.py` and `alns_matheuristic.py`:
+
+**Initialization** (at start of optimize()):
+```python
+# Week 5: Track iteration of best solution and cost history
+self._iteration_of_best = 0
+self._cost_history = [best_cost]
+```
+
+**Update on new best** (when best_cost improves):
+```python
+self._iteration_of_best = iteration  # Week 5: Track which iteration found best
+```
+
+**Update after each iteration** (end of loop):
+```python
+# Week 5: Track cost at end of each iteration
+self._cost_history.append(best_cost)
+```
+
+### Impact
+
+**Before fix**:
+- Cannot determine convergence speed
+- Cannot analyze anytime performance
+- Missing data for statistical analysis
+
+**After fix**:
+- Full convergence tracking (which iteration found best)
+- Anytime performance at checkpoints (100, 250, 500, 750, 1000 iterations)
+- Enables proper experimental analysis
+
+### Files Modified
+
+1. `src/planner/alns.py` (MinimalALNS.optimize)
+2. `src/planner/alns_matheuristic.py` (MatheuristicALNS.optimize)
+
+### Validation
+
+Test with 50 iterations confirmed:
+- `_iteration_of_best = 40` ✓ (found best at iteration 40)
+- `_cost_history length = 51` ✓ (baseline + 50 iterations)
+- Cost progression tracked correctly ✓
+
+### Required Action
+
+**All previous experimental results must be re-run** because:
+1. They lack critical tracking data
+2. Many were run with old iteration counts (40/44 instead of 1000)
+3. Need complete data for statistical analysis
+
+---
+
 **End of Week 5 Design Document**
