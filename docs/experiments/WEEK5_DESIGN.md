@@ -1914,4 +1914,86 @@ Test with 50 iterations confirmed:
 
 ---
 
+## CRITICAL BUG FIX (2025-11-16): Scenario Seed Not Propagated
+
+### Background
+
+During result analysis of large-scale experiments, we discovered that **different experiment seeds produced identical final costs**:
+
+- seed 2025 (OLD): 69389.39859784837
+- seed 2034 (OLD): 69389.39859784837
+- seed 2034 (NEW): 69389.39859784837
+
+All three experiments achieved **exactly the same cost** (to 11 decimal places), which is statistically impossible unless they solved the **same problem instance**.
+
+### Root Cause
+
+Investigation revealed that `run_reward_experiment.py` did not pass the experiment seed to scenario generation:
+
+```python
+# BEFORE (BUGGY):
+config = get_scale_config(scenario_scale)  # Uses default seed=17
+scenario = build_scenario(config)
+```
+
+This meant:
+- **All 60 experiments used the same problem instance** (scenario seed=17)
+- Experiment seeds (2025-2034) only affected ALNS randomness, not the problem
+- Multiple seeds did NOT test multiple problem instances as intended
+
+### Experimental Design Impact
+
+**Intended design**:
+- 10 seeds × 3 scales × 2 rewards = 60 experiments
+- Test scale-aware reward across **10 different problem instances per scale**
+- Statistical validity through problem diversity
+
+**Actual behavior (before fix)**:
+- 10 seeds testing **the same problem** with different random exploration
+- Much lower statistical validity (N=1 problem per scale, not N=10)
+- Cannot assess generalization across problem variations
+
+### Fix Implementation
+
+Modified `run_reward_experiment.py` line 65:
+
+```python
+# AFTER (FIXED):
+config = get_scale_config(scenario_scale, seed=seed)  # Pass experiment seed
+scenario = build_scenario(config)
+```
+
+Now each experiment seed generates a **different problem instance** with:
+- Different task locations
+- Different time windows
+- Different spatial distribution
+
+### Additional Finding: Deterministic Search Under Same Seed
+
+We also observed that for the **same scenario**, different reward types (NEW vs OLD) produced:
+- ✓ Different Q-values (NEW amplified ~16x)
+- ✗ **Identical operator selection** (same usage counts for every operator)
+- ✗ **Identical final cost**
+
+This is because `random.seed(seed)` controls all randomness in epsilon-greedy selection:
+- Exploration: `random.random() < epsilon` → same random numbers
+- Random choice: `random.choice(allowed_actions)` → same sequence
+
+**Implication**: Simple reward amplification (scale_factor=1.6) does not change Q-learning decisions enough to alter search behavior when random sequences are identical.
+
+### Files Modified
+
+1. `scripts/week5/run_reward_experiment.py` - Pass seed to scenario generation
+
+### Required Action
+
+**All experimental results must be deleted and re-run** because:
+1. Previous results tested the same problem instance (seed=17) repeatedly
+2. No statistical validity for cross-problem generalization
+3. Cannot distinguish problem-specific vs. general performance
+
+After fix, each seed will test a different problem instance, providing proper statistical evidence.
+
+---
+
 **End of Week 5 Design Document**

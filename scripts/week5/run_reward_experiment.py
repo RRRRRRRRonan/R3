@@ -61,8 +61,8 @@ def run_single_experiment(
     """
     print(f"[Week 5] Running {scenario_scale} scale, {reward_type} reward, seed {seed}...")
 
-    # Build scenario
-    config = get_scale_config(scenario_scale)
+    # Build scenario - CRITICAL: Pass seed to ensure different problem instances
+    config = get_scale_config(scenario_scale, seed=seed)
     scenario = build_scenario(config)
     task_pool = scenario.create_task_pool()
     num_requests = len(scenario.tasks)
