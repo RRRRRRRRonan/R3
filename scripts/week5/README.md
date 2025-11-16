@@ -1,199 +1,188 @@
-# Week 5: Scale-Aware Reward Normalization Experiments
+# Week 5: Q-Learning for Adaptive Partial Recharge Strategy
 
 ## Overview
 
-Week 5 tests the **Scale-Aware Reward Normalization** framework, which is the core contribution of the SAQL research. This experiment compares:
+Week 5 investigates using **Q-learning to learn optimal partial recharge strategies** for electric vehicle routing with battery constraints. Unlike Weeks 1-4 (operator selection), this targets the **unique charging characteristics** of EV routing problems.
 
-- **OLD** (baseline): ROI-aware reward function (current implementation)
-- **NEW** (proposed): Scale-aware normalized rewards with amplification factors
+## Research Question
 
-**Hypothesis**: Scale-aware reward normalization will improve large-scale Q-learning performance by ≥8%.
-
-## Experiment Design
-
-| Factor | Levels | Values |
-|--------|--------|--------|
-| Reward Type | 2 | OLD (baseline), NEW (scale-aware) |
-| Problem Scale | 3 | Small (15 tasks), Medium (24 tasks), Large (30 tasks) |
-| Random Seed | 10 | 2025-2034 |
-
-**Total Experiments**: 2 × 3 × 10 = **60 runs**
+> Can Q-learning learn better partial recharge strategies than rule-based heuristics, reducing charging time while maintaining solution feasibility?
 
 ## Quick Start
 
-### 1. Test Single Experiment
+### Prerequisites
 
 ```bash
-# Test OLD reward on small scale
-python scripts/week5/run_reward_experiment.py --scale small --reward old --seed 2025
-
-# Test NEW reward on large scale
-python scripts/week5/run_reward_experiment.py --scale large --reward new --seed 2025
+# Ensure you have completed Weeks 1-4
+# Python 3.9+ with required packages
 ```
 
-### 2. Run All Experiments (Parallel Execution)
-
-Open **3 terminal windows** and run simultaneously:
-
-**Terminal 1 (Small Scale)**:
-```bash
-# Run OLD baseline
-batch_small_old.bat
-
-# Then run NEW
-batch_small_new.bat
-```
-
-**Terminal 2 (Medium Scale)**:
-```bash
-batch_medium_old.bat
-batch_medium_new.bat
-```
-
-**Terminal 3 (Large Scale)**:
-```bash
-batch_large_old.bat
-batch_large_new.bat
-```
-
-**Expected Duration**: ~6-8 hours total (2-3 hours per terminal)
-
-### 3. Analyze Results
-
-After all experiments complete:
+### Run Single Experiment
 
 ```bash
-python scripts/week5/analyze_rewards.py
+# Baseline (rule-based strategy)
+python scripts/week5/run_charging_experiment.py \
+    --scale small \
+    --strategy baseline \
+    --seed 2025 \
+    --verbose
+
+# Q-Learning strategy
+python scripts/week5/run_charging_experiment.py \
+    --scale small \
+    --strategy qlearning \
+    --seed 2025 \
+    --verbose
 ```
 
-This generates:
-- `results/week5/analysis_summary.txt` - Human-readable summary
-- `results/week5/analysis_results.json` - Detailed statistical results
-- **Checkpoint 2 Decision** - Go/no-go for scale-aware rewards
+### Run Full Experimental Suite (60 experiments)
 
-## Files Structure
+**Windows**:
+```powershell
+# Run all small-scale experiments
+.\scripts\week5\batch_small_baseline.bat
+.\scripts\week5\batch_small_qlearning.bat
+
+# Medium scale
+.\scripts\week5\batch_medium_baseline.bat
+.\scripts\week5\batch_medium_qlearning.bat
+
+# Large scale
+.\scripts\week5\batch_large_baseline.bat
+.\scripts\week5\batch_large_qlearning.bat
+```
+
+**Linux/Mac**:
+```bash
+# Run all experiments
+bash scripts/week5/run_all_experiments.sh
+```
+
+## File Structure
 
 ```
 scripts/week5/
-├── run_reward_experiment.py    # Single experiment runner
-├── analyze_rewards.py           # Statistical analysis script
-├── batch_small_old.bat          # Batch: Small scale, OLD reward (10 seeds)
-├── batch_small_new.bat          # Batch: Small scale, NEW reward (10 seeds)
-├── batch_medium_old.bat         # Batch: Medium scale, OLD reward
-├── batch_medium_new.bat         # Batch: Medium scale, NEW reward
-├── batch_large_old.bat          # Batch: Large scale, OLD reward
-├── batch_large_new.bat          # Batch: Large scale, NEW reward
-└── README.md                    # This file
+├── README.md                          # This file
+├── run_charging_experiment.py         # Main experiment runner
+├── analyze_charging.py                # Analysis script
+├── batch_*.bat                        # Windows batch scripts
+└── run_all_experiments.sh             # Unix shell script
 
 results/week5/
-├── reward_experiments/          # Raw experiment outputs (60 JSON files)
-│   ├── reward_old_small_seed2025.json
-│   ├── reward_new_small_seed2025.json
-│   └── ...
-├── analysis_summary.txt         # Statistical analysis summary
-└── analysis_results.json        # Detailed analysis results
+├── charging_baseline_small_seed2025.json
+├── charging_qlearning_small_seed2025.json
+├── ...
+└── summary.csv                        # Aggregated results
+
+src/strategy/
+├── q_learning_charging.py             # Q-learning charging strategy
+├── charging_state.py                  # State representation
+└── charging_reward.py                 # Reward calculator
 ```
 
-## Success Criteria (Checkpoint 2)
+## Experimental Design
 
-**Primary**: Large-scale improvement ≥8%
-- OLD (baseline): ~17% improvement
-- NEW (target): ≥25% improvement
-- Δ requirement: ≥8 percentage points
+### Factors
 
-**Secondary**:
-1. Statistical significance: p < 0.05
-2. Effect size: Cohen's d > 0.5 (medium to large)
-3. No degradation on small/medium scales (within 2% margin)
+1. **Charging Strategy** (2 levels):
+   - `baseline`: Rule-based `PartialRechargeMinimalStrategy`
+   - `qlearning`: Q-learning adaptive strategy
 
-## Decision Matrix
+2. **Problem Scale** (3 levels):
+   - `small`: 15 tasks, 5 charging stations
+   - `medium`: 24 tasks, 7 charging stations
+   - `large`: 30 tasks, 10 charging stations
 
-| Outcome | Large Δ | p-value | Cohen's d | Decision |
-|---------|---------|---------|-----------|----------|
-| **Full Success** | ≥8% | <0.05 | >0.5 | ✅ Adopt NEW, proceed to Week 6 |
-| **Partial Success** | 5-8% | <0.10 | >0.3 | ⚠️ Adopt with tuning |
-| **Marginal** | 3-5% | Any | <0.3 | ⚠️ Investigate, may skip Week 3-4 |
-| **Failure** | <3% | Any | Any | ❌ Major pivot needed |
+3. **Random Seeds** (10 per scale):
+   - 2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034
 
-## Implementation Details
+**Total**: 2 × 3 × 10 = **60 experiments**
 
-### Scale-Aware Reward Normalization
+### Key Metrics
 
-**Key Innovations**:
-1. **Previous-cost normalization**: `reward = (improvement / previous_cost) × scale_factor`
-2. **Scale-dependent amplification**:
-   - Small: 1.0× (baseline)
-   - Medium: 1.3× (30% boost)
-   - Large: 1.6× (60% boost)
-3. **Adaptive bonuses**: Global best bonus scales with problem size
-4. **Variance penalty**: Filters noise on large problems (<0.1% improvements)
-5. **Convergence bonus**: Rewards progress toward baseline
+- **Total route cost** (primary)
+- **Charging time** (secondary)
+- **Number of charging stops**
+- **Solution feasibility**
+- **Q-learning diagnostics** (Q-table, action distribution)
 
-### Code Locations
+## Analysis
 
-- `src/planner/scale_aware_reward.py` - Reward calculator implementation
-- `src/planner/alns.py` - Integration with ALNS (line 631-743)
-- `src/planner/alns_matheuristic.py` - Parameter pass-through
+### Generate Summary Statistics
+
+```bash
+python scripts/week5/analyze_charging.py --summarize
+```
+
+### Generate Comparison Plots
+
+```bash
+python scripts/week5/analyze_charging.py --plot
+```
+
+### Statistical Testing
+
+```bash
+python scripts/week5/analyze_charging.py --test
+```
+
+## Expected Results
+
+**Hypotheses**:
+- **H1**: Q-learning reduces route cost by ≥8%
+- **H2**: Q-learning reduces charging time by ≥15%
+- **H3**: Improvement increases with scale (small < medium < large)
+
+**Success Criteria**:
+- H1 confirmed with p < 0.05
+- Feasibility maintained (no infeasible solutions)
+- Consistent improvement across seeds (low variance)
+
+## Implementation Status
+
+- [x] Design document complete
+- [ ] Core Q-learning charging strategy
+- [ ] Integration with ALNS
+- [ ] Experiment runner script
+- [ ] Batch execution scripts
+- [ ] Analysis scripts
+- [ ] Pilot run (6 experiments)
+- [ ] Full run (60 experiments)
+- [ ] Results summary
 
 ## Troubleshooting
 
-### Issue: Missing dependencies
+### Q-Learning Not Converging
 
-```bash
-# Verify installation
-python scripts/week5/run_reward_experiment.py --help
-```
+- Increase learning rate: `alpha=0.1 → 0.3`
+- Simplify state space: Reduce discretization granularity
+- Extend training: `max_iterations=1000 → 2000`
 
-### Issue: "No module named 'scenario'"
+### Infeasible Solutions
 
-```bash
-# Ensure you're in the project root
-cd /home/user/R3
-python scripts/week5/run_reward_experiment.py --scale small --reward old --seed 2025
-```
+- Increase feasibility penalty in reward function
+- Add action masking for risky actions
+- Use hybrid strategy (Q-learning + rule-based validation)
 
-### Issue: Experiments taking too long
+### Slow Execution
 
-**Expected times** (per experiment):
-- Small: 3-5 minutes
-- Medium: 5-8 minutes
-- Large: 8-12 minutes
-
-If significantly slower, check:
-- CPU usage (should be ~100% per process)
-- LP solver timeout (set to 5 seconds)
-
-### Issue: Analysis script fails
-
-```bash
-# Check if all 60 files exist
-ls results/week5/reward_experiments/*.json | wc -l
-# Should output: 60
-
-# If missing files, check batch script logs for errors
-```
-
-## Next Steps After Week 5
-
-### If Checkpoint 2 Passes (≥8% improvement):
-
-1. **Document results** in `docs/experiments/WEEK5_RESULTS.md`
-2. **Week 6**: Combined ablation study (epsilon + reward)
-3. **Consider Week 3-4**: 7-state MDP (conditional on Week 5 success)
-
-### If Checkpoint 2 Fails (<5% improvement):
-
-1. **Investigate failure modes**: Analyze reward distributions, Q-value convergence
-2. **Try alternative scale factors** (see WEEK5_DESIGN.md Appendix A)
-3. **Pivot to Dynamic E-VRP** (Phase 3) if reward normalization insufficient
+- Run experiments in parallel (10 processes)
+- Reduce iterations for pilot: `1000 → 500`
+- Use smaller state space
 
 ## References
 
-- **Design Document**: `docs/experiments/WEEK5_DESIGN.md`
-- **SAQL Plan**: `docs/SAQL_IMPLEMENTATION_PLAN_2025-11-09.md`
-- **Week 1 Results**: `docs/experiments/WEEK1_RESULTS.md` (Q-init baseline)
-- **Week 2 Results**: `docs/experiments/WEEK2_RESULTS.md` (Epsilon analysis)
+See `docs/experiments/WEEK5_DESIGN.md` for:
+- Literature review (2023-2024 papers)
+- Detailed methodology
+- Theoretical foundations
+- Risk mitigation strategies
 
 ## Contact
 
-For questions or issues, refer to the detailed design document or the SAQL implementation plan.
+For questions about Week 5 experiments, refer to the design document or raise an issue in the repository.
+
+---
+
+**Status**: Implementation in progress
+**Last Updated**: 2025-11-16
