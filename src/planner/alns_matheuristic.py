@@ -181,6 +181,10 @@ class MatheuristicALNS(MinimalALNS):
         self._segment_optimizer._ensure_schedule(best_route)
         best_cost = self._safe_evaluate(best_route)
 
+        # Week 5: Track iteration of best solution and cost history
+        self._iteration_of_best = 0
+        self._cost_history = [best_cost]
+
         temperature = self.initial_temp
 
         repair_usage = {op: 0 for op in self.repair_operators}
@@ -285,6 +289,7 @@ class MatheuristicALNS(MinimalALNS):
                     self._segment_optimizer._ensure_schedule(best_route)
                     best_cost = current_cost
                     is_new_best = True
+                    self._iteration_of_best = iteration  # Week 5: Track which iteration found best
                     self._log(f"迭代 {iteration+1}: 新最优成本 {best_cost:.2f}m")
 
             if self.use_adaptive and self.adaptation_mode == "roulette":
@@ -336,6 +341,7 @@ class MatheuristicALNS(MinimalALNS):
                         self._segment_optimizer._ensure_schedule(best_route)
                         is_new_best = True
                         consecutive_no_improve = 0
+                        self._iteration_of_best = iteration  # Week 5: Track intensification improvements
                         self._log(
                             f"  ↳ Elite intensification improved cost to {best_cost:.2f}m"
                         )
@@ -348,6 +354,9 @@ class MatheuristicALNS(MinimalALNS):
                     "end",
                     is_new_best,
                 )
+
+            # Week 5: Track cost at end of each iteration
+            self._cost_history.append(best_cost)
 
             temperature *= self.cooling_rate
 
