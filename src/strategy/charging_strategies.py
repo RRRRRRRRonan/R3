@@ -8,10 +8,14 @@ impacts route cost, charging frequency, and robustness.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from core.charging_context import ChargingContext, ChargingStateLevels
 from physics.energy import calculate_minimum_charging_needed
+from physics.energy import EnergyConfig
+
+if TYPE_CHECKING:  # Avoid heavy import cycles at runtime
+    from planner.q_learning import ChargingQLearningAgent
 
 
 class ChargingStrategy(ABC):
@@ -204,7 +208,10 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
 
     def __init__(self, safety_margin: float = 0.1,
                  min_margin: float = 0.015,
-                 max_margin: float = 0.18):
+                 max_margin: float = 0.18,
+                 *,
+                 charging_agent: Optional["ChargingQLearningAgent"] = None,
+                 energy_config: Optional[EnergyConfig] = None):
         """
         初始化
 
@@ -221,10 +228,14 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
         self.base_margin = safety_margin
         self.min_margin = min_margin
         self.max_margin = max(max_margin, safety_margin)
+        self.charging_agent = charging_agent
+        self.energy_config = energy_config or EnergyConfig()
 
     BATTERY_LEVEL_MARGINS = (0.18, 0.12, 0.08, 0.05)
     SLACK_MULTIPLIERS = (1.25, 1.0, 0.85)
     DENSITY_MULTIPLIERS = (1.25, 1.0, 0.9)
+    RL_LATENESS_WEIGHT = 20.0
+    RL_SAFETY_BONUS = 4.0
 
     def determine_charging_amount(self,
                                   current_battery: float,
@@ -235,7 +246,8 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
         """上下文感知的最小充电量。"""
 
         if context is None or context_levels is None:
-            return self._determine_baseline(current_battery, remaining_demand, battery_capacity)
+            base_charge = self._determine_baseline(current_battery, remaining_demand, battery_capacity)
+            return base_charge
 
         base_need = max(0.0, remaining_demand - current_battery)
 
@@ -248,8 +260,19 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
 
         margin = battery_capacity * contextual_margin_ratio
         charge = max(0.0, base_need + margin)
+        base_charge = min(charge, battery_capacity - current_battery)
 
-        return min(charge, battery_capacity - current_battery)
+        if not self.charging_agent:
+            return base_charge
+
+        return self._apply_q_learning_override(
+            base_charge=base_charge,
+            current_battery=current_battery,
+            battery_capacity=battery_capacity,
+            remaining_demand=remaining_demand,
+            context=context,
+            context_levels=context_levels,
+        )
 
     def _margin_ratio_from_levels(self, context_levels: ChargingStateLevels) -> float:
         level = min(context_levels.battery_level, len(self.BATTERY_LEVEL_MARGINS) - 1)
@@ -273,6 +296,70 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
             battery_capacity=battery_capacity,
             safety_margin=margin
         )
+
+    # ------------------------------------------------------------------
+    def _apply_q_learning_override(self,
+                                   *,
+                                   base_charge: float,
+                                   current_battery: float,
+                                   battery_capacity: float,
+                                   remaining_demand: float,
+                                   context: ChargingContext,
+                                   context_levels: ChargingStateLevels) -> float:
+        """Blend heuristic + RL advice (Week5 §2.2)."""
+
+        agent = self.charging_agent
+        if agent is None:
+            return base_charge
+
+        state_label = agent.encode_state(context_levels)
+        action_index, action_level = agent.select_action(state_label)
+        rl_cap = action_level * battery_capacity
+
+        if action_level <= 0.0:
+            final_amount = 0.0
+        elif action_level >= 0.999:
+            final_amount = max(base_charge, rl_cap)
+        else:
+            final_amount = min(base_charge, max(0.0, rl_cap))
+
+        final_amount = max(0.0, min(final_amount, battery_capacity - current_battery))
+
+        reward = self._calculate_rl_reward(
+            context=context,
+            final_amount=final_amount,
+            remaining_demand=remaining_demand,
+            battery_capacity=battery_capacity,
+            current_battery=current_battery,
+        )
+        agent.update(state_label, action_index, reward, state_label)
+        agent.decay_epsilon()
+        return final_amount
+
+    def _calculate_rl_reward(self,
+                             *,
+                             context: ChargingContext,
+                             final_amount: float,
+                             remaining_demand: float,
+                             battery_capacity: float,
+                             current_battery: float) -> float:
+        """Reward shaping mirroring Week5 §2.3 instructions."""
+
+        charging_rate = getattr(self.energy_config, "charging_rate", 1.0)
+        charging_time_penalty = final_amount / max(1e-6, charging_rate)
+
+        lateness_penalty = max(0.0, -context.time_slack_ratio) * self.RL_LATENESS_WEIGHT
+
+        next_battery_ratio = 0.0
+        if battery_capacity > 0:
+            next_battery_ratio = min(1.0, (current_battery + final_amount) / battery_capacity)
+
+        demand_ratio = 0.0 if battery_capacity <= 0 else remaining_demand / battery_capacity
+        projected_buffer = next_battery_ratio - demand_ratio
+        safety_threshold = getattr(self.energy_config, "safety_threshold", 0.05)
+        safety_reward = self.RL_SAFETY_BONUS if projected_buffer >= safety_threshold else -self.RL_SAFETY_BONUS
+
+        return -charging_time_penalty - lateness_penalty + safety_reward
 
     def get_strategy_name(self) -> str:
         return f"Partial Recharge Minimal (PR-Minimal {self.base_margin*100:.0f}%)"

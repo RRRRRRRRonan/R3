@@ -10,6 +10,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from config import QLearningParams
 from planner.epsilon_strategy import EpsilonStrategy
 from planner.q_learning_init import QInitStrategy, initialize_q_table
+from core.charging_context import ChargingStateLevels
 
 
 State = str
@@ -200,6 +201,110 @@ class QLearningOperatorAgent:
                     f"  ({destroy}, {repair}) -> 使用 {stat.total_usage} 次, Q={stat.average_q_value:>7.3f}"
                 )
         return "\n".join(rows)
+
+
+class ChargingQLearningAgent:
+    """Tabular policy for partial-charging actions (Week5 §2.1)."""
+
+    ACTION_LEVELS: Tuple[float, ...] = (0.0, 0.1, 0.2, 0.4, 0.6, 1.0)
+
+    def __init__(
+        self,
+        params: QLearningParams,
+        *,
+        epsilon_strategy: Optional[EpsilonStrategy] = None,
+        initial_q_values: Optional[Dict[str, Sequence[float]]] = None,
+    ) -> None:
+        self.params = params
+        self._epsilon_strategy = epsilon_strategy
+        if epsilon_strategy:
+            self._epsilon = epsilon_strategy.initial_epsilon
+            self._epsilon_decay = epsilon_strategy.decay_rate
+            self._epsilon_min = epsilon_strategy.min_epsilon
+        else:
+            self._epsilon = params.initial_epsilon
+            self._epsilon_decay = params.epsilon_decay
+            self._epsilon_min = params.epsilon_min
+
+        action_count = len(self.ACTION_LEVELS)
+        self._q_table: Dict[str, List[float]] = {}
+        if initial_q_values:
+            for state, values in initial_q_values.items():
+                padded = list(values)[:action_count]
+                while len(padded) < action_count:
+                    padded.append(0.0)
+                self._q_table[state] = padded
+
+        self._usage: Dict[int, int] = defaultdict(int)
+        self._experience_buffer: List[Tuple[str, int, float, str]] = []
+
+    @staticmethod
+    def encode_state(levels: ChargingStateLevels) -> str:
+        """Encode the 4×3×3 grid into a stable label (Week5 §2.1)."""
+
+        return f"b{levels.battery_level}|s{levels.slack_level}|d{levels.density_level}"
+
+    def select_action(
+        self, state: str, mask: Optional[Sequence[bool]] = None
+    ) -> Tuple[int, float]:
+        """Sample an action index + ratio using epsilon-greedy (Week5 §2.1)."""
+
+        self._ensure_state(state)
+        valid_indices = self._mask_indices(mask)
+        if not valid_indices:
+            raise ValueError("ChargingQLearningAgent requires at least one valid action")
+
+        if random.random() < self._epsilon:
+            action_index = random.choice(valid_indices)
+        else:
+            q_values = self._q_table[state]
+            best_value = max(q_values[i] for i in valid_indices)
+            best_candidates = [i for i in valid_indices if q_values[i] == best_value]
+            action_index = random.choice(best_candidates)
+
+        self._usage[action_index] += 1
+        return action_index, self.ACTION_LEVELS[action_index]
+
+    def update(self, state: str, action_index: int, reward: float, next_state: str) -> None:
+        """Apply Bellman update tailored to charging rewards (Week5 §2.3)."""
+
+        self._ensure_state(state)
+        self._ensure_state(next_state)
+        self._experience_buffer.append((state, action_index, reward, next_state))
+        if not self.params.enable_online_updates:
+            return
+
+        old_q = self._q_table[state][action_index]
+        max_future = max(self._q_table[next_state])
+        self._q_table[state][action_index] = old_q + self.params.alpha * (
+            reward + self.params.gamma * max_future - old_q
+        )
+
+    def decay_epsilon(self) -> None:
+        if self._epsilon > self._epsilon_min:
+            self._epsilon = max(self._epsilon_min, self._epsilon * self._epsilon_decay)
+
+    def statistics(self) -> Dict[str, List[Tuple[int, float, int]]]:
+        """Return per-state action usage for debugging Week5 runs."""
+
+        summary: Dict[str, List[Tuple[int, float, int]]] = {}
+        for state, q_values in self._q_table.items():
+            state_rows: List[Tuple[int, float, int]] = []
+            for idx, q_value in enumerate(q_values):
+                state_rows.append((idx, q_value, self._usage.get(idx, 0)))
+            summary[state] = sorted(state_rows, key=lambda item: item[1], reverse=True)
+        return summary
+
+    # ------------------------------------------------------------------
+    def _ensure_state(self, state: str) -> None:
+        if state not in self._q_table:
+            self._q_table[state] = [0.0 for _ in self.ACTION_LEVELS]
+
+    @staticmethod
+    def _mask_indices(mask: Optional[Sequence[bool]]) -> List[int]:
+        if not mask:
+            return list(range(len(ChargingQLearningAgent.ACTION_LEVELS)))
+        return [i for i, allowed in enumerate(mask) if allowed]
 
     def consume_experiences(self) -> List[Tuple[State, Action, float, State]]:
         """Return and clear the accumulated experience buffer."""
