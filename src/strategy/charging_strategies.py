@@ -8,7 +8,7 @@ impacts route cost, charging frequency, and robustness.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, TYPE_CHECKING
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from core.charging_context import ChargingContext, ChargingStateLevels
 from physics.energy import calculate_minimum_charging_needed
@@ -230,6 +230,7 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
         self.max_margin = max(max_margin, safety_margin)
         self.charging_agent = charging_agent
         self.energy_config = energy_config or EnergyConfig()
+        self._charging_debug_log: List[Dict[str, float]] = []
 
     BATTERY_LEVEL_MARGINS = (0.18, 0.12, 0.08, 0.05)
     SLACK_MULTIPLIERS = (1.25, 1.0, 0.85)
@@ -332,8 +333,26 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
             battery_capacity=battery_capacity,
             current_battery=current_battery,
         )
+        log_entry = {
+            "state": state_label,
+            "action_index": action_index,
+            "action_level": action_level,
+            "rl_cap": rl_cap,
+            "base_charge": base_charge,
+            "final_amount": final_amount,
+            "reward": reward,
+            "battery_ratio": context.battery_ratio,
+            "time_slack_ratio": context.time_slack_ratio,
+            "station_density": context.station_density,
+        }
+
+        epsilon_before = agent.epsilon
         agent.update(state_label, action_index, reward, state_label)
+        log_entry["updated_q"] = agent.get_action_value(state_label, action_index)
         agent.decay_epsilon()
+        log_entry["epsilon_before"] = epsilon_before
+        log_entry["epsilon_after"] = agent.epsilon
+        self._charging_debug_log.append(log_entry)
         return final_amount
 
     def _calculate_rl_reward(self,
@@ -376,6 +395,13 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
         计算: 基础15% + 安全余量的一半
         """
         return max(0.05, min(0.16, self.base_margin * 0.3 + 0.05))
+
+    def consume_debug_log(self) -> List[Dict[str, float]]:
+        """Return and clear the contextual charging debug entries."""
+
+        entries = list(self._charging_debug_log)
+        self._charging_debug_log.clear()
+        return entries
 
 
 # ========== 便捷工厂函数 ==========

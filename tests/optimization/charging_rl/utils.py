@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from config import QLearningParams
 from core.node import ChargingNode, NodeType
@@ -24,10 +24,13 @@ class ChargingRLTrialResult:
     executed_route: Route
     vehicle: Vehicle
     agent: ChargingQLearningAgent
+    strategy: PartialRechargeMinimalStrategy
     charging_visits: List[RouteNodeVisit]
 
 
-def run_contextual_charging_trial(scale: str) -> ChargingRLTrialResult:
+def run_contextual_charging_trial(
+    scale: str, *, agent: Optional[ChargingQLearningAgent] = None
+) -> ChargingRLTrialResult:
     """Build a deterministic scenario and execute a contextual charging run."""
 
     config: ScenarioConfig = get_scale_config(scale)
@@ -43,23 +46,25 @@ def run_contextual_charging_trial(scale: str) -> ChargingRLTrialResult:
     energy_config = deepcopy(scenario.energy)
     energy_config.battery_capacity = limited_capacity
 
-    params = QLearningParams(
-        alpha=0.4,
-        gamma=0.9,
-        initial_epsilon=0.0,
-        epsilon_decay=1.0,
-        epsilon_min=0.0,
-    )
+    agent_instance = agent
+    if agent_instance is None:
+        params = QLearningParams(
+            alpha=0.4,
+            gamma=0.9,
+            initial_epsilon=0.0,
+            epsilon_decay=1.0,
+            epsilon_min=0.0,
+        )
 
-    agent = ChargingQLearningAgent(
-        params,
-        initial_q_values=_uniform_state_preferences(best_index=2),
-    )
+        agent_instance = ChargingQLearningAgent(
+            params,
+            initial_q_values=_uniform_state_preferences(best_index=2),
+        )
 
     strategy = PartialRechargeMinimalStrategy(
         safety_margin=0.04,
         min_margin=0.01,
-        charging_agent=agent,
+        charging_agent=agent_instance,
         energy_config=energy_config,
     )
 
@@ -70,7 +75,8 @@ def run_contextual_charging_trial(scale: str) -> ChargingRLTrialResult:
     return ChargingRLTrialResult(
         executed_route=executed_route,
         vehicle=vehicle,
-        agent=agent,
+        agent=agent_instance,
+        strategy=strategy,
         charging_visits=charging_visits,
     )
 

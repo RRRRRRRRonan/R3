@@ -238,6 +238,12 @@ class ChargingQLearningAgent:
         self._usage: Dict[int, int] = defaultdict(int)
         self._experience_buffer: List[Tuple[str, int, float, str]] = []
 
+    @property
+    def epsilon(self) -> float:
+        """Current exploration rate for progress visualisation."""
+
+        return self._epsilon
+
     @staticmethod
     def encode_state(levels: ChargingStateLevels) -> str:
         """Encode the 4×3×3 grid into a stable label (Week5 §2.1)."""
@@ -295,6 +301,20 @@ class ChargingQLearningAgent:
             summary[state] = sorted(state_rows, key=lambda item: item[1], reverse=True)
         return summary
 
+    def get_action_value(self, state: str, action_index: int) -> float:
+        """Expose the learned value for logging/visualisation commands."""
+
+        self._ensure_state(state)
+        if action_index < 0 or action_index >= len(self.ACTION_LEVELS):
+            raise IndexError("Action index out of range for charging agent")
+        return self._q_table[state][action_index]
+
+    def get_q_values(self, state: str) -> List[float]:
+        """Return a copy of the Q-values for a given state label."""
+
+        self._ensure_state(state)
+        return list(self._q_table[state])
+
     # ------------------------------------------------------------------
     def _ensure_state(self, state: str) -> None:
         if state not in self._q_table:
@@ -306,7 +326,7 @@ class ChargingQLearningAgent:
             return list(range(len(ChargingQLearningAgent.ACTION_LEVELS)))
         return [i for i, allowed in enumerate(mask) if allowed]
 
-    def consume_experiences(self) -> List[Tuple[State, Action, float, State]]:
+    def consume_experiences(self) -> List[Tuple[str, int, float, str]]:
         """Return and clear the accumulated experience buffer."""
 
         experiences = list(self._experience_buffer)

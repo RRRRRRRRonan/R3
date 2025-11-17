@@ -35,6 +35,25 @@ python scripts/week5/run_charging_experiment.py \
     --verbose
 ```
 
+### 可视化 DRL 局部充电优化过程
+
+> **新功能**：`run_charging_rl_progress.py` 会调用 Week 5 的 `ChargingQLearningAgent`，
+> 输出每次访问充电站时的状态、动作、奖励和 Q 值更新，方便观察“局部补能”策略的学习过程。
+
+```bash
+# 小规模：查看 5 个回合的学习过程并打印访问状态的 Q 表
+python -m scripts.week5.run_charging_rl_progress --scale small --episodes 5 --show-q-table
+
+# 中等规模：仅查看 3 个回合（默认）
+python -m scripts.week5.run_charging_rl_progress --scale medium
+
+# 大规模：快速巡检 2 个回合
+python -m scripts.week5.run_charging_rl_progress --scale large --episodes 2
+
+# 一次性运行小/中/大，并展示 Q 表
+python -m scripts.week5.run_charging_rl_progress --scale all --episodes 4 --show-q-table
+```
+
 ### Run Full Experimental Suite (60 experiments)
 
 **Windows**:
