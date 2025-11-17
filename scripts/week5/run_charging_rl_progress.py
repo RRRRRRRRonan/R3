@@ -3,7 +3,23 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
 from typing import Iterable, List, Sequence, Set
+
+
+def _bootstrap_import_path() -> None:
+    """Ensure both the repo root and ``src`` folder are importable."""
+
+    project_root = Path(__file__).resolve().parents[2]
+    src_dir = project_root / "src"
+    for path in (src_dir, project_root):
+        str_path = str(path)
+        if str_path not in sys.path:
+            sys.path.insert(0, str_path)
+
+
+_bootstrap_import_path()
 
 from planner.q_learning import ChargingQLearningAgent
 from tests.optimization.charging_rl.utils import run_contextual_charging_trial

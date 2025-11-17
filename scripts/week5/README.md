@@ -52,6 +52,9 @@ python -m scripts.week5.run_charging_rl_progress --scale large --episodes 2
 
 # 一次性运行小/中/大，并展示 Q 表
 python -m scripts.week5.run_charging_rl_progress --scale all --episodes 4 --show-q-table
+
+# 也可以直接调用脚本（自动处理 PYTHONPATH/仓库根目录）
+python scripts/week5/run_charging_rl_progress.py --scale small --episodes 5 --show-q-table
 ```
 
 ### Run Full Experimental Suite (60 experiments)
