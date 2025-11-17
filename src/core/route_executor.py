@@ -11,6 +11,11 @@ from typing import List, Optional, Tuple
 from core.route import Route, RouteNodeVisit
 from core.node import Node
 from core.vehicle import Vehicle
+from core.charging_context import (
+    ChargingContext,
+    ChargingContextDiscretizer,
+    ChargingStateLevels,
+)
 from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
 from physics.time import TimeConfig
@@ -38,6 +43,7 @@ class RouteExecutor:
         self.distance = distance_matrix
         self.energy_config = energy_config
         self.time_config = time_config or TimeConfig()
+        self.context_discretizer = ChargingContextDiscretizer(self.energy_config)
 
     def execute(self,
                 route: Route,
@@ -92,13 +98,41 @@ class RouteExecutor:
                         executed_route, i, self.energy_config
                     )
 
-                    target_demand = demand_to_next_cs if has_next_cs else remaining_demand
+                    context_raw = self._build_charging_context(
+                        route=executed_route,
+                        current_index=i,
+                        current_battery=battery_after_travel,
+                        arrival_time=arrival_time,
+                        remaining_demand=remaining_demand,
+                        demand_to_next_cs=demand_to_next_cs,
+                        has_next_station=has_next_cs,
+                        vehicle=vehicle,
+                    )
+                    context_levels = self.context_discretizer.discretize(context_raw)
+
+                    target_demand = self._select_demand_target(
+                        remaining_demand=remaining_demand,
+                        demand_to_next_cs=demand_to_next_cs,
+                        has_next_station=has_next_cs,
+                        context_levels=context_levels,
+                    )
+
+                    context = ChargingContext(
+                        battery_ratio=context_raw.battery_ratio,
+                        demand_ratio=0.0 if vehicle.battery_capacity <= 0 else min(
+                            1.0, target_demand / vehicle.battery_capacity
+                        ),
+                        time_slack_ratio=context_raw.time_slack_ratio,
+                        station_density=context_raw.station_density,
+                    )
 
                     # 使用充电策略决定充电量
                     charge_amount = charging_strategy.determine_charging_amount(
                         current_battery=battery_after_travel,
                         remaining_demand=target_demand,
-                        battery_capacity=vehicle.battery_capacity
+                        battery_capacity=vehicle.battery_capacity,
+                        context=context,
+                        context_levels=context_levels,
                     )
 
                     battery_after_service = min(
@@ -191,3 +225,63 @@ class RouteExecutor:
             energy_to_next_station = total_remaining_energy
 
         return total_remaining_energy, energy_to_next_station, next_station_found
+
+    # ------------------------------------------------------------------
+    def _build_charging_context(self,
+                                route: Route,
+                                current_index: int,
+                                current_battery: float,
+                                arrival_time: float,
+                                remaining_demand: float,
+                                demand_to_next_cs: float,
+                                has_next_station: bool,
+                                vehicle: Vehicle) -> ChargingContext:
+        battery_ratio = 0.0 if vehicle.battery_capacity <= 0 else current_battery / vehicle.battery_capacity
+        battery_ratio = max(0.0, min(1.0, battery_ratio))
+
+        target_demand = demand_to_next_cs if has_next_station else remaining_demand
+        demand_ratio = 0.0 if vehicle.battery_capacity <= 0 else target_demand / vehicle.battery_capacity
+        demand_ratio = max(0.0, min(1.0, demand_ratio))
+
+        time_slack_ratio = self._estimate_time_slack_ratio(route, current_index, arrival_time)
+
+        remaining_nodes = route.nodes[current_index + 1:]
+        if not remaining_nodes:
+            station_density = 0.0
+        else:
+            remaining_charging = sum(1 for n in remaining_nodes if n.is_charging_station())
+            remaining_customers = sum(1 for n in remaining_nodes if not n.is_charging_station()) or 1
+            station_density = remaining_charging / remaining_customers
+
+        return ChargingContext(
+            battery_ratio=battery_ratio,
+            demand_ratio=demand_ratio,
+            time_slack_ratio=time_slack_ratio,
+            station_density=station_density,
+        )
+
+    def _estimate_time_slack_ratio(self,
+                                   route: Route,
+                                   current_index: int,
+                                   arrival_time: float) -> float:
+        for node in route.nodes[current_index + 1:]:
+            time_window = getattr(node, "time_window", None)
+            if time_window is None:
+                continue
+
+            width = max(1.0, time_window.latest - time_window.earliest)
+            slack = (time_window.latest - arrival_time) / width
+            return max(-1.0, min(1.0, slack))
+
+        # 没有时间窗约束时视为宽松
+        return 1.0
+
+    def _select_demand_target(self,
+                              remaining_demand: float,
+                              demand_to_next_cs: float,
+                              has_next_station: bool,
+                              context_levels: ChargingStateLevels) -> float:
+        # 密度高：优先只补到下一站；密度低：补到终点
+        if context_levels.density_level >= 2 and has_next_station:
+            return demand_to_next_cs
+        return remaining_demand

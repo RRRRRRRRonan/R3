@@ -8,7 +8,9 @@ impacts route cost, charging frequency, and robustness.
 """
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
+from core.charging_context import ChargingContext, ChargingStateLevels
 from physics.energy import calculate_minimum_charging_needed
 
 
@@ -23,7 +25,9 @@ class ChargingStrategy(ABC):
     def determine_charging_amount(self,
                                   current_battery: float,
                                   remaining_demand: float,
-                                  battery_capacity: float) -> float:
+                                  battery_capacity: float,
+                                  context: Optional[ChargingContext] = None,
+                                  context_levels: Optional[ChargingStateLevels] = None) -> float:
         """
         确定充电量
 
@@ -79,7 +83,9 @@ class FullRechargeStrategy(ChargingStrategy):
     def determine_charging_amount(self,
                                   current_battery: float,
                                   remaining_demand: float,
-                                  battery_capacity: float) -> float:
+                                  battery_capacity: float,
+                                  context: Optional[ChargingContext] = None,
+                                  context_levels: Optional[ChargingStateLevels] = None) -> float:
         """
         充满电池
 
@@ -135,7 +141,9 @@ class PartialRechargeFixedStrategy(ChargingStrategy):
     def determine_charging_amount(self,
                                   current_battery: float,
                                   remaining_demand: float,
-                                  battery_capacity: float) -> float:
+                                  battery_capacity: float,
+                                  context: Optional[ChargingContext] = None,
+                                  context_levels: Optional[ChargingStateLevels] = None) -> float:
         """
         充电到电池容量的固定百分比
 
@@ -214,16 +222,43 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
         self.min_margin = min_margin
         self.max_margin = max(max_margin, safety_margin)
 
+    BATTERY_LEVEL_MARGINS = (0.18, 0.12, 0.08, 0.05)
+    SLACK_MULTIPLIERS = (1.25, 1.0, 0.85)
+    DENSITY_MULTIPLIERS = (1.25, 1.0, 0.9)
+
     def determine_charging_amount(self,
                                   current_battery: float,
                                   remaining_demand: float,
-                                  battery_capacity: float) -> float:
-        """
-        只充刚好够用的电量
+                                  battery_capacity: float,
+                                  context: Optional[ChargingContext] = None,
+                                  context_levels: Optional[ChargingStateLevels] = None) -> float:
+        """上下文感知的最小充电量。"""
 
-        使用physics.energy模块的计算函数
-        """
-        # 计算安全余量（基于电池容量的百分比）
+        if context is None or context_levels is None:
+            return self._determine_baseline(current_battery, remaining_demand, battery_capacity)
+
+        base_need = max(0.0, remaining_demand - current_battery)
+
+        margin_ratio = self._margin_ratio_from_levels(context_levels)
+        slack_multiplier = self.SLACK_MULTIPLIERS[min(context_levels.slack_level, len(self.SLACK_MULTIPLIERS) - 1)]
+        density_multiplier = self.DENSITY_MULTIPLIERS[min(context_levels.density_level, len(self.DENSITY_MULTIPLIERS) - 1)]
+
+        contextual_margin_ratio = margin_ratio * slack_multiplier * density_multiplier
+        contextual_margin_ratio = max(self.min_margin, min(self.max_margin, contextual_margin_ratio))
+
+        margin = battery_capacity * contextual_margin_ratio
+        charge = max(0.0, base_need + margin)
+
+        return min(charge, battery_capacity - current_battery)
+
+    def _margin_ratio_from_levels(self, context_levels: ChargingStateLevels) -> float:
+        level = min(context_levels.battery_level, len(self.BATTERY_LEVEL_MARGINS) - 1)
+        return self.BATTERY_LEVEL_MARGINS[level]
+
+    def _determine_baseline(self,
+                            current_battery: float,
+                            remaining_demand: float,
+                            battery_capacity: float) -> float:
         demand_ratio = 0.0 if battery_capacity <= 0 else remaining_demand / battery_capacity
         demand_ratio = max(0.0, min(1.0, demand_ratio))
 
