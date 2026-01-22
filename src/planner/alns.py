@@ -68,7 +68,11 @@ class MinimalALNS:
 
         self.cost_params = cost_params or DEFAULT_COST_PARAMETERS
         self.hyper = hyper_params or DEFAULT_ALNS_HYPERPARAMETERS
-        self.charging_strategy = charging_strategy
+        if charging_strategy is None:
+            from strategy.charging_strategies import get_default_charging_strategy
+            self.charging_strategy = get_default_charging_strategy()
+        else:
+            self.charging_strategy = charging_strategy
         self.use_adaptive = use_adaptive or repair_mode == 'adaptive'
         self.repair_operators = list(repair_operators or ['greedy', 'regret2', 'random'])
 
@@ -1445,6 +1449,9 @@ class MinimalALNS:
                 initial_battery=vehicle.initial_battery,
                 time_config=time_config,
                 energy_config=energy_config,
+                charging_strategy=self.charging_strategy,
+                conflict_waiting_times=route.conflict_waiting_times,
+                standby_times=route.standby_times,
             )
         except Exception:
             return False
@@ -1457,33 +1464,46 @@ class MinimalALNS:
         if not self.ensure_route_schedule(route):
             return float('inf')
 
+        if route.is_feasible is False:
+            return float('inf')
+
         total_distance = route.calculate_total_distance(self.distance)
         distance_cost = total_distance * self.cost_params.C_tr
 
+        charging_amount = 0.0
         tardiness_cost = 0.0
-        waiting_cost = 0.0
+        conflict_waiting = 0.0
+        standby_total = 0.0
         if route.visits:
             for visit in route.visits:
+                if visit.node.is_charging_station():
+                    charged = visit.battery_after_service - visit.battery_after_travel
+                    if charged > 0.0:
+                        charging_amount += charged
                 if hasattr(visit.node, 'time_window') and visit.node.time_window:
                     tardiness = max(0.0, visit.start_service_time - visit.node.time_window.latest)
                     if tardiness > 0:
                         tardiness_cost += tardiness * self._tardiness_weight_for_visit(visit) * self.cost_params.C_delay
-                    waiting = max(0.0, visit.start_service_time - visit.arrival_time)
-                    waiting_cost += waiting * self.cost_params.C_wait
+                conflict_waiting += visit.conflict_waiting_time + visit.generic_waiting_time
+                standby_total += visit.standby_time
+
+        charging_cost = charging_amount * self.cost_params.C_ch
+        conflict_waiting_cost = conflict_waiting * self.cost_params.C_conflict
+        standby_cost = standby_total * self.cost_params.C_standby
 
         served_tasks = set(route.get_served_tasks())
         expected_tasks = {task.task_id for task in self.task_pool.get_all_tasks()}
         missing_tasks = expected_tasks - served_tasks
-        missing_penalty = len(missing_tasks) * self.cost_params.C_missing_task
+        reject_penalty = len(missing_tasks) * self.cost_params.C_missing_task
 
-        infeasible_penalty = self.cost_params.C_infeasible if route.is_feasible is False else 0.0
-
-        battery_penalty = 0.0
-        if hasattr(self, 'vehicle') and hasattr(self, 'energy_config'):
-            if not self._check_battery_feasibility(route):
-                battery_penalty = self.cost_params.C_infeasible * 10.0
-
-        return distance_cost + tardiness_cost + waiting_cost + missing_penalty + infeasible_penalty + battery_penalty
+        return (
+            distance_cost
+            + charging_cost
+            + tardiness_cost
+            + conflict_waiting_cost
+            + standby_cost
+            + reject_penalty
+        )
 
     def _tardiness_weight_for_visit(self, visit) -> float:
         node = visit.node
@@ -2072,33 +2092,33 @@ class MinimalALNS:
         """
         获取成本分解（用于分析和调试）
 
-        Week 2改进：
-        - 使用RouteExecutor执行路径生成visits
-        - 准确记录充电量和充电次数
-
         返回:
             Dict: 各项成本明细
         """
-        from core.route_executor import RouteExecutor
-
         distance = route.calculate_total_distance(self.distance)
 
-        if hasattr(self, 'vehicle') and hasattr(self, 'energy_config'):
-            executor = RouteExecutor(
-                distance_matrix=self.distance,
-                energy_config=self.energy_config,
-                time_config=getattr(self, 'time_config', None)
-            )
-            # 执行路径并生成visits
-            executed_route = executor.execute(
-                route=route,
-                vehicle=self.vehicle,
-                charging_strategy=self.charging_strategy
-            )
-            # 使用执行后的路径
-            route_to_analyze = executed_route
-        else:
-            route_to_analyze = route
+        if not self.ensure_route_schedule(route):
+            return {
+                'total_distance': distance,
+                'total_charging': 0.0,
+                'total_time': 0.0,
+                'total_delay': 0.0,
+                'total_conflict_waiting': 0.0,
+                'total_standby': 0.0,
+                'rejected_tasks': len(self.task_pool.get_all_tasks()),
+                'num_charging_stops': 0,
+                'distance_cost': distance * self.cost_params.C_tr,
+                'charging_cost': 0.0,
+                'delay_cost': 0.0,
+                'conflict_waiting_cost': 0.0,
+                'standby_cost': 0.0,
+                'rejection_cost': len(self.task_pool.get_all_tasks()) * self.cost_params.C_missing_task,
+                'total_cost': float('inf'),
+                'cost_per_km': float('inf'),
+                'is_feasible': False,
+            }
+
+        route_to_analyze = route
 
         # 充电量统计
         charging_amount = 0.0
@@ -2118,9 +2138,17 @@ class MinimalALNS:
 
         # 延迟统计
         total_delay = 0.0
+        total_conflict_waiting = 0.0
+        total_standby = 0.0
         if route_to_analyze.visits:
             for visit in route_to_analyze.visits:
                 total_delay += visit.get_delay()
+                total_conflict_waiting += visit.conflict_waiting_time + visit.generic_waiting_time
+                total_standby += visit.standby_time
+
+        served_tasks = set(route_to_analyze.get_served_tasks())
+        expected_tasks = {task.task_id for task in self.task_pool.get_all_tasks()}
+        rejected_tasks = len(expected_tasks - served_tasks)
 
         # 计算总成本（使用executed route以确保包含visits）
         total_cost_value = self.evaluate_cost(route_to_analyze)
@@ -2130,13 +2158,19 @@ class MinimalALNS:
             'total_charging': charging_amount,
             'total_time': total_time,
             'total_delay': total_delay,
+            'total_conflict_waiting': total_conflict_waiting,
+            'total_standby': total_standby,
+            'rejected_tasks': rejected_tasks,
             'num_charging_stops': num_charging_stops,
             'distance_cost': distance * self.cost_params.C_tr,
             'charging_cost': charging_amount * self.cost_params.C_ch,
-            'time_cost': total_time * self.cost_params.C_time,
             'delay_cost': total_delay * self.cost_params.C_delay,
+            'conflict_waiting_cost': total_conflict_waiting * self.cost_params.C_conflict,
+            'standby_cost': total_standby * self.cost_params.C_standby,
+            'rejection_cost': rejected_tasks * self.cost_params.C_missing_task,
             'total_cost': total_cost_value,
-            'cost_per_km': total_cost_value / (distance / 1000) if distance > 0 else 0
+            'cost_per_km': total_cost_value / (distance / 1000) if distance > 0 else 0,
+            'is_feasible': route_to_analyze.is_feasible,
         }
     
     def accept_solution(self, 

@@ -240,6 +240,22 @@ class PartialRechargeMinimalStrategy(ChargingStrategy):
         )
 
     def get_strategy_name(self) -> str:
+        return "Partial Recharge Minimal (PR-Minimal)"
+
+
+_DEFAULT_CHARGING_STRATEGY = PartialRechargeMinimalStrategy(
+    safety_margin=0.1,
+    min_margin=0.02,
+    max_margin=0.18,
+)
+
+
+def get_default_charging_strategy() -> ChargingStrategy:
+    """Return the default partial charging policy used when none is provided."""
+
+    return _DEFAULT_CHARGING_STRATEGY
+
+    def get_strategy_name(self) -> str:
         return f"Partial Recharge Minimal (PR-Minimal {self.base_margin*100:.0f}%)"
 
     def get_warning_threshold(self) -> float:

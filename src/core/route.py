@@ -44,6 +44,9 @@ class RouteNodeVisit:
         arrival_time: 到达时间
         start_service_time: 开始服务时间（可能等待时间窗）
         departure_time: 离开时间
+        generic_waiting_time: 早到或空驶等待时间
+        conflict_waiting_time: 冲突规避等待时间
+        standby_time: 预测驱动驻留时间
         load_after_service: 服务后的载重
         battery_after_travel: 到达时的电量（旅行后）
         battery_after_service: 服务后的电量（可能充电）
@@ -52,12 +55,18 @@ class RouteNodeVisit:
     arrival_time: float = 0.0
     start_service_time: float = 0.0
     departure_time: float = 0.0
+    generic_waiting_time: float = 0.0
+    conflict_waiting_time: float = 0.0
+    standby_time: float = 0.0
     load_after_service: float = 0.0
     battery_after_travel: float = 0.0
     battery_after_service: float = 0.0
     
     def get_waiting_time(self) -> float:
         """获取等待时间（到达到开始服务）"""
+        total = self.generic_waiting_time + self.conflict_waiting_time
+        if total > 0.0:
+            return total
         return self.start_service_time - self.arrival_time
     
     def get_service_time(self) -> float:
@@ -68,7 +77,7 @@ class RouteNodeVisit:
         """获取延迟（如果晚于时间窗）"""
         if hasattr(self.node, 'time_window') and self.node.time_window:
             tw = self.node.time_window
-            return max(0.0, self.arrival_time - tw.latest)
+            return max(0.0, self.start_service_time - tw.latest)
         return 0.0
 
 
@@ -109,6 +118,8 @@ class Route:
     visits: Optional[List[RouteNodeVisit]] = None
     is_feasible: bool = True
     infeasibility_info: Optional[str] = None
+    conflict_waiting_times: Optional[List[float]] = None
+    standby_times: Optional[List[float]] = None
     
     
     def add_node(self, node: Node):
@@ -125,6 +136,8 @@ class Route:
         
         # 清空cached visits，需要重新计算
         self.visits = None
+        self.conflict_waiting_times = None
+        self.standby_times = None
     
     def insert_node(self, node: Node, position: int):
         """
@@ -139,6 +152,8 @@ class Route:
         
         self.nodes.insert(position, node)
         self.visits = None
+        self.conflict_waiting_times = None
+        self.standby_times = None
     
     def remove_node(self, position: int) -> Node:
         """
@@ -155,6 +170,8 @@ class Route:
         
         node = self.nodes.pop(position)
         self.visits = None
+        self.conflict_waiting_times = None
+        self.standby_times = None
         return node
     
     def get_node_position(self, node_id: int) -> Optional[int]:
@@ -178,6 +195,28 @@ class Route:
         self.visits = None
         self.is_feasible = True
         self.infeasibility_info = None
+        self.conflict_waiting_times = None
+        self.standby_times = None
+
+    def set_conflict_waiting_times(self, waits: Optional[List[float]]) -> None:
+        """Attach conflict waiting times aligned with the current node sequence."""
+
+        if waits is not None and len(waits) != len(self.nodes):
+            raise ValueError(
+                f"Conflict waiting length {len(waits)} does not match nodes {len(self.nodes)}"
+            )
+        self.conflict_waiting_times = waits
+        self.visits = None
+
+    def set_standby_times(self, standby: Optional[List[float]]) -> None:
+        """Attach standby times aligned with the current node sequence."""
+
+        if standby is not None and len(standby) != len(self.nodes):
+            raise ValueError(
+                f"Standby length {len(standby)} does not match nodes {len(self.nodes)}"
+            )
+        self.standby_times = standby
+        self.visits = None
     
     
     def is_empty(self) -> bool:
@@ -224,7 +263,10 @@ class Route:
                         vehicle_battery_capacity: float,
                         initial_battery: float,
                         time_config: TimeConfig = None,
-                        energy_config: EnergyConfig = None) -> bool:
+                        energy_config: EnergyConfig = None,
+                        charging_strategy=None,
+                        conflict_waiting_times: Optional[List[float]] = None,
+                        standby_times: Optional[List[float]] = None) -> bool:
         """
         计算路径的完整时间表和状态轨迹
         
@@ -240,6 +282,9 @@ class Route:
             initial_battery: 初始电量
             time_config: 时间配置
             energy_config: 能量配置
+            charging_strategy: 充电策略（可选，默认规则）
+            conflict_waiting_times: 每个节点的冲突等待时间
+            standby_times: 每个节点的预测驻留时间
         
         返回:
             bool: 是否可行
@@ -252,17 +297,47 @@ class Route:
             time_config = TimeConfig()
         if energy_config is None:
             energy_config = EnergyConfig()
+
+        structure_ok, error = self.validate_structure()
+        if not structure_ok:
+            self.is_feasible = False
+            self.infeasibility_info = error
+            self.visits = []
+            return False
         
         if len(self.nodes) == 0:
             self.is_feasible = True
             self.visits = []
             return True
-        
+
+        if conflict_waiting_times is None:
+            conflict_waiting_times = self.conflict_waiting_times
+        if conflict_waiting_times is None:
+            conflict_waiting_times = [0.0] * len(self.nodes)
+        if len(conflict_waiting_times) != len(self.nodes):
+            raise ValueError(
+                "Conflict waiting times must align with the node sequence."
+            )
+
+        if standby_times is None:
+            standby_times = self.standby_times
+        if standby_times is None:
+            standby_times = [0.0] * len(self.nodes)
+        if len(standby_times) != len(self.nodes):
+            raise ValueError(
+                "Standby times must align with the node sequence."
+            )
+
+        if charging_strategy is None:
+            from strategy.charging_strategies import get_default_charging_strategy
+            charging_strategy = get_default_charging_strategy()
+
         # 初始化
         self.visits = []
         current_time = 0.0
         current_load = 0.0
         current_battery = initial_battery
+        min_battery = 0.0
         
         for i, node in enumerate(self.nodes):
             visit = RouteNodeVisit(node=node)
@@ -294,7 +369,7 @@ class Route:
                 current_battery -= energy_consumed
                 
                 # 检查电量
-                if current_battery < -1e-6:
+                if current_battery < min_battery - 1e-6:
                     self.is_feasible = False
                     self.infeasibility_info = (
                         f"Insufficient battery at node {node.node_id}: "
@@ -302,7 +377,7 @@ class Route:
                     )
                     return False
                 
-                current_battery = max(0.0, current_battery)
+                current_battery = max(min_battery, current_battery)
                 visit.battery_after_travel = current_battery
                 
                 # 更新时间
@@ -313,35 +388,37 @@ class Route:
             visit.arrival_time = current_time
             
             # 2. 处理时间窗（等待或延迟）
+            generic_waiting = 0.0
             if hasattr(node, 'time_window') and node.time_window:
                 tw = node.time_window
                 
                 if current_time < tw.earliest:
                     # 早到，等待
-                    visit.start_service_time = tw.earliest
-                    current_time = tw.earliest
-                elif current_time <= tw.latest:
-                    # 准时
-                    visit.start_service_time = current_time
+                    generic_waiting = tw.earliest - current_time
                 else:
-                    # 晚到
-                    if tw.is_hard():
-                        self.is_feasible = False
-                        self.infeasibility_info = (
-                            f"Time window violation at node {node.node_id}: "
-                            f"arrive {current_time:.1f} > latest {tw.latest}"
-                        )
-                        return False
-                    else:
-                        # Soft time window，允许延迟
-                        visit.start_service_time = current_time
-            else:
-                visit.start_service_time = current_time
+                    generic_waiting = 0.0
+
+            conflict_waiting = max(0.0, conflict_waiting_times[i])
+            start_service = current_time + generic_waiting + conflict_waiting
+
+            if hasattr(node, 'time_window') and node.time_window:
+                tw = node.time_window
+                if tw.is_hard() and start_service > tw.latest + 1e-6:
+                    self.is_feasible = False
+                    self.infeasibility_info = (
+                        f"Time window violation at node {node.node_id}: "
+                        f"start {start_service:.1f} > latest {tw.latest}"
+                    )
+                    return False
+
+            visit.generic_waiting_time = generic_waiting
+            visit.conflict_waiting_time = conflict_waiting
+            visit.start_service_time = start_service
+            current_time = start_service
             
             # 3. 执行服务
             service_time = node.service_time if hasattr(node, 'service_time') else 0.0
             current_time = visit.start_service_time + service_time
-            visit.departure_time = current_time
             
             # 4. 更新载重
             if node.is_pickup():
@@ -361,18 +438,61 @@ class Route:
             
             # 5. 充电
             if node.is_charging_station():
-                # 充满电
-                charge_amount = vehicle_battery_capacity - current_battery
+                # 估算剩余能量需求
+                remaining_energy = 0.0
+                energy_to_next_station = 0.0
+                next_station_found = False
+                for j in range(i, len(self.nodes) - 1):
+                    seg_distance = distance_matrix.get_distance(
+                        self.nodes[j].node_id,
+                        self.nodes[j + 1].node_id
+                    )
+                    seg_time = calculate_travel_time(seg_distance, time_config.vehicle_speed)
+                    seg_energy = energy_config.consumption_rate * seg_time
+                    remaining_energy += seg_energy
+                    if not next_station_found:
+                        energy_to_next_station += seg_energy
+                    if self.nodes[j + 1].is_charging_station() and j >= i:
+                        next_station_found = True
+                        break
+
+                if not next_station_found:
+                    energy_to_next_station = remaining_energy
+
+                target_demand = energy_to_next_station if next_station_found else remaining_energy
+
+                desired_charge = charging_strategy.determine_charging_amount(
+                    current_battery=current_battery,
+                    remaining_demand=target_demand,
+                    battery_capacity=vehicle_battery_capacity
+                )
+                desired_charge = max(0.0, desired_charge)
+                max_by_capacity = max(0.0, vehicle_battery_capacity - current_battery)
+                max_by_amount = energy_config.max_charging_amount
+                max_by_time = (
+                    energy_config.charging_rate
+                    * energy_config.charging_efficiency
+                    * energy_config.max_charging_time
+                )
+                charge_cap = min(max_by_capacity, max_by_amount, max_by_time)
+                charge_amount = min(desired_charge, charge_cap)
+
                 if charge_amount > 0:
                     charging_time = calculate_charging_time(
                         charge_amount,
-                        energy_config
+                        config=energy_config
                     )
                     current_time += charging_time
-                    current_battery = vehicle_battery_capacity
-                    visit.departure_time = current_time
+                    current_battery = min(
+                        vehicle_battery_capacity,
+                        current_battery + charge_amount
+                    )
             
             visit.battery_after_service = current_battery
+            standby_time = max(0.0, standby_times[i])
+            visit.standby_time = standby_time
+            current_time += standby_time
+            visit.departure_time = current_time
             self.visits.append(visit)
         
         self.is_feasible = True
@@ -415,6 +535,33 @@ class Route:
         for task_id in delivery_positions:
             if task_id not in pickup_positions:
                 return False, f"Task {task_id}: delivery exists but pickup missing"
+
+        return True, None
+
+    def validate_task_uniqueness(self) -> Tuple[bool, Optional[str]]:
+        """
+        验证任务节点唯一性
+
+        确保每个任务的pickup/delivery至多出现一次，避免重复服务。
+        """
+        counts: Dict[int, Dict[str, int]] = {}
+
+        for node in self.nodes:
+            if not hasattr(node, 'task_id'):
+                continue
+            task_id = node.task_id
+            if task_id not in counts:
+                counts[task_id] = {"pickup": 0, "delivery": 0}
+            if node.is_pickup():
+                counts[task_id]["pickup"] += 1
+            elif node.is_delivery():
+                counts[task_id]["delivery"] += 1
+
+        for task_id, data in counts.items():
+            if data["pickup"] > 1:
+                return False, f"Task {task_id}: duplicate pickup nodes ({data['pickup']})"
+            if data["delivery"] > 1:
+                return False, f"Task {task_id}: duplicate delivery nodes ({data['delivery']})"
 
         return True, None
 
@@ -500,7 +647,12 @@ class Route:
             return False, "Route must end with depot"
         
         # 检查precedence
-        return self.validate_precedence()
+        ok, error = self.validate_precedence()
+        if not ok:
+            return False, error
+
+        # 检查任务唯一性
+        return self.validate_task_uniqueness()
     
     
     def calculate_total_distance(self, distance_matrix: DistanceMatrix) -> float:
@@ -801,6 +953,8 @@ class Route:
         self.visits = []
         self.is_feasible = None
         self.infeasibility_info = None
+        self.conflict_waiting_times = None
+        self.standby_times = None
     
     def remove_task(self, task: Task) -> None:
         """
@@ -834,6 +988,8 @@ class Route:
         self.visits = []
         self.is_feasible = None
         self.infeasibility_info = None
+        self.conflict_waiting_times = None
+        self.standby_times = None
     
     def get_served_tasks(self) -> List[Task]:
         """
@@ -904,6 +1060,9 @@ class Route:
         plan_entry_map = {}
         vehicle_defaults = DEFAULT_VEHICLE_DYNAMICS
         max_iterations = vehicle_defaults.max_energy_adjustment_iterations
+        if charging_strategy is None:
+            from strategy.charging_strategies import get_default_charging_strategy
+            charging_strategy = get_default_charging_strategy()
 
         for iteration in range(max_iterations):
             current_battery = vehicle.battery_capacity  # 满电出发
@@ -929,56 +1088,62 @@ class Route:
                 if current_node.is_charging_station():
                     battery_before_charge = current_battery
                     applied_charge = 0.0
-                    if charging_strategy:
-                        # 估算剩余路径能耗，策略根据需求决定补能量
-                        remaining_energy_demand = 0.0
-                        energy_to_next_stop = 0.0
-                        next_stop_is_cs = False
-                        for j in range(i, len(temp_nodes) - 1):
-                            seg_distance = distance_matrix.get_distance(
-                                temp_nodes[j].node_id,
-                                temp_nodes[j + 1].node_id
-                            )
-                            travel_time = seg_distance / vehicle_speed
-                            seg_energy = energy_config.consumption_rate * travel_time
-                            remaining_energy_demand += seg_energy
-                            energy_to_next_stop += seg_energy
-                            if temp_nodes[j + 1].is_charging_station() and j >= i:
-                                next_stop_is_cs = True
-                                break
-
-                        if not next_stop_is_cs:
-                            energy_to_next_stop = remaining_energy_demand
-
-                        target_energy_demand = (energy_to_next_stop
-                                                if next_stop_is_cs
-                                                else remaining_energy_demand)
-
-                        charge_amount = charging_strategy.determine_charging_amount(
-                            current_battery=current_battery,
-                            remaining_demand=target_energy_demand,
-                            battery_capacity=vehicle.battery_capacity
+                    # 估算剩余路径能耗，策略根据需求决定补能量
+                    remaining_energy_demand = 0.0
+                    energy_to_next_stop = 0.0
+                    next_stop_is_cs = False
+                    for j in range(i, len(temp_nodes) - 1):
+                        seg_distance = distance_matrix.get_distance(
+                            temp_nodes[j].node_id,
+                            temp_nodes[j + 1].node_id
                         )
+                        travel_time = seg_distance / vehicle_speed
+                        seg_energy = energy_config.consumption_rate * travel_time
+                        remaining_energy_demand += seg_energy
+                        energy_to_next_stop += seg_energy
+                        if temp_nodes[j + 1].is_charging_station() and j >= i:
+                            next_stop_is_cs = True
+                            break
 
-                        requested_charge = max(0.0, charge_amount)
-                        current_battery = min(
-                            vehicle.battery_capacity,
-                            current_battery + requested_charge
-                        )
-                        applied_charge = current_battery - battery_before_charge
-                    else:
-                        current_battery = vehicle.battery_capacity
-                        applied_charge = current_battery - battery_before_charge
+                    if not next_stop_is_cs:
+                        energy_to_next_stop = remaining_energy_demand
+
+                    target_energy_demand = (energy_to_next_stop
+                                            if next_stop_is_cs
+                                            else remaining_energy_demand)
+
+                    charge_amount = charging_strategy.determine_charging_amount(
+                        current_battery=current_battery,
+                        remaining_demand=target_energy_demand,
+                        battery_capacity=vehicle.battery_capacity
+                    )
+
+                    requested_charge = max(0.0, charge_amount)
+                    max_by_capacity = max(0.0, vehicle.battery_capacity - current_battery)
+                    max_by_amount = energy_config.max_charging_amount
+                    max_by_time = (
+                        energy_config.charging_rate
+                        * energy_config.charging_efficiency
+                        * energy_config.max_charging_time
+                    )
+                    requested_charge = min(
+                        requested_charge,
+                        max_by_capacity,
+                        max_by_amount,
+                        max_by_time
+                    )
+                    current_battery = min(
+                        vehicle.battery_capacity,
+                        current_battery + requested_charge
+                    )
+                    applied_charge = current_battery - battery_before_charge
 
                     min_departure_energy = energy_needed
 
-                    if charging_strategy:
-                        required_for_next_stop = energy_to_next_stop
-                        if not next_stop_is_cs:
-                            required_for_next_stop += safety_threshold_value
-                        min_departure_energy = max(min_departure_energy, required_for_next_stop)
-                    elif not next_node.is_charging_station():
-                        min_departure_energy += safety_threshold_value
+                    required_for_next_stop = energy_to_next_stop
+                    if not next_stop_is_cs:
+                        required_for_next_stop += safety_threshold_value
+                    min_departure_energy = max(min_departure_energy, required_for_next_stop)
 
                     if min_departure_energy > vehicle.battery_capacity:
                         critical_position = i + 1
@@ -1089,6 +1254,8 @@ class Route:
         # 标记需要重新计算
         self.visits = []
         self.is_feasible = None
+        self.conflict_waiting_times = None
+        self.standby_times = None
     
     def find_task_positions(self, task: Task) -> Optional[Tuple[int, int]]:
         """

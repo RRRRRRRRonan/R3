@@ -97,20 +97,33 @@ class CostParameters:
     C_time: float = 0.1
     C_delay: float = 2.0
     C_wait: float = 0.05
+    C_conflict: float = 0.05
+    C_standby: float = 0.05
 
     C_missing_task: float = 10000.0
     C_infeasible: float = 10000.0
 
-    def get_total_cost(self, distance: float, charging: float,
-                      time: float, delay: float, waiting: float) -> float:
+    def get_total_cost(
+        self,
+        distance: float,
+        charging: float,
+        time: float = 0.0,
+        delay: float = 0.0,
+        waiting: float = 0.0,
+        conflict_waiting: float = 0.0,
+        standby: float = 0.0,
+        rejected: int = 0,
+    ) -> float:
         """Return the weighted sum of the route performance components."""
 
+        effective_conflict_waiting = conflict_waiting + waiting
         return (
             self.C_tr * distance
             + self.C_ch * charging
-            + self.C_time * time
             + self.C_delay * delay
-            + self.C_wait * waiting
+            + self.C_conflict * effective_conflict_waiting
+            + self.C_standby * standby
+            + self.C_missing_task * rejected
         )
 
 

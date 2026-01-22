@@ -83,6 +83,14 @@ R3/
 |------|------|
 | `alns.py` | ALNS主算法 |
 
+### `baselines/` - 对照基准（MIP）
+
+| 文件 | 说明 |
+|------|------|
+| `baselines/mip/model.py` | MIP基准模型结构与约束说明 |
+| `baselines/mip/solver.py` | 基准求解器接口（默认 PuLP+CBC） |
+| `baselines/mip/config.py` | 基准规模与求解器配置 |
+
 **核心组件**：
 - **Destroy算子**：`random_removal()`（可移除充电站）
 - **Repair算子**：`greedy_insertion()`, `regret2_insertion()`, `random_insertion()`
@@ -148,6 +156,14 @@ R3/
 ---
 
 ## 文档结构 (`docs/`)
+
+### 根目录文档
+
+| 文件 | 说明 |
+|------|------|
+| `ARCHITECTURE.md` | 架构说明与整体能力概览 |
+| `MIP_BASELINE_MODEL.md` | MIP基准模型（规则选择与冲突/充电对照） |
+| `README.md` | 文档索引与快速导航 |
 
 ### `planning/` - 计划和范围文档
 

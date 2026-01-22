@@ -90,6 +90,7 @@ class Vehicle:
     capacity: float = DEFAULT_VEHICLE_DEFAULTS.capacity_kg         # 最大载重 (kg)
     battery_capacity: float = DEFAULT_VEHICLE_DEFAULTS.battery_capacity_kwh  # 电池容量 (kWh)
     speed: float = DEFAULT_VEHICLE_DEFAULTS.cruise_speed_m_s              # 移动速度 (m/s)
+    priority: int = 0  # 冲突规避时的默认优先级
 
     # === 静态状态（用于planning） ===
     initial_location: Tuple[float, float] = DEFAULT_VEHICLE_DEFAULTS.depot_location  # 默认在depot

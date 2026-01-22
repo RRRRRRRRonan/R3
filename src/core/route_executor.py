@@ -7,9 +7,8 @@ The generated trace is used by feasibility checks, debugging tools, and the
 charging strategy benchmarks.
 """
 
-from typing import List, Optional, Tuple
-from core.route import Route, RouteNodeVisit
-from core.node import Node
+from typing import Optional
+from core.route import Route
 from core.vehicle import Vehicle
 from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
@@ -56,99 +55,27 @@ class RouteExecutor:
         返回:
             Route: 带有visits记录的路径副本
         """
+        from strategy.charging_strategies import get_default_charging_strategy
+
         executed_route = route.copy()
-        visits = []
-
-        # 初始状态
-        current_time = start_time
-        current_battery = vehicle.battery_capacity  # 满电出发
-        current_load = 0.0
-
-        for i, node in enumerate(executed_route.nodes):
-            # 到达时间和电量
-            if i == 0:
-                # 起点（depot）
-                arrival_time = current_time
-                battery_after_travel = current_battery
-            else:
-                # 计算从上一节点到当前节点的距离和能耗
-                prev_node = executed_route.nodes[i-1]
-                distance = self.distance.get_distance(prev_node.node_id, node.node_id)
-                travel_time = distance / self.time_config.vehicle_speed
-                energy_consumed = self.energy_config.consumption_rate * travel_time
-
-                arrival_time = current_time + travel_time
-                battery_after_travel = current_battery - energy_consumed
-
-            # 服务节点（更新负载和电量）
-            battery_after_service = battery_after_travel
-            load_after_service = current_load
-
-            # 如果是充电站，充电
-            if node.is_charging_station():
-                if charging_strategy:
-                    # 计算剩余路径能量需求
-                    remaining_demand, demand_to_next_cs, has_next_cs = self._calculate_remaining_demand(
-                        executed_route, i, self.energy_config
-                    )
-
-                    target_demand = demand_to_next_cs if has_next_cs else remaining_demand
-
-                    # 使用充电策略决定充电量
-                    charge_amount = charging_strategy.determine_charging_amount(
-                        current_battery=battery_after_travel,
-                        remaining_demand=target_demand,
-                        battery_capacity=vehicle.battery_capacity
-                    )
-
-                    battery_after_service = min(
-                        vehicle.battery_capacity,
-                        battery_after_travel + charge_amount
-                    )
-                else:
-                    # 没有充电策略，默认充满
-                    battery_after_service = vehicle.battery_capacity
-
-            # 如果是任务节点，更新负载
-            if node.is_pickup():
-                load_after_service = current_load + node.demand
-            elif node.is_delivery():
-                load_after_service = max(0, current_load - node.demand)
-
-            # 服务时间
-            service_duration = node.service_duration if hasattr(node, 'service_duration') else 0.0
-            departure_time = arrival_time + service_duration
-
-            # 创建visit记录
-            visit = RouteNodeVisit(
-                node=node,
-                arrival_time=arrival_time,
-                start_service_time=arrival_time,
-                departure_time=departure_time,
-                load_after_service=load_after_service,
-                battery_after_travel=battery_after_travel,
-                battery_after_service=battery_after_service
-            )
-            visits.append(visit)
-
-            # 更新当前状态
-            current_time = departure_time
-            current_battery = battery_after_service
-            current_load = load_after_service
-
-        # 更新路径的visits
-        executed_route.visits = visits
-
-        # 检查可行性
-        if any(v.battery_after_travel < 0 for v in visits):
-            executed_route.is_feasible = False
-            executed_route.infeasibility_info = "Battery depleted"
-        elif any(v.load_after_service > vehicle.capacity for v in visits):
-            executed_route.is_feasible = False
-            executed_route.infeasibility_info = "Capacity exceeded"
-        else:
-            executed_route.is_feasible = True
-
+        strategy = charging_strategy or get_default_charging_strategy()
+        executed_route.compute_schedule(
+            distance_matrix=self.distance,
+            vehicle_capacity=vehicle.capacity,
+            vehicle_battery_capacity=vehicle.battery_capacity,
+            initial_battery=vehicle.initial_battery,
+            time_config=self.time_config,
+            energy_config=self.energy_config,
+            charging_strategy=strategy,
+            conflict_waiting_times=executed_route.conflict_waiting_times,
+            standby_times=executed_route.standby_times,
+        )
+        if start_time != 0.0 and executed_route.visits:
+            # Apply a uniform time shift when a non-zero start is requested.
+            for visit in executed_route.visits:
+                visit.arrival_time += start_time
+                visit.start_service_time += start_time
+                visit.departure_time += start_time
         return executed_route
 
     def _calculate_remaining_demand(self,

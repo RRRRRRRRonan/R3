@@ -40,6 +40,13 @@
 - `src/planner/cbs/`（若存在）或同类目录：实现基于冲突的搜索算法，负责解决路径冲突。
 - 测试入口位于 `tests/warehouse_regression/`，覆盖不同规模场景下的协同调度回归用例。
 
+## 研究创新与基准模型
+
+- **规则库 + RL 选择**：以可解释规则为动作空间，在线调度由规则选择驱动（selection hyper-heuristic）。
+- **可学习部分充电**：充电深度离散化，便于稳定学习与策略对照。
+- **冲突规避安全屏蔽**：节点/边头距约束+冲突等待惩罚实现 collision-aware。
+- **MIP 基准模型**：用于小规模最优/下界对照，详见 `docs/MIP_BASELINE_MODEL.md`。
+
 
 ## 工具与辅助组件
 
@@ -57,5 +64,6 @@
 
 - [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)：详细目录结构与模块说明。
 - `docs/` 下的专题文档，介绍算法细节与设计考量。
+- [MIP 基准模型](./docs/MIP_BASELINE_MODEL.md)：与 RL 规则选择对照的模型化基准。
 
 如果对上述内容仍有疑问，建议结合测试用例阅读代码，以便更好地理解模块间的交互方式。
