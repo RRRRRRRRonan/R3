@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional
 
 from config import CostParameters
-from core.node import ChargingNode, DepotNode
+from core.node import (
+    ChargingNode,
+    DepotNode,
+    create_charging_node,
+    create_depot,
+    create_task_node_pair,
+)
 from core.task import Task, TaskPool
 from core.vehicle import Vehicle
 from physics.distance import DistanceMatrix
@@ -14,6 +20,7 @@ from physics.energy import EnergyConfig
 from physics.time import TimeConfig
 
 from baselines.mip.config import MIPBaselineScale, MIPBaselineSolverConfig
+from physics.distance import NodeIDHelper
 
 
 @dataclass
@@ -29,6 +36,7 @@ class MIPBaselineInstance:
     energy_config: EnergyConfig
     rule_count: int = 0
     decision_epochs: int = 1
+    scenarios: List["MIPBaselineScenario"] = field(default_factory=list)
 
     def validate_scale(self, scale: MIPBaselineScale) -> None:
         """Ensure the instance fits inside the baseline scale limits."""
@@ -55,6 +63,24 @@ class MIPBaselineInstance:
                 f"MIP baseline supports at most {scale.max_decision_epochs} decision epochs, "
                 f"got {self.decision_epochs}."
             )
+        if self.scenarios and len(self.scenarios) > scale.max_scenarios:
+            raise ValueError(
+                f"MIP baseline supports at most {scale.max_scenarios} scenarios, "
+                f"got {len(self.scenarios)}."
+            )
+
+
+@dataclass(frozen=True)
+class MIPBaselineScenario:
+    """Scenario definition for dynamic task availability."""
+
+    scenario_id: int
+    probability: float
+    task_availability: Dict[int, int]
+    arrival_time_shift_s: float = 0.0
+    time_window_scale: float = 1.0
+    priority_boost: int = 0
+    queue_estimates_s: Dict[int, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -88,11 +114,23 @@ def build_instance(
     energy_config: Optional[EnergyConfig] = None,
     rule_count: int = 0,
     decision_epochs: int = 1,
+    scenarios: Optional[Iterable[MIPBaselineScenario]] = None,
 ) -> MIPBaselineInstance:
     """Build a baseline instance from core objects."""
 
+    tasks = list(task_pool.get_all_tasks())
+    scenario_list = list(scenarios or [])
+    if not scenario_list:
+        scenario_list = [
+            MIPBaselineScenario(
+                scenario_id=0,
+                probability=1.0,
+                task_availability={task.task_id: 1 for task in tasks},
+            )
+        ]
+
     instance = MIPBaselineInstance(
-        tasks=list(task_pool.get_all_tasks()),
+        tasks=tasks,
         vehicles=list(vehicles),
         depot=depot,
         charging_stations=list(charging_stations),
@@ -101,6 +139,7 @@ def build_instance(
         energy_config=energy_config or EnergyConfig(),
         rule_count=rule_count,
         decision_epochs=decision_epochs,
+        scenarios=scenario_list,
     )
     return instance
 
@@ -138,6 +177,7 @@ def build_model_spec(
         "rho: energy consumption per time",
         "kappa, eta: charging rate/efficiency",
         "T_ch_max, E_ch_max: charging caps",
+        "q_i^{queue}: queue waiting estimate at charging stations",
         "Delta_t_safe: headway safety margin",
         "delta_r^w: dynamic task availability",
         "p_w: scenario probability",
@@ -154,7 +194,7 @@ def build_model_spec(
         "T_i^{a,w}, F_i^{a,w}: service start / departure",
         "L_i^{a,w}: tardiness",
         "u_i^{a,w}: generic waiting",
-        "w_i^{a,w}: conflict waiting",
+        "t_ij^{a,b,w}: conflict waiting on edge",
         "s_i^{a,w}: standby dwell",
         "b_arr,i^{a,w}, b_dep,i^{a,w}: battery levels",
         "q_i^{a,w}, g_i^{a,w}: charging amount/time",
@@ -193,3 +233,69 @@ def build_model_spec(
         objective_terms=objective_terms,
         constraints=constraints,
     )
+
+
+def build_minimal_instance(
+    *,
+    scale: Optional[MIPBaselineScale] = None,
+    rule_count: int = 13,
+    decision_epochs: int = 2,
+) -> MIPBaselineInstance:
+    """Create a deterministic minimal instance for solver smoke tests."""
+
+    scale = scale or MIPBaselineScale()
+    num_tasks = scale.max_tasks
+    num_charging = scale.max_charging_stations
+    node_helper = NodeIDHelper(num_tasks, num_charging)
+
+    depot = create_depot((0.0, 0.0))
+    coordinates: Dict[int, tuple[float, float]] = {depot.node_id: depot.coordinates}
+
+    tasks: List[Task] = []
+    task_pool = TaskPool()
+    for task_id in range(1, num_tasks + 1):
+        pickup_id = task_id
+        delivery_id = task_id + num_tasks
+        pickup_coords = (float(task_id * 6), 0.0)
+        delivery_coords = (float(task_id * 6), 8.0)
+        pickup, delivery = create_task_node_pair(
+            task_id=task_id,
+            pickup_id=pickup_id,
+            delivery_id=delivery_id,
+            pickup_coords=pickup_coords,
+            delivery_coords=delivery_coords,
+        )
+        task = Task(task_id=task_id, pickup_node=pickup, delivery_node=delivery, demand=pickup.demand)
+        tasks.append(task)
+        task_pool.add_task(task)
+        coordinates[pickup_id] = pickup_coords
+        coordinates[delivery_id] = delivery_coords
+
+    charging_stations: List[ChargingNode] = []
+    for idx, station_id in enumerate(node_helper.get_all_charging_ids()):
+        coords = (float(idx * 15), 15.0)
+        station = create_charging_node(node_id=station_id, coordinates=coords)
+        charging_stations.append(station)
+        coordinates[station_id] = coords
+
+    vehicles = [Vehicle(vehicle_id=1), Vehicle(vehicle_id=2)]
+
+    distance_matrix = DistanceMatrix(
+        coordinates=coordinates,
+        num_tasks=num_tasks,
+        num_charging_stations=num_charging,
+    )
+
+    instance = build_instance(
+        task_pool,
+        vehicles=vehicles,
+        depot=depot,
+        charging_stations=charging_stations,
+        distance_matrix=distance_matrix,
+        time_config=TimeConfig(),
+        energy_config=EnergyConfig(),
+        rule_count=rule_count,
+        decision_epochs=decision_epochs,
+    )
+    instance.validate_scale(scale)
+    return instance

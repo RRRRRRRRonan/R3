@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -12,17 +12,27 @@ class MIPBaselineScale:
     max_tasks: int = 8
     max_vehicles: int = 2
     max_charging_stations: int = 2
-    max_rules: int = 6
+    max_rules: int = 13
     max_decision_epochs: int = 3
+    max_scenarios: int = 3
 
 
 @dataclass(frozen=True)
 class MIPBaselineSolverConfig:
     """Default solver choice and switches for the baseline model."""
 
-    solver_name: str = "pulp_cbc"
+    solver_name: str = "ortools"
     time_limit_s: float = 30.0
     mip_gap: float = 0.0
     enable_rule_selection: bool = True
     enable_conflict: bool = True
     enable_partial_charging: bool = True
+    scenario_mode: str = "minimal"
+    charging_level_ratios: tuple[float, ...] = (0.25, 0.5, 0.75, 1.0)
+    rule_candidate_top_k: int = 2
+    rule6_charge_level_ratios: tuple[float, ...] = (0.3, 0.5, 0.8)
+    rule7_min_charge_ratio: float = 0.8
+    rule5_soc_threshold: float = 0.2
+    standby_beta: float = 1.0
+    charging_queue_default_s: float = 0.0
+    charging_queue_estimates_s: dict[int, float] = field(default_factory=dict)

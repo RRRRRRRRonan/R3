@@ -6,7 +6,7 @@
 
 默认求解器与规模由代码配置：
 
-- 求解器：`pulp_cbc`
+- 求解器：`ortools`
 - 最小规模：`max_tasks=8`，`max_vehicles=2`，`max_charging_stations=2`
   （详见 `src/baselines/mip/config.py`）
 

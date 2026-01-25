@@ -88,7 +88,7 @@ R3/
 | 文件 | 说明 |
 |------|------|
 | `baselines/mip/model.py` | MIP基准模型结构与约束说明 |
-| `baselines/mip/solver.py` | 基准求解器接口（默认 PuLP+CBC） |
+| `baselines/mip/solver.py` | 基准求解器接口（默认 OR-Tools） |
 | `baselines/mip/config.py` | 基准规模与求解器配置 |
 
 **核心组件**：
