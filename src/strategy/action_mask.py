@@ -26,7 +26,14 @@ from strategy.rule_gating import (
     RULE_STTF,
     get_available_rules,
 )
-from strategy.simulator import EVENT_ROBOT_IDLE, EVENT_TASK_ARRIVAL, Event
+from strategy.simulator import (
+    EVENT_CHARGE_DONE,
+    EVENT_DEADLOCK_RISK,
+    EVENT_ROBOT_IDLE,
+    EVENT_SOC_LOW,
+    EVENT_TASK_ARRIVAL,
+    Event,
+)
 from strategy.state import SimulatorState
 
 ALL_RULES: List[int] = [
@@ -145,7 +152,12 @@ def _candidate_tasks(event: Optional[Event], state: SimulatorState) -> List[obje
 
 
 def _candidate_vehicles(event: Optional[Event], state: SimulatorState) -> List[object]:
-    if event and event.event_type == EVENT_ROBOT_IDLE:
+    if event and event.event_type in {
+        EVENT_ROBOT_IDLE,
+        EVENT_CHARGE_DONE,
+        EVENT_SOC_LOW,
+        EVENT_DEADLOCK_RISK,
+    }:
         vehicle_id = int(event.payload.get("vehicle_id", -1))
         if vehicle_id in state.robots:
             return [state.robots[vehicle_id]]
@@ -246,6 +258,8 @@ def _can_reach_any_charger(
     config = energy_config or EnergyConfig()
     min_required = None
     for charger in state.chargers.values():
+        if not charger.is_available:
+            continue
         distance = _euclidean(vehicle.current_location, charger.coordinates)
         required = calculate_energy_consumption(
             distance=distance,

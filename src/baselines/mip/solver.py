@@ -192,19 +192,34 @@ class ORToolsSolver(MIPBaselineSolver):
                 travel_energy[(i, j)] = instance.energy_config.consumption_rate * time_val
 
         max_service = max(service_time.values()) if service_time else 0.0
-        max_travel = max(travel_time.values()) if travel_time else 0.0
+        max_travel_factor = max(
+            1.0,
+            max((scenario.travel_time_factor for scenario in scenarios), default=1.0),
+        )
+        max_travel = (max(travel_time.values()) if travel_time else 0.0) * max_travel_factor
         max_charge_time = instance.energy_config.max_charging_time
         horizon = max(
             1.0,
             (len(node_ids) + 1) * (max_travel + max_service + max_charge_time),
         )
         big_m_time = horizon * 2.0
-        max_energy = max(travel_energy.values()) if travel_energy else 0.0
+        max_energy = (max(travel_energy.values()) if travel_energy else 0.0) * max_travel_factor
         big_m_energy = max(
             (vehicle.battery_capacity for vehicle in vehicles),
             default=0.0,
         ) + max_energy
         max_demand = max((abs(delta) for delta in demand_delta.values()), default=0.0)
+        max_demand = max(
+            max_demand,
+            max(
+                (
+                    abs(demand)
+                    for scenario in scenarios
+                    for demand in scenario.task_demands.values()
+                ),
+                default=0.0,
+            ),
+        )
         big_m_load = max(
             (vehicle.capacity for vehicle in vehicles),
             default=0.0,
@@ -214,15 +229,41 @@ class ORToolsSolver(MIPBaselineSolver):
         epoch_count = max(1, instance.decision_epochs)
         epoch_length = horizon / epoch_count if epoch_count > 0 else horizon
         scenario_time_windows: Dict[int, Dict[int, Optional[Tuple[float, float]]]] = {}
+        scenario_service_times: Dict[int, Dict[int, float]] = {}
+        scenario_demand_delta: Dict[int, Dict[int, float]] = {}
         scenario_queue_times: Dict[int, Dict[int, float]] = {}
+        scenario_release_times: Dict[int, Dict[int, float]] = {}
+        scenario_travel_factor: Dict[int, float] = {}
+        scenario_charging_available: Dict[int, Dict[int, int]] = {}
+        epoch_times_by_scenario: Dict[int, List[float]] = {}
+        epoch_ids_by_scenario: Dict[int, List[int]] = {}
         task_epoch_by_scenario: Dict[int, Dict[int, int]] = {}
         rule_prefs_by_scenario: Dict[int, Dict[int, RulePreferences]] = {}
 
         for scenario in scenarios:
+            release_times = _build_scenario_release_times(tasks, scenario)
+            scenario_release_times[scenario.scenario_id] = release_times
+            epoch_times = _build_scenario_epoch_times(release_times, scenario)
+            epoch_times_by_scenario[scenario.scenario_id] = epoch_times
+            epoch_ids_by_scenario[scenario.scenario_id] = list(range(len(epoch_times)))
+            release_times_by_node = {
+                pickup_id: release_times.get(task_id, 0.0)
+                for task_id, (pickup_id, _) in task_pairs.items()
+            }
             scenario_time_windows[scenario.scenario_id] = _build_scenario_time_windows(
                 time_windows,
                 scenario,
                 config,
+                release_times_by_node=release_times_by_node,
+            )
+            scenario_service_times[scenario.scenario_id] = _build_scenario_service_times(
+                service_time,
+                scenario,
+            )
+            scenario_demand_delta[scenario.scenario_id] = _build_scenario_demand_delta(
+                demand_delta,
+                scenario,
+                task_pairs,
             )
             queue_default = config.charging_queue_default_s
             queue_times = {
@@ -233,13 +274,14 @@ class ORToolsSolver(MIPBaselineSolver):
                 for node_id in charging_nodes
             }
             scenario_queue_times[scenario.scenario_id] = queue_times
+            scenario_travel_factor[scenario.scenario_id] = max(0.0, scenario.travel_time_factor)
+            scenario_charging_available[scenario.scenario_id] = scenario.charging_availability or {}
 
             arrival_shift, _, priority_boost = _get_scenario_modifiers(scenario, config)
             task_epoch_by_scenario[scenario.scenario_id] = _assign_task_epochs(
                 tasks,
-                epoch_length,
-                epoch_count,
-                arrival_shift_s=arrival_shift,
+                epoch_times_by_scenario[scenario.scenario_id],
+                release_times=release_times,
             )
             rule_prefs_by_scenario[scenario.scenario_id] = _build_rule_preferences(
                 tasks,
@@ -422,9 +464,10 @@ class ORToolsSolver(MIPBaselineSolver):
 
         rule_select: Dict[Tuple[int, int, int], pywraplp.Variable] = {}
         rule_active: Dict[Tuple[int, int], pywraplp.Variable] = {}
-        if config.enable_rule_selection and instance.rule_count and instance.decision_epochs:
+        if config.enable_rule_selection and instance.rule_count:
             for scenario_id in scenario_ids:
-                for epoch in range(instance.decision_epochs):
+                epoch_ids = epoch_ids_by_scenario.get(scenario_id, [0])
+                for epoch in epoch_ids:
                     choices = []
                     for rule_id in rule_ids:
                         var = solver.BoolVar(f"pi_{epoch}_{rule_id}_{scenario_id}")
@@ -434,13 +477,13 @@ class ORToolsSolver(MIPBaselineSolver):
                 for rule_id in rule_ids:
                     active = solver.BoolVar(f"pi_active_{rule_id}_{scenario_id}")
                     rule_active[(rule_id, scenario_id)] = active
-                    for epoch in range(instance.decision_epochs):
+                    for epoch in epoch_ids:
                         solver.Add(active >= rule_select[(epoch, rule_id, scenario_id)])
                     solver.Add(
                         active
                         <= solver.Sum(
                             rule_select[(epoch, rule_id, scenario_id)]
-                            for epoch in range(instance.decision_epochs)
+                            for epoch in epoch_ids
                         )
                     )
 
@@ -568,7 +611,7 @@ class ORToolsSolver(MIPBaselineSolver):
                     solver.Add(
                         depart[(vehicle_id, node_id, scenario_id)]
                         == start[(vehicle_id, node_id, scenario_id)]
-                        + service_time[node_id]
+                        + scenario_service_times[scenario_id][node_id]
                         + charge_time[(vehicle_id, node_id, scenario_id)]
                         + standby[(vehicle_id, node_id, scenario_id)]
                     )
@@ -594,6 +637,10 @@ class ORToolsSolver(MIPBaselineSolver):
                     )
 
                     if is_charging[node_id]:
+                        if scenario_charging_available[scenario_id].get(node_id, 1) == 0:
+                            solver.Add(charge_time[(vehicle_id, node_id, scenario_id)] == 0.0)
+                            solver.Add(charge_amount[(vehicle_id, node_id, scenario_id)] == 0.0)
+                            continue
                         queue_time = scenario_queue_times[scenario_id].get(node_id, 0.0)
                         if queue_time > 0:
                             solver.Add(
@@ -645,16 +692,29 @@ class ORToolsSolver(MIPBaselineSolver):
                         + charge_amount[(vehicle_id, node_id, scenario_id)]
                     )
 
+                # Enforce task release times on pickup nodes even if no time window is defined.
+                release_times = scenario_release_times.get(scenario_id, {})
+                for task_id, (pickup_id, _) in task_pairs.items():
+                    release_time = release_times.get(task_id, 0.0)
+                    if release_time > 0:
+                        solver.Add(
+                            start[(vehicle_id, pickup_id, scenario_id)]
+                            >= release_time - big_m_time * (1 - y[(vehicle_id, pickup_id, scenario_id)])
+                        )
+
         for scenario_id in scenario_ids:
             for vehicle_id in vehicle_ids:
                 for i, j in arcs:
+                    travel_time_factor = max(0.0, scenario_travel_factor.get(scenario_id, 1.0))
+                    scenario_travel_time = travel_time[(i, j)] * travel_time_factor
+                    scenario_travel_energy = travel_energy[(i, j)] * travel_time_factor
                     solver.Add(
                         travel_actual[(vehicle_id, i, j, scenario_id)]
-                        >= travel_time[(i, j)] * x[(vehicle_id, i, j, scenario_id)]
+                        >= scenario_travel_time * x[(vehicle_id, i, j, scenario_id)]
                     )
                     solver.Add(
                         travel_actual[(vehicle_id, i, j, scenario_id)]
-                        <= travel_time[(i, j)] + big_m_time * (1 - x[(vehicle_id, i, j, scenario_id)])
+                        <= scenario_travel_time + big_m_time * (1 - x[(vehicle_id, i, j, scenario_id)])
                     )
                     solver.Add(
                         travel_actual[(vehicle_id, i, j, scenario_id)]
@@ -677,26 +737,26 @@ class ORToolsSolver(MIPBaselineSolver):
                     solver.Add(
                         battery_arr[(vehicle_id, j, scenario_id)]
                         >= battery_dep[(vehicle_id, i, scenario_id)]
-                        - travel_energy[(i, j)]
+                        - scenario_travel_energy
                         - big_m_energy * (1 - x[(vehicle_id, i, j, scenario_id)])
                     )
                     solver.Add(
                         battery_arr[(vehicle_id, j, scenario_id)]
                         <= battery_dep[(vehicle_id, i, scenario_id)]
-                        - travel_energy[(i, j)]
+                        - scenario_travel_energy
                         + big_m_energy * (1 - x[(vehicle_id, i, j, scenario_id)])
                     )
 
                     solver.Add(
                         load[(vehicle_id, j, scenario_id)]
                         >= load[(vehicle_id, i, scenario_id)]
-                        + demand_delta[j]
+                        + scenario_demand_delta[scenario_id][j]
                         - big_m_load * (1 - x[(vehicle_id, i, j, scenario_id)])
                     )
                     solver.Add(
                         load[(vehicle_id, j, scenario_id)]
                         <= load[(vehicle_id, i, scenario_id)]
-                        + demand_delta[j]
+                        + scenario_demand_delta[scenario_id][j]
                         + big_m_load * (1 - x[(vehicle_id, i, j, scenario_id)])
                     )
 
@@ -852,9 +912,10 @@ class ORToolsSolver(MIPBaselineSolver):
                     for node_id in internal_nodes:
                         solver.Add(conflict_wait[(vehicle_id, node_id, scenario_id)] == 0.0)
 
-        if config.enable_rule_selection and instance.rule_count and instance.decision_epochs:
+        if config.enable_rule_selection and instance.rule_count:
             for scenario_id in scenario_ids:
-                for epoch in range(instance.decision_epochs):
+                epoch_ids = epoch_ids_by_scenario.get(scenario_id, [0])
+                for epoch in epoch_ids:
                     for rule_id in rule_ids:
                         pi_var = rule_select[(epoch, rule_id, scenario_id)]
                         tasks_in_epoch = [
@@ -1189,6 +1250,7 @@ def _ensure_scenarios(instance: MIPBaselineInstance) -> List[MIPBaselineScenario
             scenario_id=0,
             probability=1.0,
             task_availability={task.task_id: 1 for task in instance.tasks},
+            task_release_times={task.task_id: task.arrival_time for task in instance.tasks},
         )
     ]
 
@@ -1208,19 +1270,80 @@ def _build_task_availability(
 
 def _assign_task_epochs(
     tasks: Iterable,
-    epoch_length: float,
-    epoch_count: int,
-    arrival_shift_s: float = 0.0,
+    epoch_times: List[float],
+    *,
+    release_times: Dict[int, float],
 ) -> Dict[int, int]:
     mapping: Dict[int, int] = {}
-    if epoch_length <= 0:
+    if not epoch_times:
         for task in tasks:
             mapping[task.task_id] = 0
         return mapping
+    sorted_times = sorted(set(epoch_times))
     for task in tasks:
-        epoch = int((task.arrival_time + arrival_shift_s) / epoch_length)
-        mapping[task.task_id] = min(max(epoch, 0), max(epoch_count - 1, 0))
+        release_time = release_times.get(task.task_id, task.arrival_time)
+        epoch_index = 0
+        for idx, epoch_time in enumerate(sorted_times):
+            if release_time >= epoch_time:
+                epoch_index = idx
+            else:
+                break
+        mapping[task.task_id] = epoch_index
     return mapping
+
+
+def _build_scenario_release_times(
+    tasks: Iterable,
+    scenario: MIPBaselineScenario,
+) -> Dict[int, float]:
+    release_times: Dict[int, float] = {}
+    for task in tasks:
+        base_release = scenario.task_release_times.get(
+            task.task_id,
+            task.arrival_time,
+        )
+        release_times[task.task_id] = base_release + scenario.arrival_time_shift_s
+    return release_times
+
+
+def _build_scenario_epoch_times(
+    release_times: Dict[int, float],
+    scenario: MIPBaselineScenario,
+) -> List[float]:
+    if scenario.decision_epoch_times:
+        times = sorted(set(scenario.decision_epoch_times))
+    else:
+        times = sorted(set(release_times.values()))
+    if 0.0 not in times:
+        times.insert(0, 0.0)
+    return times
+
+
+def _build_scenario_service_times(
+    base_service_times: Dict[int, float],
+    scenario: MIPBaselineScenario,
+) -> Dict[int, float]:
+    service_times = dict(base_service_times)
+    for node_id, value in scenario.node_service_times.items():
+        service_times[node_id] = value
+    return service_times
+
+
+def _build_scenario_demand_delta(
+    base_demand_delta: Dict[int, float],
+    scenario: MIPBaselineScenario,
+    task_pairs: Dict[int, Tuple[int, int]],
+) -> Dict[int, float]:
+    demand_delta = dict(base_demand_delta)
+    if not scenario.task_demands:
+        return demand_delta
+    for task_id, demand in scenario.task_demands.items():
+        pickup_id, delivery_id = task_pairs.get(task_id, (None, None))
+        if pickup_id is None:
+            continue
+        demand_delta[pickup_id] = abs(demand)
+        demand_delta[delivery_id] = -abs(demand)
+    return demand_delta
 
 
 def _get_scenario_modifiers(
@@ -1240,16 +1363,25 @@ def _build_scenario_time_windows(
     base_time_windows: Dict[int, Optional[Tuple[float, float]]],
     scenario: MIPBaselineScenario,
     config: MIPBaselineSolverConfig,
+    *,
+    release_times_by_node: Optional[Dict[int, float]] = None,
 ) -> Dict[int, Optional[Tuple[float, float]]]:
     shift, scale, _ = _get_scenario_modifiers(scenario, config)
     adjusted: Dict[int, Optional[Tuple[float, float]]] = {}
     for node_id, window in base_time_windows.items():
+        override = scenario.node_time_windows.get(node_id)
+        if override is not None:
+            window = override
         if window is None:
             adjusted[node_id] = None
             continue
         earliest, latest = window
         earliest += shift
         latest += shift
+        if release_times_by_node is not None:
+            release_time = release_times_by_node.get(node_id)
+            if release_time is not None:
+                earliest = max(earliest, release_time)
         width = max(0.0, latest - earliest)
         latest = earliest + width * scale
         adjusted[node_id] = (earliest, max(earliest, latest))

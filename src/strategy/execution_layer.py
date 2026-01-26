@@ -40,16 +40,23 @@ class ExecutionLayer:
         traffic_manager: TrafficManager,
         energy_config: Optional[EnergyConfig] = None,
         time_config: Optional[TimeConfig] = None,
+        travel_time_factor: Optional[float] = None,
     ) -> None:
         self.task_pool = task_pool
         self.simulator = simulator
         self.traffic_manager = traffic_manager
         self.energy_config = energy_config or EnergyConfig()
         self.time_config = time_config or TimeConfig()
+        if travel_time_factor is None:
+            travel_time_factor = getattr(simulator, "travel_time_factor", 1.0)
+        self.travel_time_factor = max(0.0, travel_time_factor)
         self._route_executor: Optional[RouteExecutor] = None
 
     def execute(self, action: AtomicAction, state: SimulatorState, event: Optional[Event]) -> ExecutionResult:
         """Execute a single atomic action and update simulator/task state."""
+        self.travel_time_factor = max(
+            0.0, getattr(self.simulator, "travel_time_factor", self.travel_time_factor)
+        )
 
         if action.kind == "ACCEPT":
             return self._execute_accept(action, state, event)
@@ -101,13 +108,20 @@ class ExecutionLayer:
         vehicle.assign_route(executed_route)
 
         start_node_id, start_coord = _infer_start_node(vehicle, state)
-        edge_to_pickup = _make_edge(start_node_id, pickup.node_id, start_coord, pickup.coordinates, vehicle.speed)
+        edge_to_pickup = _make_edge(
+            start_node_id,
+            pickup.node_id,
+            start_coord,
+            pickup.coordinates,
+            vehicle.speed,
+            self.travel_time_factor,
+        )
         schedule, conflict_wait = self.traffic_manager.reserve_path(robot_id, [edge_to_pickup], current_time)
         distance = executed_route.calculate_total_distance(distance_matrix)
 
         current_time = schedule[-1][1] if schedule else current_time
         conflict_waiting = conflict_wait
-        _consume_energy(vehicle, [edge_to_pickup], self.energy_config)
+        _consume_energy(vehicle, [edge_to_pickup], self.energy_config, self.travel_time_factor)
 
         pickup_result = _visit_node(
             self.traffic_manager,
@@ -132,13 +146,14 @@ class ExecutionLayer:
             pickup.coordinates,
             delivery.coordinates,
             vehicle.speed,
+            self.travel_time_factor,
         )
         schedule, conflict_wait = self.traffic_manager.reserve_path(robot_id, [edge_to_delivery], current_time)
         current_time = schedule[-1][1] if schedule else current_time
         conflict_waiting += conflict_wait
         if distance <= 0.0:
             distance += edge_to_delivery.distance
-        _consume_energy(vehicle, [edge_to_delivery], self.energy_config)
+        _consume_energy(vehicle, [edge_to_delivery], self.energy_config, self.travel_time_factor)
 
         delivery_result = _visit_node(
             self.traffic_manager,
@@ -164,6 +179,12 @@ class ExecutionLayer:
         state.metrics.total_conflict_waiting += conflict_waiting
         state.metrics.total_delay += delay
 
+        self.simulator.update_soc_status(robot_id, time=current_time)
+        self.simulator.maybe_trigger_deadlock(
+            wait_s=conflict_waiting,
+            time=current_time,
+            payload={"robot_id": robot_id, "conflict_waiting": conflict_waiting},
+        )
         self.simulator.mark_vehicle_idle(robot_id, time=current_time)
 
         return ExecutionResult(
@@ -193,13 +214,20 @@ class ExecutionLayer:
         executed_route = executor.execute(route, vehicle, start_time=current_time)
         vehicle.assign_route(executed_route)
 
-        edge = _make_edge(start_node_id, charger.node_id, start_coord, charger.coordinates, vehicle.speed)
+        edge = _make_edge(
+            start_node_id,
+            charger.node_id,
+            start_coord,
+            charger.coordinates,
+            vehicle.speed,
+            self.travel_time_factor,
+        )
         schedule, conflict_wait = self.traffic_manager.reserve_path(robot_id, [edge], current_time)
         distance = executed_route.calculate_total_distance(distance_matrix)
         current_time = schedule[-1][1] if schedule else current_time
         conflict_waiting = conflict_wait
 
-        _consume_energy(vehicle, [edge], self.energy_config)
+        _consume_energy(vehicle, [edge], self.energy_config, self.travel_time_factor)
 
         queue_wait = max(0.0, charger.estimated_wait_s)
         earliest_charge = current_time + queue_wait
@@ -231,7 +259,13 @@ class ExecutionLayer:
         state.metrics.total_charging += charge_amount
         state.metrics.total_standby += standby
 
-        self.simulator.mark_vehicle_idle(robot_id, time=charge_end)
+        self.simulator.update_soc_status(robot_id, time=charge_end)
+        self.simulator.maybe_trigger_deadlock(
+            wait_s=conflict_waiting,
+            time=charge_end,
+            payload={"robot_id": robot_id, "conflict_waiting": conflict_waiting},
+        )
+        self.simulator.mark_charge_done(robot_id, time=charge_end)
 
         return ExecutionResult(
             end_time=charge_end,
@@ -259,6 +293,12 @@ class ExecutionLayer:
             dwell_end = dwell_start + dwell_time
             vehicle.current_time = dwell_end
             state.metrics.total_standby += dwell_time
+            self.simulator.update_soc_status(robot_id, time=dwell_end)
+            self.simulator.maybe_trigger_deadlock(
+                wait_s=0.0,
+                time=dwell_end,
+                payload={"robot_id": robot_id, "conflict_waiting": 0.0},
+            )
             self.simulator.mark_vehicle_idle(robot_id, time=dwell_end)
             return ExecutionResult(end_time=dwell_end, standby=dwell_time)
 
@@ -272,12 +312,13 @@ class ExecutionLayer:
             vehicle.current_location,
             target_coord,
             vehicle.speed,
+            self.travel_time_factor,
         )
         schedule, conflict_wait = self.traffic_manager.reserve_path(robot_id, [edge], current_time)
         distance = edge.distance
         current_time = schedule[-1][1] if schedule else current_time
 
-        _consume_energy(vehicle, [edge], self.energy_config)
+        _consume_energy(vehicle, [edge], self.energy_config, self.travel_time_factor)
 
         dwell_time = self.time_config.default_service_time
         dwell_start, dwell_end, node_wait, _ = self.traffic_manager.reserve_node_with_window(
@@ -296,6 +337,12 @@ class ExecutionLayer:
         state.metrics.total_conflict_waiting += conflict_waiting
         state.metrics.total_standby += dwell_time
 
+        self.simulator.update_soc_status(robot_id, time=dwell_end)
+        self.simulator.maybe_trigger_deadlock(
+            wait_s=conflict_waiting,
+            time=dwell_end,
+            payload={"robot_id": robot_id, "conflict_waiting": conflict_waiting},
+        )
         self.simulator.mark_vehicle_idle(robot_id, time=dwell_end)
 
         return ExecutionResult(
@@ -365,13 +412,19 @@ def _make_edge(
     from_coord: Tuple[float, float],
     to_coord: Tuple[float, float],
     speed: float,
+    travel_time_factor: float = 1.0,
 ) -> PathEdge:
     distance = _euclidean(from_coord, to_coord)
-    travel_time = calculate_travel_time(distance, max(speed, 1e-6))
+    travel_time = calculate_travel_time(distance, max(speed, 1e-6)) * max(0.0, travel_time_factor)
     return PathEdge(from_node=from_id, to_node=to_id, travel_time=travel_time, distance=distance)
 
 
-def _consume_energy(vehicle: Vehicle, edges: Sequence[PathEdge], energy_config: EnergyConfig) -> None:
+def _consume_energy(
+    vehicle: Vehicle,
+    edges: Sequence[PathEdge],
+    energy_config: EnergyConfig,
+    travel_time_factor: float = 1.0,
+) -> None:
     for edge in edges:
         required = calculate_energy_consumption(
             distance=edge.distance,
@@ -379,7 +432,7 @@ def _consume_energy(vehicle: Vehicle, edges: Sequence[PathEdge], energy_config: 
             config=energy_config,
             vehicle_speed=vehicle.speed,
             vehicle_capacity=vehicle.capacity,
-        )
+        ) * max(0.0, travel_time_factor)
         try:
             vehicle.consume_battery(required)
         except ValueError:

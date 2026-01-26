@@ -27,7 +27,14 @@ from strategy.rule_gating import (
     RULE_STANDBY_LOW_COST,
     RULE_STTF,
 )
-from strategy.simulator import EVENT_ROBOT_IDLE, EVENT_TASK_ARRIVAL, Event
+from strategy.simulator import (
+    EVENT_CHARGE_DONE,
+    EVENT_DEADLOCK_RISK,
+    EVENT_ROBOT_IDLE,
+    EVENT_SOC_LOW,
+    EVENT_TASK_ARRIVAL,
+    Event,
+)
 from strategy.state import SimulatorState
 
 
@@ -236,7 +243,12 @@ def _candidate_tasks(event: Optional[Event], state: SimulatorState):
 
 
 def _candidate_vehicles(event: Optional[Event], state: SimulatorState):
-    if event and event.event_type == EVENT_ROBOT_IDLE:
+    if event and event.event_type in {
+        EVENT_ROBOT_IDLE,
+        EVENT_CHARGE_DONE,
+        EVENT_SOC_LOW,
+        EVENT_DEADLOCK_RISK,
+    }:
         vehicle_id = int(event.payload.get("vehicle_id", -1))
         if vehicle_id in state.robots:
             return [state.robots[vehicle_id]]
@@ -425,6 +437,8 @@ def _select_charger_and_vehicle(
     best = None
     for vehicle in candidate_vehicles:
         for charger in state.chargers.values():
+            if not charger.is_available:
+                continue
             travel = _travel_time(vehicle.current_location, charger.coordinates, vehicle.speed)
             queue = charger.estimated_wait_s
             if energy_config is not None:

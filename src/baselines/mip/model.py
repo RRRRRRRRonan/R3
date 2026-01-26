@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from config import CostParameters
 from core.node import (
@@ -77,10 +77,17 @@ class MIPBaselineScenario:
     scenario_id: int
     probability: float
     task_availability: Dict[int, int]
+    task_release_times: Dict[int, float] = field(default_factory=dict)
+    node_time_windows: Dict[int, Tuple[float, float]] = field(default_factory=dict)
+    node_service_times: Dict[int, float] = field(default_factory=dict)
+    task_demands: Dict[int, float] = field(default_factory=dict)
     arrival_time_shift_s: float = 0.0
     time_window_scale: float = 1.0
     priority_boost: int = 0
     queue_estimates_s: Dict[int, float] = field(default_factory=dict)
+    travel_time_factor: float = 1.0
+    charging_availability: Dict[int, int] = field(default_factory=dict)
+    decision_epoch_times: List[float] = field(default_factory=list)
 
 
 @dataclass
@@ -128,6 +135,15 @@ def build_instance(
                 task_availability={task.task_id: 1 for task in tasks},
             )
         ]
+    else:
+        inferred_epochs = []
+        for scenario in scenario_list:
+            if scenario.decision_epoch_times:
+                inferred_epochs.append(len(set(scenario.decision_epoch_times)))
+            elif scenario.task_release_times:
+                inferred_epochs.append(len(set(scenario.task_release_times.values())))
+        if inferred_epochs:
+            decision_epochs = max(decision_epochs, max(inferred_epochs))
 
     instance = MIPBaselineInstance(
         tasks=tasks,
@@ -180,7 +196,10 @@ def build_model_spec(
         "q_i^{queue}: queue waiting estimate at charging stations",
         "Delta_t_safe: headway safety margin",
         "delta_r^w: dynamic task availability",
+        "tau_r^w: task release time in scenario w",
         "p_w: scenario probability",
+        "gamma_w: travel time factor (scenario congestion)",
+        "a_i^w: charging availability indicator",
         f"C_tr={cost_params.C_tr}, C_ch={cost_params.C_ch}",
         f"C_delay={cost_params.C_delay}, C_conflict={cost_params.C_conflict}",
         f"C_missing_task={cost_params.C_missing_task}, C_standby={cost_params.C_standby}",
@@ -218,7 +237,7 @@ def build_model_spec(
         "Flow conservation at intermediate nodes; depot departure/arrival once.",
         "Time propagation: arrival, waiting, service, charging, standby.",
         "Pickup precedes delivery for each request.",
-        "Time windows with tardiness capturing lateness.",
+        "Time windows with tardiness capturing lateness; pickup release times enforced.",
         "Battery initialization and flow; charge only at stations.",
         "Charging time/energy coupling with caps.",
         "Partial charging (optional discrete levels).",

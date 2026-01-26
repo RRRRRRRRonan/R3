@@ -2,7 +2,7 @@
 
 ## 作用与定位
 
-本模型用于小规模对照基准，和线上调度中的“RL 选择可解释规则（selection hyper-heuristic / rule-portfolio RL）”保持一致的建模假设：动态任务到达、部分充电、冲突规避（collision-aware）。该基准不包含固定成本项，目标仅保留行驶、充电、迟到、冲突等待、拒单与驻留惩罚。
+本模型用于小规模对照基准，和线上调度中的“RL 选择可解释规则（selection hyper-heuristic / rule-portfolio RL）”保持一致的建模假设：动态任务到达、部分充电、冲突规避（collision-aware）。该基准不包含固定成本项，目标仅保留行驶、充电、迟到、冲突等待、拒单与驻留惩罚。Scenario 与 Epoch 的定义与事件驱动调度保持一致。
 
 默认求解器与规模由代码配置：
 
@@ -15,6 +15,7 @@
 - **规则库 + RL 选择**：通过规则选择变量 `pi_{e,h}` 表达“在决策时刻 e 选择规则 h”，RL 在线输出规则，MIP 可以作为离线最优或固定规则对照。
 - **可学习的部分充电**：用离散充电深度集合 `S` 表达有限的充电目标（可后续扩展为连续决策）。
 - **冲突规避安全屏蔽**：节点/边头距约束确保碰撞安全，冲突等待 `w` 进入成本；边级等待 `t` 仅提供下界，`w` 汇聚节点/边延迟。
+- **Scenario 与 Epoch 对齐事件定义**：Scenario 记录任务释放时刻与可选扰动（时间窗/服务时间/需求/拥堵/充电站可用性）。Epoch 由事件触发，MIP 中以“任务到达事件时刻集合”形成离散决策时刻（可扩展到机器人空闲、充电完成、SOC 过低、死锁风险等）。
 
 ## 模型定义
 
@@ -40,6 +41,10 @@
 - `T_ch_max`, `E_ch_max`: 每次充电上限
 - `Delta_t_safe`: 最小安全时距
 - `delta_r^w`: 场景 w 中请求 r 是否到达
+- `tau_r^w`: 场景 w 中任务 r 的释放时间
+- `gamma_w`: 场景 w 的行驶时间倍率（拥堵/不确定性）
+- `a_i^w`: 场景 w 中充电站 i 是否可用
+- `s_i^w / q_r^w`: 场景 w 中服务时间/需求量的可选扰动（若不提供则取基准任务属性）
 - `q_i^w`: 需求量（未出现则为 0）
 - `p_w`: 场景概率
 - `alpha_2..alpha_7`: 成本权重（行驶/迟到/充电/冲突等待/拒单/驻留）
@@ -95,6 +100,7 @@ min  Σ_w p_w [
 5. **时间窗与迟到**
    - `T_i^{a,w} ≥ E_i`
    - `L_i^{a,w} ≥ T_i^{a,w} - Ehat_i`
+   - `T_{p(r)}^{a,w} ≥ tau_r^w`（取货节点释放时刻）
 6. **电量初始化与传播**
    - `b_dep,o_a^{a,w} = B_0^a`
    - `b_arr,j^{a,w} ≥ b_dep,i^{a,w} - rho * tau_ij - M(1 - x_ij^{a,w})`
@@ -117,8 +123,22 @@ min  Σ_w p_w [
    - `F_i^{b,w} ≥ F_i^{a,w} + tau_ij + Delta_t_safe - M(1 - m_ij^{a,b,w})`
    - `F_i^{a,w} ≥ F_i^{b,w} + tau_ij + Delta_t_safe - M(m_ij^{a,b,w})`
    - `w_i^{a,w} ≥ Σ t_{i,j}^{a,b,w}`（边级等待为下界，节点/边延迟汇入 w）
-11. **规则选择层**
-   - `Σ_h pi_{e,h}^w = 1`, `∀ e,w`
+11. **规则选择层（事件驱动 Epoch）**
+   - `E(w)` 默认由任务释放时刻组成；如需包含“机器人空闲/充电完成/SOC 过低/死锁风险”等事件，可在场景中显式提供 `decision_epoch_times`
+   - `Σ_h pi_{e,h}^w = 1`, `∀ e∈E(w), w`
+
+## Scenario/epoch 文件化与回放
+
+- 代码入口：`src/baselines/mip/scenario_io.py`
+- 生成脚本：`scripts/generate_scenarios.py`
+- 推荐格式：JSON（完整字段）+ CSV（任务表）
+
+示例命令：
+
+```bash
+python scripts/generate_scenarios.py --epoch-mode release
+python scripts/generate_scenarios.py --epoch-mode simulate --max-steps 200
+```
    - 规则 h 的约束用大 M 与 `pi_{e,h}^w` 关联
 
 ## 基准使用方式

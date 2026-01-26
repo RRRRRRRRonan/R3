@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from strategy.simulator import EVENT_ROBOT_IDLE, EVENT_TASK_ARRIVAL, Event
+from strategy.simulator import (
+    EVENT_CHARGE_DONE,
+    EVENT_DEADLOCK_RISK,
+    EVENT_ROBOT_IDLE,
+    EVENT_SOC_LOW,
+    EVENT_TASK_ARRIVAL,
+    Event,
+)
 from strategy.state import SimulatorState
 
 RULE_STTF = 1
@@ -47,7 +54,7 @@ def get_available_rules(
     if event_type == EVENT_TASK_ARRIVAL:
         return ACCEPT_RULES + DISPATCH_RULES
 
-    if event_type == EVENT_ROBOT_IDLE:
+    if event_type in {EVENT_ROBOT_IDLE, EVENT_CHARGE_DONE, EVENT_SOC_LOW, EVENT_DEADLOCK_RISK}:
         if _has_energy_risk(state, soc_threshold):
             return CHARGE_RULES
         if state.open_tasks:

@@ -17,6 +17,7 @@ class ChargerState:
     estimated_wait_s: float = 0.0
     queue_length: int = 0
     is_occupied: bool = False
+    is_available: bool = True
 
 
 @dataclass
@@ -58,6 +59,7 @@ def build_simulator_state(
     pending_task_ids: Optional[Iterable[int]] = None,
     chargers: Optional[Sequence[ChargingNode]] = None,
     queue_estimates: Optional[Dict[int, float]] = None,
+    charging_availability: Optional[Dict[int, int]] = None,
     traffic: Optional[TrafficState] = None,
     metrics: Optional[EpisodeMetrics] = None,
 ) -> SimulatorState:
@@ -87,10 +89,14 @@ def build_simulator_state(
             estimate = 0.0
             if queue_estimates is not None:
                 estimate = queue_estimates.get(charger.node_id, 0.0)
+            available = True
+            if charging_availability is not None:
+                available = bool(charging_availability.get(charger.node_id, 1))
             charger_states[charger.node_id] = ChargerState(
                 node_id=charger.node_id,
                 coordinates=charger.coordinates,
                 estimated_wait_s=estimate,
+                is_available=available,
             )
 
     return SimulatorState(
@@ -213,14 +219,18 @@ def _infer_charger_position(charger: ChargerState) -> Tuple[float, float]:
 
 def _encode_event(event: Optional[object]) -> List[float]:
     event_type = getattr(event, "event_type", "NONE") if event else "NONE"
-    mapping = [
-        "NONE",
-        "TASK_ARRIVAL",
-        "ROBOT_IDLE",
-        "CHARGE_DONE",
-        "CONFLICT_RESOLVED",
-    ]
-    return [1.0 if event_type == key else 0.0 for key in mapping]
+    return [1.0 if event_type == key else 0.0 for key in EVENT_TYPES]
+
+
+EVENT_TYPES: List[str] = [
+    "NONE",
+    "TASK_ARRIVAL",
+    "ROBOT_IDLE",
+    "CHARGE_DONE",
+    "SOC_LOW",
+    "DEADLOCK_RISK",
+    "CONFLICT_RESOLVED",
+]
 
 
 def _euclidean(a: Tuple[float, float], b: Tuple[float, float]) -> float:
@@ -236,4 +246,5 @@ __all__ = [
     "SimulatorState",
     "build_simulator_state",
     "env_get_obs",
+    "EVENT_TYPES",
 ]
