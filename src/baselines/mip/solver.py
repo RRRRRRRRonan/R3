@@ -842,7 +842,7 @@ class ORToolsSolver(MIPBaselineSolver):
                         if related_waits:
                             solver.Add(
                                 conflict_wait[(vehicle_b, node_id, scenario_id)]
-                                == solver.Sum(related_waits)
+                                >= solver.Sum(related_waits)
                             )
                         else:
                             solver.Add(conflict_wait[(vehicle_b, node_id, scenario_id)] == 0.0)
@@ -1047,7 +1047,9 @@ class ORToolsSolver(MIPBaselineSolver):
         conflict_expr = solver.Sum(
             scenario_prob[scenario_id]
             * solver.Sum(
-                var for key, var in edge_wait.items() if key[-1] == scenario_id
+                conflict_wait[(vehicle_id, node_id, scenario_id)]
+                for vehicle_id in vehicle_ids
+                for node_id in internal_nodes
             )
             for scenario_id in scenario_ids
         )

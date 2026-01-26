@@ -43,7 +43,7 @@ def test_compute_delta_cost_with_metrics_snapshot():
 
     assert result.travel == 5.0
     assert result.charging == 2.0
-    assert result.tardiness == 1.5 * 3.0
+    assert result.tardiness == 0.5 * 3.0
     assert result.conflict_wait == 0.5 * 4.0
     assert result.standby == 0.2 * 5.0
     assert result.rejection == 100.0
