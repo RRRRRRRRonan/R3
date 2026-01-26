@@ -1,0 +1,86 @@
+"""Rule gating logic for event-driven RL/heuristic selection."""
+
+from __future__ import annotations
+
+from typing import List, Optional
+
+from strategy.simulator import EVENT_ROBOT_IDLE, EVENT_TASK_ARRIVAL, Event
+from strategy.state import SimulatorState
+
+RULE_STTF = 1
+RULE_EDD = 2
+RULE_MST = 3
+RULE_HPF = 4
+RULE_CHARGE_URGENT = 5
+RULE_CHARGE_TARGET = 6
+RULE_CHARGE_OPPORTUNITY = 7
+RULE_STANDBY_LOW_COST = 8
+RULE_STANDBY_LAZY = 9
+RULE_STANDBY_HEATMAP = 10
+RULE_ACCEPT_FEASIBLE = 11
+RULE_ACCEPT_VALUE = 12
+RULE_INSERT_MIN_COST = 13
+
+DISPATCH_RULES = [RULE_STTF, RULE_EDD, RULE_MST, RULE_HPF, RULE_INSERT_MIN_COST]
+CHARGE_RULES = [RULE_CHARGE_URGENT, RULE_CHARGE_TARGET, RULE_CHARGE_OPPORTUNITY]
+STANDBY_RULES = [RULE_STANDBY_LOW_COST, RULE_STANDBY_LAZY, RULE_STANDBY_HEATMAP]
+ACCEPT_RULES = [RULE_ACCEPT_FEASIBLE, RULE_ACCEPT_VALUE]
+
+
+def get_available_rules(
+    event: Optional[Event],
+    state: SimulatorState,
+    *,
+    soc_threshold: float = 0.2,
+) -> List[int]:
+    """Return the available rule IDs for the given event and state.
+
+    This matches the gating logic described in Step 3:
+    - TASK_ARRIVAL: allow accept rules + dispatch rules
+    - ROBOT_IDLE: if energy risk -> charge rules
+                  elif pending tasks -> dispatch rules
+                  else -> standby rules
+    """
+
+    event_type = event.event_type if event else None
+
+    if event_type == EVENT_TASK_ARRIVAL:
+        return ACCEPT_RULES + DISPATCH_RULES
+
+    if event_type == EVENT_ROBOT_IDLE:
+        if _has_energy_risk(state, soc_threshold):
+            return CHARGE_RULES
+        if state.open_tasks:
+            return DISPATCH_RULES
+        return STANDBY_RULES
+
+    # Fallback: prefer dispatch if there are tasks; otherwise standby.
+    return DISPATCH_RULES if state.open_tasks else STANDBY_RULES
+
+
+def _has_energy_risk(state: SimulatorState, soc_threshold: float) -> bool:
+    for vehicle in state.robots.values():
+        if vehicle.battery_capacity <= 0:
+            continue
+        soc = vehicle.current_battery / vehicle.battery_capacity
+        if soc <= soc_threshold:
+            return True
+    return False
+
+
+__all__ = [
+    "get_available_rules",
+    "RULE_STTF",
+    "RULE_EDD",
+    "RULE_MST",
+    "RULE_HPF",
+    "RULE_CHARGE_URGENT",
+    "RULE_CHARGE_TARGET",
+    "RULE_CHARGE_OPPORTUNITY",
+    "RULE_STANDBY_LOW_COST",
+    "RULE_STANDBY_LAZY",
+    "RULE_STANDBY_HEATMAP",
+    "RULE_ACCEPT_FEASIBLE",
+    "RULE_ACCEPT_VALUE",
+    "RULE_INSERT_MIN_COST",
+]

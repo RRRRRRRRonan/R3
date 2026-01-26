@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from config import CostParameters
+
 
 @dataclass(frozen=True)
 class MIPBaselineScale:
@@ -27,7 +29,7 @@ class MIPBaselineSolverConfig:
     enable_rule_selection: bool = True
     enable_conflict: bool = True
     enable_partial_charging: bool = True
-    scenario_mode: str = "minimal"
+    scenario_mode: str = "minimal" # scenario changes for minimal or medium instances
     charging_level_ratios: tuple[float, ...] = (0.25, 0.5, 0.75, 1.0)
     rule_candidate_top_k: int = 2
     rule6_charge_level_ratios: tuple[float, ...] = (0.3, 0.5, 0.8)
@@ -36,3 +38,4 @@ class MIPBaselineSolverConfig:
     standby_beta: float = 1.0
     charging_queue_default_s: float = 0.0
     charging_queue_estimates_s: dict[int, float] = field(default_factory=dict)
+    cost_params: CostParameters = field(default_factory=CostParameters)

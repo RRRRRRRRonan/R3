@@ -7,7 +7,7 @@ The generated trace is used by feasibility checks, debugging tools, and the
 charging strategy benchmarks.
 """
 
-from typing import Optional
+from typing import Optional, Tuple
 from core.route import Route
 from core.vehicle import Vehicle
 from physics.distance import DistanceMatrix

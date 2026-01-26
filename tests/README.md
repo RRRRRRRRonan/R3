@@ -24,6 +24,7 @@ tests/
 | `test_regression_medium_scale.py` | 20-30 个任务的典型部署验证 |
 | `test_regression_large_scale.py` | 50-100 个任务的压力测试 |
 | `test_simple_capacity_check.py` | 载荷与能量可行性最小场景 |
+| `test_execution_layer_regression.py` | 交通预约/冲突等待的执行层回归 |
 
 ### 推荐执行顺序
 
