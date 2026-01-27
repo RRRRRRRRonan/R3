@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 from pathlib import Path
 import random
 import sys
@@ -90,14 +91,21 @@ def build_env(args, *, seed: int, log_dir: Path) -> RuleSelectionGymEnv:
     executor = ExecutionLayer(task_pool=pool, simulator=simulator, traffic_manager=traffic)
 
     solver_config = MIPBaselineSolverConfig()
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     core_env = RuleSelectionEnv(
         simulator=simulator,
         execution_layer=executor,
         max_decision_steps=args.max_decision_steps,
         max_time_s=args.max_time_s,
         mip_solver_config=solver_config,
-        cost_log_path=str(log_dir / "cost_log.jsonl"),
-        cost_log_csv_path=str(log_dir / "cost_log.csv"),
+        cost_log_path=str(log_dir / f"cost_log_{stamp}.jsonl"),
+        cost_log_csv_path=str(log_dir / f"cost_log_{stamp}.csv"),
+        decision_log_path=str(log_dir / f"decision_log_{stamp}.jsonl"),
+        decision_log_csv_path=str(log_dir / f"decision_log_{stamp}.csv"),
+        task_log_path=str(log_dir / f"task_log_{stamp}.jsonl"),
+        task_log_csv_path=str(log_dir / f"task_log_{stamp}.csv"),
+        robot_log_path=str(log_dir / f"robot_log_{stamp}.jsonl"),
+        robot_log_csv_path=str(log_dir / f"robot_log_{stamp}.csv"),
     )
 
     gym_env = RuleSelectionGymEnv(core_env)

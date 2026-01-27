@@ -1,0 +1,4 @@
+{"time": 0.0, "vehicle_id": 1, "status": "idle", "x": 0.0, "y": 0.0, "soc": 1.0, "battery": 100.0, "battery_capacity": 100.0, "load": 0.0, "load_ratio": 0.0, "capacity": 150.0, "speed": 2.0, "idle": 1, "current_time": 0.0}
+{"time": 0.0, "vehicle_id": 2, "status": "idle", "x": 0.0, "y": 0.0, "soc": 1.0, "battery": 100.0, "battery_capacity": 100.0, "load": 0.0, "load_ratio": 0.0, "capacity": 150.0, "speed": 2.0, "idle": 1, "current_time": 0.0}
+{"time": 0.0, "vehicle_id": 1, "status": "assigned", "x": 6.0, "y": 8.0, "soc": 0.9647333333333333, "battery": 96.47333333333333, "battery_capacity": 100.0, "load": 0.0, "load_ratio": 0.0, "capacity": 150.0, "speed": 2.0, "idle": 0, "current_time": 127.0}
+{"time": 0.0, "vehicle_id": 2, "status": "idle", "x": 0.0, "y": 0.0, "soc": 1.0, "battery": 100.0, "battery_capacity": 100.0, "load": 0.0, "load_ratio": 0.0, "capacity": 150.0, "speed": 2.0, "idle": 1, "current_time": 0.0}
