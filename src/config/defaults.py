@@ -73,6 +73,7 @@ class EnergySystemDefaults:
     max_charging_time_s: float = 3600.0
     max_charging_amount: float = 100.0
     battery_capacity_kwh: float = 100.0
+    load_factor_coeff: float = 0.2
     safety_threshold: float = 0.05
     warning_threshold: float = 0.15
     comfort_threshold: float = 0.25
@@ -83,7 +84,7 @@ class EnergySystemDefaults:
 class TimeSystemDefaults:
     """Global timing assumptions for AMR movement and service."""
 
-    vehicle_speed_m_s: float = 15.0
+    vehicle_speed_m_s: float = 2.0
     default_service_time_s: float = 30.0
     tardiness_penalty: float = 1.0
 
@@ -113,6 +114,7 @@ class CostParameters:
         conflict_waiting: float = 0.0,
         standby: float = 0.0,
         rejected: int = 0,
+        infeasible: int = 0,
     ) -> float:
         """Return the weighted sum of the route performance components."""
 
@@ -120,10 +122,13 @@ class CostParameters:
         return (
             self.C_tr * distance
             + self.C_ch * charging
+            + self.C_time * time
             + self.C_delay * delay
+            + self.C_wait * waiting
             + self.C_conflict * effective_conflict_waiting
             + self.C_standby * standby
             + self.C_missing_task * rejected
+            + self.C_infeasible * infeasible
         )
 
 
@@ -177,7 +182,7 @@ class ChargingDefaults:
 class VehicleDynamics:
     """Nominal vehicle behaviour used in deterministic simulations."""
 
-    cruise_speed_m_s: float = 1.5
+    cruise_speed_m_s: float = 2.0
     max_energy_adjustment_iterations: int = 10
 
 

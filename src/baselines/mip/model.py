@@ -191,18 +191,21 @@ def build_model_spec(
         "tau_ij: travel time",
         "E_i, Ehat_i: time window bounds",
         "rho: energy consumption per time",
+        "phi: load factor coefficient for energy consumption",
         "kappa, eta: charging rate/efficiency",
         "T_ch_max, E_ch_max: charging caps",
         "q_i^{queue}: queue waiting estimate at charging stations",
+        "phi_i^{wait}: node-weight for generic waiting (higher at charging stations)",
         "Delta_t_safe: headway safety margin",
         "delta_r^w: dynamic task availability",
         "tau_r^w: task release time in scenario w",
         "p_w: scenario probability",
         "gamma_w: travel time factor (scenario congestion)",
         "a_i^w: charging availability indicator",
-        f"C_tr={cost_params.C_tr}, C_ch={cost_params.C_ch}",
-        f"C_delay={cost_params.C_delay}, C_conflict={cost_params.C_conflict}",
-        f"C_missing_task={cost_params.C_missing_task}, C_standby={cost_params.C_standby}",
+        f"C_tr={cost_params.C_tr}, C_time={cost_params.C_time}, C_ch={cost_params.C_ch}",
+        f"C_delay={cost_params.C_delay}, C_wait={cost_params.C_wait}, C_conflict={cost_params.C_conflict}",
+        f"C_missing_task={cost_params.C_missing_task}, C_infeasible={cost_params.C_infeasible}",
+        f"C_standby={cost_params.C_standby}",
         f"solver={solver_config.solver_name}",
     ]
 
@@ -225,10 +228,13 @@ def build_model_spec(
 
     objective_terms = [
         "C_tr * sum d_ij * x_ij^{a,w}",
+        "C_time * sum t_ij^{a,w}",
         "C_ch * sum q_i^{a,w}",
         "C_delay * sum L_i^{a,w}",
+        "C_wait * sum phi_i^{wait} * u_i^{a,w}",
         "C_conflict * sum w_i^{a,w}",
         "C_missing_task * sum (1 - z_r^w)",
+        "C_infeasible * sum (1 - z_r^w)",
         "C_standby * sum s_i^{a,w}",
     ]
 

@@ -52,7 +52,7 @@ for strategy in "${STRATEGIES[@]}"; do
 
             echo -n "[$total] ${strategy}/${scenario}/seed${seed}... "
 
-            if python scripts/week1/run_experiment.py \
+            if python3 scripts/week1/run_experiment.py \
                 --scenario "$scenario" \
                 --init_strategy "$strategy" \
                 --seed "$seed" \
@@ -81,4 +81,4 @@ echo ""
 echo "Results saved in: $OUTPUT_DIR"
 echo ""
 echo "Next step: Run analysis script"
-echo "  python scripts/week1/analyze_init_strategies.py"
+echo "  python3 scripts/week1/analyze_init_strategies.py"

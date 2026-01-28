@@ -38,4 +38,8 @@ class MIPBaselineSolverConfig:
     standby_beta: float = 1.0
     charging_queue_default_s: float = 0.0
     charging_queue_estimates_s: dict[int, float] = field(default_factory=dict)
+    wait_weight_default: float = 1.0
+    wait_weight_charging: float = 3.0
+    wait_weight_depot: float = 0.5
+    wait_weight_scale: float = 1.0
     cost_params: CostParameters = field(default_factory=CostParameters)

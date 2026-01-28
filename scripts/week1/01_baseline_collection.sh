@@ -43,7 +43,7 @@ for scenario in "${SCENARIOS[@]}"; do
 
         echo -n "[$total] ${scenario} seed ${seed}... "
 
-        if python scripts/week1/run_experiment.py \
+        if python3 scripts/week1/run_experiment.py \
             --scenario "$scenario" \
             --init_strategy "$INIT_STRATEGY" \
             --seed "$seed" \
@@ -71,4 +71,4 @@ echo ""
 echo "Results saved in: $OUTPUT_DIR"
 echo ""
 echo "Next step: Run analysis script"
-echo "  python scripts/week1/analyze_baseline.py"
+echo "  python3 scripts/week1/analyze_baseline.py"

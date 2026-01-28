@@ -20,7 +20,7 @@ try:
     import gymnasium as gym
 except ImportError as exc:  # pragma: no cover
     raise SystemExit(
-        "gymnasium is required. Install via `python -m pip install gymnasium`."
+        "gymnasium is required. Install via `python3 -m pip install gymnasium`."
     ) from exc
 
 try:
@@ -29,7 +29,7 @@ try:
     from sb3_contrib.common.maskable.wrappers import ActionMasker
 except ImportError as exc:  # pragma: no cover
     raise SystemExit(
-        "sb3-contrib is required. Install via `python -m pip install sb3-contrib stable-baselines3`."
+        "sb3-contrib is required. Install via `python3 -m pip install sb3-contrib stable-baselines3`."
     ) from exc
 
 from baselines.mip.config import MIPBaselineSolverConfig

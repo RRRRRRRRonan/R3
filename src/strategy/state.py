@@ -29,11 +29,15 @@ class TrafficState:
 @dataclass
 class EpisodeMetrics:
     total_distance: float = 0.0
+    total_travel_time: float = 0.0
     total_charging: float = 0.0
     total_delay: float = 0.0
+    total_waiting: float = 0.0
+    total_waiting_weighted: float = 0.0
     total_conflict_waiting: float = 0.0
     total_standby: float = 0.0
     rejected_tasks: int = 0
+    infeasible_actions: int = 0
     mask_total: int = 0
     mask_blocked: int = 0
     mask_fallbacks: int = 0

@@ -490,10 +490,13 @@ def _flatten_record(record: Dict[str, object]) -> Dict[str, object]:
 def _empty_cost_breakdown() -> Dict[str, float]:
     return {
         "travel": 0.0,
+        "time": 0.0,
         "charging": 0.0,
         "tardiness": 0.0,
+        "waiting": 0.0,
         "conflict_wait": 0.0,
         "rejection": 0.0,
+        "infeasible": 0.0,
         "standby": 0.0,
         "total": 0.0,
     }

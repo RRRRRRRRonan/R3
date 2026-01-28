@@ -24,8 +24,10 @@ class ExecutionResult:
     end_time: float
     conflict_waiting: float = 0.0
     distance: float = 0.0
+    travel_time: float = 0.0
     charging: float = 0.0
     delay: float = 0.0
+    waiting: float = 0.0
     standby: float = 0.0
 
 
@@ -41,6 +43,10 @@ class ExecutionLayer:
         energy_config: Optional[EnergyConfig] = None,
         time_config: Optional[TimeConfig] = None,
         travel_time_factor: Optional[float] = None,
+        wait_weight_default: float = 1.0,
+        wait_weight_charging: float = 3.0,
+        wait_weight_depot: float = 0.5,
+        wait_weight_scale: float = 1.0,
     ) -> None:
         self.task_pool = task_pool
         self.simulator = simulator
@@ -50,6 +56,10 @@ class ExecutionLayer:
         if travel_time_factor is None:
             travel_time_factor = getattr(simulator, "travel_time_factor", 1.0)
         self.travel_time_factor = max(0.0, travel_time_factor)
+        scale = max(0.0, wait_weight_scale)
+        self.wait_weight_default = max(0.0, wait_weight_default) * scale
+        self.wait_weight_charging = max(0.0, wait_weight_charging) * scale
+        self.wait_weight_depot = max(0.0, wait_weight_depot) * scale
         self._route_executor: Optional[RouteExecutor] = None
 
     def execute(self, action: AtomicAction, state: SimulatorState, event: Optional[Event]) -> ExecutionResult:
@@ -117,10 +127,12 @@ class ExecutionLayer:
             self.travel_time_factor,
         )
         schedule, conflict_wait = self.traffic_manager.reserve_path(robot_id, [edge_to_pickup], current_time)
+        travel_time = sum(end - start for start, end, _ in schedule)
         distance = executed_route.calculate_total_distance(distance_matrix)
 
         current_time = schedule[-1][1] if schedule else current_time
         conflict_waiting = conflict_wait
+        waiting_weighted = 0.0
         _consume_energy(vehicle, [edge_to_pickup], self.energy_config, self.travel_time_factor)
 
         pickup_result = _visit_node(
@@ -135,6 +147,8 @@ class ExecutionLayer:
         current_time = pickup_result.end_time
         conflict_waiting += pickup_result.conflict_waiting
         delay = pickup_result.delay
+        waiting = pickup_result.waiting
+        waiting_weighted += pickup_result.waiting * self._waiting_weight(state, pickup.node_id)
 
         vehicle.current_load += task.demand
         if tracker and tracker.status == TaskStatus.ASSIGNED:
@@ -149,6 +163,7 @@ class ExecutionLayer:
             self.travel_time_factor,
         )
         schedule, conflict_wait = self.traffic_manager.reserve_path(robot_id, [edge_to_delivery], current_time)
+        travel_time += sum(end - start for start, end, _ in schedule)
         current_time = schedule[-1][1] if schedule else current_time
         conflict_waiting += conflict_wait
         if distance <= 0.0:
@@ -167,6 +182,8 @@ class ExecutionLayer:
         current_time = delivery_result.end_time
         conflict_waiting += delivery_result.conflict_waiting
         delay += delivery_result.delay
+        waiting += delivery_result.waiting
+        waiting_weighted += delivery_result.waiting * self._waiting_weight(state, delivery.node_id)
 
         vehicle.current_load = max(0.0, vehicle.current_load - task.demand)
         vehicle.current_location = delivery.coordinates
@@ -176,8 +193,11 @@ class ExecutionLayer:
             tracker.complete(current_time)
 
         state.metrics.total_distance += distance
+        state.metrics.total_travel_time += travel_time
         state.metrics.total_conflict_waiting += conflict_waiting
         state.metrics.total_delay += delay
+        state.metrics.total_waiting += waiting
+        state.metrics.total_waiting_weighted += waiting_weighted
 
         self.simulator.update_soc_status(robot_id, time=current_time)
         self.simulator.maybe_trigger_deadlock(
@@ -191,7 +211,9 @@ class ExecutionLayer:
             end_time=current_time,
             conflict_waiting=conflict_waiting,
             distance=distance,
+            travel_time=travel_time,
             delay=delay,
+            waiting=waiting,
         )
 
     def _execute_charge(self, action: AtomicAction, state: SimulatorState, event: Optional[Event]) -> ExecutionResult:
@@ -226,6 +248,7 @@ class ExecutionLayer:
         distance = executed_route.calculate_total_distance(distance_matrix)
         current_time = schedule[-1][1] if schedule else current_time
         conflict_waiting = conflict_wait
+        travel_time = sum(end - start for start, end, _ in schedule)
 
         _consume_energy(vehicle, [edge], self.energy_config, self.travel_time_factor)
 
@@ -250,14 +273,19 @@ class ExecutionLayer:
 
         conflict_waiting += node_wait
         standby = queue_wait
+        waiting = queue_wait
+        waiting_weighted = queue_wait * self.wait_weight_charging
 
         vehicle.charge_battery(charge_amount, charge_end)
         vehicle.current_location = charger.coordinates
 
         state.metrics.total_distance += distance
+        state.metrics.total_travel_time += travel_time
         state.metrics.total_conflict_waiting += conflict_waiting
         state.metrics.total_charging += charge_amount
         state.metrics.total_standby += standby
+        state.metrics.total_waiting += waiting
+        state.metrics.total_waiting_weighted += waiting_weighted
 
         self.simulator.update_soc_status(robot_id, time=charge_end)
         self.simulator.maybe_trigger_deadlock(
@@ -271,7 +299,9 @@ class ExecutionLayer:
             end_time=charge_end,
             conflict_waiting=conflict_waiting,
             distance=distance,
+            travel_time=travel_time,
             charging=charge_amount,
+            waiting=waiting,
             standby=standby,
         )
 
@@ -317,6 +347,7 @@ class ExecutionLayer:
         schedule, conflict_wait = self.traffic_manager.reserve_path(robot_id, [edge], current_time)
         distance = edge.distance
         current_time = schedule[-1][1] if schedule else current_time
+        travel_time = sum(end - start for start, end, _ in schedule)
 
         _consume_energy(vehicle, [edge], self.energy_config, self.travel_time_factor)
 
@@ -334,6 +365,7 @@ class ExecutionLayer:
         vehicle.current_time = dwell_end
 
         state.metrics.total_distance += distance
+        state.metrics.total_travel_time += travel_time
         state.metrics.total_conflict_waiting += conflict_waiting
         state.metrics.total_standby += dwell_time
 
@@ -349,6 +381,7 @@ class ExecutionLayer:
             end_time=dwell_end,
             conflict_waiting=conflict_waiting,
             distance=distance,
+            travel_time=travel_time,
             standby=dwell_time,
         )
 
@@ -362,6 +395,13 @@ class ExecutionLayer:
             return self._route_executor
         self._route_executor.distance = distance_matrix
         return self._route_executor
+
+    def _waiting_weight(self, state: SimulatorState, node_id: int) -> float:
+        if node_id in state.chargers:
+            return self.wait_weight_charging
+        if node_id == 0:
+            return self.wait_weight_depot
+        return self.wait_weight_default
 
 
 def _get_vehicle(state: SimulatorState, robot_id: int) -> Optional[Vehicle]:
@@ -448,7 +488,7 @@ def _visit_node(
     arrival_time: float,
     state: SimulatorState,
 ) -> ExecutionResult:
-    start_service, end_service, node_wait, _ = traffic_manager.reserve_node_with_window(
+    start_service, end_service, node_wait, waiting = traffic_manager.reserve_node_with_window(
         robot_id,
         node_id,
         arrival_time,
@@ -464,6 +504,7 @@ def _visit_node(
         end_time=end_service,
         conflict_waiting=node_wait,
         delay=delay,
+        waiting=waiting,
     )
 
 

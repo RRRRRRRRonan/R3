@@ -173,8 +173,8 @@ class ORToolsSolver(MIPBaselineSolver):
             raise ValueError("Distance matrix must define a distance_func for baseline solver.")
 
         travel_distance: Dict[Tuple[int, int], float] = {}
-        travel_time: Dict[Tuple[int, int], float] = {}
-        travel_energy: Dict[Tuple[int, int], float] = {}
+        travel_time: Dict[Tuple[int, int, int], float] = {}
+        travel_energy: Dict[Tuple[int, int, int], float] = {}
 
         for i in node_ids:
             x1, y1 = node_coords[i]
@@ -185,11 +185,15 @@ class ORToolsSolver(MIPBaselineSolver):
                 else:
                     dist = distance_func(x1, y1, x2, y2)
                 travel_distance[(i, j)] = dist
-                if instance.time_config.vehicle_speed <= 0:
-                    raise ValueError("Vehicle speed must be positive.")
-                time_val = dist / instance.time_config.vehicle_speed
-                travel_time[(i, j)] = time_val
-                travel_energy[(i, j)] = instance.energy_config.consumption_rate * time_val
+                for vehicle in vehicles:
+                    speed = vehicle.speed
+                    if speed <= 0:
+                        raise ValueError("Vehicle speed must be positive.")
+                    time_val = dist / speed
+                    travel_time[(vehicle.vehicle_id, i, j)] = time_val
+                    travel_energy[(vehicle.vehicle_id, i, j)] = (
+                        instance.energy_config.consumption_rate * time_val
+                    )
 
         max_service = max(service_time.values()) if service_time else 0.0
         max_travel_factor = max(
@@ -203,7 +207,9 @@ class ORToolsSolver(MIPBaselineSolver):
             (len(node_ids) + 1) * (max_travel + max_service + max_charge_time),
         )
         big_m_time = horizon * 2.0
-        max_energy = (max(travel_energy.values()) if travel_energy else 0.0) * max_travel_factor
+        max_energy_base = (max(travel_energy.values()) if travel_energy else 0.0) * max_travel_factor
+        load_coeff = max(0.0, instance.energy_config.load_factor_coeff)
+        max_energy = max_energy_base * (1.0 + load_coeff)
         big_m_energy = max(
             (vehicle.battery_capacity for vehicle in vehicles),
             default=0.0,
@@ -706,8 +712,21 @@ class ORToolsSolver(MIPBaselineSolver):
             for vehicle_id in vehicle_ids:
                 for i, j in arcs:
                     travel_time_factor = max(0.0, scenario_travel_factor.get(scenario_id, 1.0))
-                    scenario_travel_time = travel_time[(i, j)] * travel_time_factor
-                    scenario_travel_energy = travel_energy[(i, j)] * travel_time_factor
+                    scenario_travel_time = (
+                        travel_time[(vehicle_id, i, j)] * travel_time_factor
+                    )
+                    scenario_travel_energy = (
+                        travel_energy[(vehicle_id, i, j)] * travel_time_factor
+                    )
+                    load_coeff = max(0.0, instance.energy_config.load_factor_coeff)
+                    vehicle_capacity = max(0.0, vehicle_by_id[vehicle_id].capacity)
+                    if load_coeff > 0.0 and vehicle_capacity > 0.0:
+                        load_energy_coeff = scenario_travel_energy * load_coeff / vehicle_capacity
+                        energy_used = scenario_travel_energy + load_energy_coeff * load[
+                            (vehicle_id, i, scenario_id)
+                        ]
+                    else:
+                        energy_used = scenario_travel_energy
                     solver.Add(
                         travel_actual[(vehicle_id, i, j, scenario_id)]
                         >= scenario_travel_time * x[(vehicle_id, i, j, scenario_id)]
@@ -737,13 +756,13 @@ class ORToolsSolver(MIPBaselineSolver):
                     solver.Add(
                         battery_arr[(vehicle_id, j, scenario_id)]
                         >= battery_dep[(vehicle_id, i, scenario_id)]
-                        - scenario_travel_energy
+                        - energy_used
                         - big_m_energy * (1 - x[(vehicle_id, i, j, scenario_id)])
                     )
                     solver.Add(
                         battery_arr[(vehicle_id, j, scenario_id)]
                         <= battery_dep[(vehicle_id, i, scenario_id)]
-                        - scenario_travel_energy
+                        - energy_used
                         + big_m_energy * (1 - x[(vehicle_id, i, j, scenario_id)])
                     )
 
@@ -1087,6 +1106,15 @@ class ORToolsSolver(MIPBaselineSolver):
             )
             for scenario_id in scenario_ids
         )
+        time_expr = solver.Sum(
+            scenario_prob[scenario_id]
+            * solver.Sum(
+                travel_actual[(vehicle_id, i, j, scenario_id)]
+                for vehicle_id in vehicle_ids
+                for i, j in arcs
+            )
+            for scenario_id in scenario_ids
+        )
         charging_expr = solver.Sum(
             scenario_prob[scenario_id]
             * solver.Sum(
@@ -1100,6 +1128,31 @@ class ORToolsSolver(MIPBaselineSolver):
             scenario_prob[scenario_id]
             * solver.Sum(
                 tardiness[(vehicle_id, node_id, scenario_id)]
+                for vehicle_id in vehicle_ids
+                for node_id in internal_nodes
+            )
+            for scenario_id in scenario_ids
+        )
+        wait_weight_scale = max(0.0, config.wait_weight_scale)
+        wait_weight_default = max(0.0, config.wait_weight_default) * wait_weight_scale
+        wait_weight_charging = max(0.0, config.wait_weight_charging) * wait_weight_scale
+        wait_weight_depot = max(0.0, config.wait_weight_depot) * wait_weight_scale
+        node_wait_weight = {
+            node_id: wait_weight_default for node_id in internal_nodes
+        }
+        for node_id in charging_nodes:
+            if node_id in node_wait_weight:
+                node_wait_weight[node_id] = wait_weight_charging
+        if start_depot_id in node_wait_weight:
+            node_wait_weight[start_depot_id] = wait_weight_depot
+        if end_depot_id in node_wait_weight:
+            node_wait_weight[end_depot_id] = wait_weight_depot
+
+        wait_expr = solver.Sum(
+            scenario_prob[scenario_id]
+            * solver.Sum(
+                node_wait_weight[node_id]
+                * generic_wait[(vehicle_id, node_id, scenario_id)]
                 for vehicle_id in vehicle_ids
                 for node_id in internal_nodes
             )
@@ -1131,10 +1184,13 @@ class ORToolsSolver(MIPBaselineSolver):
 
         solver.Minimize(
             cost_params.C_tr * distance_expr
+            + cost_params.C_time * time_expr
             + cost_params.C_ch * charging_expr
             + cost_params.C_delay * delay_expr
+            + cost_params.C_wait * wait_expr
             + cost_params.C_conflict * conflict_expr
             + cost_params.C_missing_task * rejection_expr
+            + cost_params.C_infeasible * rejection_expr
             + cost_params.C_standby * standby_expr
         )
 
@@ -1153,6 +1209,15 @@ class ORToolsSolver(MIPBaselineSolver):
             )
             for scenario_id in scenario_ids
         )
+        total_time = sum(
+            scenario_prob[scenario_id]
+            * sum(
+                travel_actual[(vehicle_id, i, j, scenario_id)].solution_value()
+                for vehicle_id in vehicle_ids
+                for i, j in arcs
+            )
+            for scenario_id in scenario_ids
+        )
         total_charging = sum(
             scenario_prob[scenario_id]
             * sum(
@@ -1166,6 +1231,25 @@ class ORToolsSolver(MIPBaselineSolver):
             scenario_prob[scenario_id]
             * sum(
                 tardiness[(vehicle_id, node_id, scenario_id)].solution_value()
+                for vehicle_id in vehicle_ids
+                for node_id in internal_nodes
+            )
+            for scenario_id in scenario_ids
+        )
+        total_waiting = sum(
+            scenario_prob[scenario_id]
+            * sum(
+                generic_wait[(vehicle_id, node_id, scenario_id)].solution_value()
+                for vehicle_id in vehicle_ids
+                for node_id in internal_nodes
+            )
+            for scenario_id in scenario_ids
+        )
+        total_waiting_weighted = sum(
+            scenario_prob[scenario_id]
+            * sum(
+                node_wait_weight[node_id]
+                * generic_wait[(vehicle_id, node_id, scenario_id)].solution_value()
                 for vehicle_id in vehicle_ids
                 for node_id in internal_nodes
             )
@@ -1209,28 +1293,37 @@ class ORToolsSolver(MIPBaselineSolver):
 
         details = {
             "total_distance": total_distance,
+            "total_time": total_time,
             "total_charging": total_charging,
             "total_delay": total_delay,
+            "total_waiting": total_waiting,
+            "total_waiting_weighted": total_waiting_weighted,
             "total_conflict_waiting": total_conflict_waiting,
             "total_standby": total_standby,
             "rejected_tasks": rejected_tasks,
             "num_charging_stops": num_charging_stops,
             "distance_cost": total_distance * cost_params.C_tr,
+            "time_cost": total_time * cost_params.C_time,
             "charging_cost": total_charging * cost_params.C_ch,
             "delay_cost": total_delay * cost_params.C_delay,
+            "waiting_cost": total_waiting_weighted * cost_params.C_wait,
             "conflict_waiting_cost": total_conflict_waiting * cost_params.C_conflict,
             "standby_cost": total_standby * cost_params.C_standby,
             "rejection_cost": rejected_tasks * cost_params.C_missing_task,
+            "infeasible_cost": rejected_tasks * cost_params.C_infeasible,
         }
         total_cost = sum(
             details[key]
             for key in (
                 "distance_cost",
+                "time_cost",
                 "charging_cost",
                 "delay_cost",
+                "waiting_cost",
                 "conflict_waiting_cost",
                 "standby_cost",
                 "rejection_cost",
+                "infeasible_cost",
             )
         )
         details["total_cost"] = total_cost
@@ -1404,14 +1497,15 @@ def _build_rule_preferences(
     queue_default_s: Optional[float] = None,
     queue_estimates_s: Optional[Dict[int, float]] = None,
 ) -> Dict[int, RulePreferences]:
-    travel_time_cache: Dict[Tuple[Tuple[float, float], Tuple[float, float]], float] = {}
+    travel_time_cache: Dict[Tuple[Tuple[float, float], Tuple[float, float], float], float] = {}
 
-    def travel_time(a: Tuple[float, float], b: Tuple[float, float]) -> float:
-        key = (a, b)
+    def travel_time(a: Tuple[float, float], b: Tuple[float, float], speed: float) -> float:
+        safe_speed = max(speed, 1e-6)
+        key = (a, b, safe_speed)
         if key in travel_time_cache:
             return travel_time_cache[key]
         dist = distance_func(a[0], a[1], b[0], b[1])
-        time_val = dist / instance.time_config.vehicle_speed
+        time_val = dist / safe_speed
         travel_time_cache[key] = time_val
         return time_val
 
@@ -1447,7 +1541,12 @@ def _build_rule_preferences(
 
         pickup_coords = node_coords[pickup.node_id]
         delivery_coords = node_coords[delivery.node_id]
-        base_time = travel_time(pickup_coords, delivery_coords)
+        fleet_speed = (
+            sum(vehicle.speed for vehicle in vehicles) / len(vehicles)
+            if vehicles
+            else instance.time_config.vehicle_speed
+        )
+        base_time = travel_time(pickup_coords, delivery_coords, fleet_speed)
         slack = due - (base_time + pickup.service_time)
         task_slack[task.task_id] = slack
 
@@ -1456,14 +1555,18 @@ def _build_rule_preferences(
         is_feasible = False
         for vehicle in vehicles:
             start_coords = vehicle.initial_location
-            to_pickup = travel_time(start_coords, pickup_coords)
-            to_delivery = travel_time(pickup_coords, delivery_coords)
-            to_depot = travel_time(delivery_coords, depot_coords)
+            to_pickup = travel_time(start_coords, pickup_coords, vehicle.speed)
+            to_delivery = travel_time(pickup_coords, delivery_coords, vehicle.speed)
+            to_depot = travel_time(delivery_coords, depot_coords, vehicle.speed)
             travel_total = to_pickup + to_delivery + to_depot
             best_travel = min(best_travel, to_pickup)
             best_incremental = min(best_incremental, travel_total)
 
-            energy_needed = instance.energy_config.consumption_rate * travel_total
+            load_coeff = max(0.0, instance.energy_config.load_factor_coeff)
+            load_factor = 1.0
+            if vehicle.capacity > 0:
+                load_factor += load_coeff * (task.demand / vehicle.capacity)
+            energy_needed = instance.energy_config.consumption_rate * travel_total * load_factor
             capacity_ok = task.demand <= vehicle.capacity
             battery_ok = energy_needed <= vehicle.battery_capacity
             pickup_ok = True
@@ -1510,7 +1613,7 @@ def _build_rule_preferences(
         candidates = []
         for vehicle in vehicles:
             start_coords = vehicle.initial_location
-            to_pickup = travel_time(start_coords, pickup_coords)
+            to_pickup = travel_time(start_coords, pickup_coords, vehicle.speed)
             candidates.append((vehicle.vehicle_id, to_pickup))
         candidates.sort(key=lambda item: item[1])
         top_k = max(1, config.rule_candidate_top_k)
@@ -1523,9 +1626,9 @@ def _build_rule_preferences(
         for vehicle in vehicles:
             start_coords = vehicle.initial_location
             cost = (
-                travel_time(start_coords, pickup_coords)
-                + travel_time(pickup_coords, delivery_coords)
-                + travel_time(delivery_coords, depot_coords)
+                travel_time(start_coords, pickup_coords, vehicle.speed)
+                + travel_time(pickup_coords, delivery_coords, vehicle.speed)
+                + travel_time(delivery_coords, depot_coords, vehicle.speed)
             )
             insert_candidates.append((vehicle.vehicle_id, cost))
         insert_candidates.sort(key=lambda item: item[1])
@@ -1587,7 +1690,7 @@ def _build_rule_preferences(
         best_value = float("inf")
         best_nodes: List[int] = []
         for node_id in charging_nodes:
-            travel = travel_time(start_coords, node_coords[node_id])
+            travel = travel_time(start_coords, node_coords[node_id], vehicle.speed)
             queue_time = queue_estimates.get(node_id, queue_default)
             total = travel + queue_time
             if total < best_value - 1e-6:
@@ -1618,7 +1721,7 @@ def _build_rule_preferences(
         best_node = depot_id
         best_cost = float("inf")
         for node_id in standby_candidates:
-            travel_cost = travel_time(start_coords, node_coords[node_id])
+            travel_cost = travel_time(start_coords, node_coords[node_id], vehicle.speed)
             total_cost = travel_cost + config.standby_beta
             if total_cost < best_cost - 1e-6:
                 best_cost = total_cost

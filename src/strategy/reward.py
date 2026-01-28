@@ -13,10 +13,13 @@ from strategy.state import EpisodeMetrics, SimulatorState
 @dataclass(frozen=True)
 class CostBreakdown:
     travel: float
+    time: float
     charging: float
     tardiness: float
+    waiting: float
     conflict_wait: float
     rejection: float
+    infeasible: float
     standby: float
     total: float
 
@@ -43,34 +46,49 @@ def compute_delta_cost(
         new = new_metrics
 
     delta_distance = max(0.0, new.total_distance - prev.total_distance)
+    delta_time = max(0.0, new.total_travel_time - prev.total_travel_time)
     delta_charging = max(0.0, new.total_charging - prev.total_charging)
     delta_delay = max(0.0, new.total_delay - prev.total_delay)
+    if (new.total_waiting_weighted > 0.0) or (prev.total_waiting_weighted > 0.0):
+        delta_waiting = max(0.0, new.total_waiting_weighted - prev.total_waiting_weighted)
+    else:
+        delta_waiting = max(0.0, new.total_waiting - prev.total_waiting)
     delta_conflict = max(0.0, new.total_conflict_waiting - prev.total_conflict_waiting)
     delta_standby = max(0.0, new.total_standby - prev.total_standby)
     delta_rejected = max(0, new.rejected_tasks - prev.rejected_tasks)
+    delta_infeasible = max(0, new.infeasible_actions - prev.infeasible_actions)
 
     travel_cost = cost_params.C_tr * delta_distance
+    time_cost = cost_params.C_time * delta_time
     charging_cost = cost_params.C_ch * delta_charging
     tardiness_cost = cost_params.C_delay * delta_delay
+    waiting_cost = cost_params.C_wait * delta_waiting
     conflict_cost = cost_params.C_conflict * delta_conflict
     standby_cost = cost_params.C_standby * delta_standby
     rejection_cost = cost_params.C_missing_task * delta_rejected
+    infeasible_cost = cost_params.C_infeasible * delta_infeasible
 
     total = (
         travel_cost
+        + time_cost
         + charging_cost
         + tardiness_cost
+        + waiting_cost
         + conflict_cost
         + standby_cost
         + rejection_cost
+        + infeasible_cost
     )
 
     return CostBreakdown(
         travel=travel_cost,
+        time=time_cost,
         charging=charging_cost,
         tardiness=tardiness_cost,
+        waiting=waiting_cost,
         conflict_wait=conflict_cost,
         rejection=rejection_cost,
+        infeasible=infeasible_cost,
         standby=standby_cost,
         total=total,
     )
@@ -80,11 +98,15 @@ def snapshot_metrics(metrics: EpisodeMetrics) -> EpisodeMetrics:
     """Create a detached copy of episode metrics."""
     return EpisodeMetrics(
         total_distance=metrics.total_distance,
+        total_travel_time=metrics.total_travel_time,
         total_charging=metrics.total_charging,
         total_delay=metrics.total_delay,
+        total_waiting=metrics.total_waiting,
+        total_waiting_weighted=metrics.total_waiting_weighted,
         total_conflict_waiting=metrics.total_conflict_waiting,
         total_standby=metrics.total_standby,
         rejected_tasks=metrics.rejected_tasks,
+        infeasible_actions=metrics.infeasible_actions,
         mask_total=metrics.mask_total,
         mask_blocked=metrics.mask_blocked,
         mask_fallbacks=metrics.mask_fallbacks,
@@ -94,10 +116,13 @@ def snapshot_metrics(metrics: EpisodeMetrics) -> EpisodeMetrics:
 def to_info_dict(cost: CostBreakdown) -> Dict[str, float]:
     return {
         "travel": cost.travel,
+        "time": cost.time,
         "charging": cost.charging,
         "tardiness": cost.tardiness,
+        "waiting": cost.waiting,
         "conflict_wait": cost.conflict_wait,
         "rejection": cost.rejection,
+        "infeasible": cost.infeasible,
         "standby": cost.standby,
         "total": cost.total,
     }

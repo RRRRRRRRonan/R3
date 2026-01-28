@@ -299,6 +299,7 @@ def _update_mask_metrics(
     state.metrics.mask_blocked += blocked
     if fallback_used:
         state.metrics.mask_fallbacks += 1
+        state.metrics.infeasible_actions += 1
 
 
 def _euclidean(a: Sequence[float], b: Sequence[float]) -> float:

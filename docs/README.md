@@ -34,12 +34,12 @@ R3是一个完整的**电动自主移动机器人(AMR)路径规划框架**，使
 ### 运行综合测试
 ```bash
 # 推荐：一键验证核心流程
-python tests/warehouse_regression/test_integrated_features.py
+python3 tests/warehouse_regression/test_integrated_features.py
 
 # 依据规模拆分验证
-python tests/warehouse_regression/test_regression_small_scale.py
-python tests/warehouse_regression/test_regression_medium_scale.py
-python tests/warehouse_regression/test_regression_large_scale.py
+python3 tests/warehouse_regression/test_regression_small_scale.py
+python3 tests/warehouse_regression/test_regression_medium_scale.py
+python3 tests/warehouse_regression/test_regression_large_scale.py
 ```
 
 ### 基础使用示例

@@ -34,6 +34,7 @@ class EnergyConfig:
 
     # 电池参数
     battery_capacity: float = DEFAULT_ENERGY_SYSTEM.battery_capacity_kwh  # E^{max}: 电池最大容量
+    load_factor_coeff: float = DEFAULT_ENERGY_SYSTEM.load_factor_coeff
 
     # Week 4新增：分层充电临界值机制（策略感知的自适应阈值）
     # 设计思想：避免Week 2的硬约束失败，使用软约束和策略感知
@@ -88,7 +89,7 @@ def calculate_energy_consumption(distance: float = None,
         travel_time = distance / speed
         consumption_rate = config.consumption_rate
         # 载重影响系数 (载重越大，能耗越高)
-        load_factor = 1.0 + (load / capacity) * 0.2  # 满载增加20%能耗
+        load_factor = 1.0 + (load / capacity) * config.load_factor_coeff
         
         return consumption_rate * travel_time * load_factor
     

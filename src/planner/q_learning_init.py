@@ -110,9 +110,10 @@ def init_action_specific(
 
     # Matheuristic repair operators get higher initial values
     # 'lp' uses LP solver for optimization (matheuristic component)
-    matheuristic_repairs = {"lp"}
+    repair_key = repair_op.lower()
+    matheuristic_repairs = {"lp", "greedy_lp", "segments", "segment"}
 
-    if repair_op in matheuristic_repairs:
+    if repair_key in matheuristic_repairs or "lp" in repair_key or "segment" in repair_key:
         return 100.0
     else:
         return 50.0

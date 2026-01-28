@@ -29,9 +29,9 @@ tests/
 ### 推荐执行顺序
 
 ```bash
-python tests/warehouse_regression/test_integrated_features.py
-python tests/warehouse_regression/test_regression_small_scale.py
-python tests/warehouse_regression/test_regression_medium_scale.py
+python3 tests/warehouse_regression/test_integrated_features.py
+python3 tests/warehouse_regression/test_regression_small_scale.py
+python3 tests/warehouse_regression/test_regression_medium_scale.py
 ```
 
 ## 充电策略验证（`tests/charging/`）
@@ -41,7 +41,7 @@ python tests/warehouse_regression/test_regression_medium_scale.py
 ### 快速运行
 
 ```bash
-python tests/charging/test_strategy_comparison.py
+python3 tests/charging/test_strategy_comparison.py
 ```
 
 ## ALNS 优化规模测试（`tests/optimization/`）
@@ -95,13 +95,13 @@ optimization/
 运行示例：
 
 ```bash
-python -m pytest tests/optimization/matheuristic/test_matheuristic_small.py -q
-python -m pytest tests/optimization/q_learning/test_q_learning_small.py -q
+python3 -m pytest tests/optimization/matheuristic/test_matheuristic_small.py -q
+python3 -m pytest tests/optimization/q_learning/test_q_learning_small.py -q
 ```
 
 > ⚠️ **命令不可用？**
 >
-> - 若提示 `pytest` 不是可执行文件，说明当前环境尚未安装该工具，请执行 `python -m pip install pytest`（或使用项目统一的依赖安装命令）。
+> - 若提示 `pytest` 不是可执行文件，说明当前环境尚未安装该工具，请执行 `python3 -m pip install pytest`（或使用项目统一的依赖安装命令）。
 > - Windows PowerShell 默认不会解析 `pytest` 入口，使用上面展示的 `python -m pytest …` 形式即可跨平台运行。
 
 大规模测试可能耗时数分钟，可在调试阶段临时调整 `presets.py` 中的迭代次数以保持三套回归同步。
