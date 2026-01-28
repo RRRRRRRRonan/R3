@@ -55,6 +55,8 @@ class RuleSelectionEnv:
         mip_solver_config: Optional[MIPBaselineSolverConfig] = None,
         scenarios: Optional[Sequence[MIPBaselineScenario]] = None,
         scenario_seed: Optional[int] = None,
+        fixed_scenario: bool = False,
+        fixed_scenario_id: Optional[int] = None,
         cost_log_path: Optional[str] = None,
         cost_log_csv_path: Optional[str] = None,
         decision_log_path: Optional[str] = None,
@@ -76,6 +78,9 @@ class RuleSelectionEnv:
         self.scenarios = list(scenarios) if scenarios else []
         self._scenario_rng = random.Random(scenario_seed)
         self._current_scenario: Optional[MIPBaselineScenario] = None
+        self.fixed_scenario = fixed_scenario
+        self.fixed_scenario_id = fixed_scenario_id
+        self._fixed_scenario: Optional[MIPBaselineScenario] = None
         if cost_params is None and mip_solver_config is not None:
             cost_params = mip_solver_config.cost_params
         self.cost_params = cost_params or DEFAULT_COST_PARAMETERS
@@ -113,7 +118,7 @@ class RuleSelectionEnv:
         if seed is not None:
             self.set_seed(seed)
         if self.scenarios:
-            scenario = self._sample_scenario()
+            scenario = self._select_scenario(seed=seed)
             self._current_scenario = scenario
             self.simulator.apply_scenario(
                 queue_estimates=scenario.queue_estimates_s or None,
@@ -284,6 +289,21 @@ class RuleSelectionEnv:
         if mask is not None:
             info["mask"] = list(mask)
         return info
+
+    def _select_scenario(self, *, seed: Optional[int] = None) -> MIPBaselineScenario:
+        if not self.scenarios:
+            raise ValueError("No scenarios available for sampling.")
+        if self.fixed_scenario_id is not None:
+            for scenario in self.scenarios:
+                if scenario.scenario_id == self.fixed_scenario_id:
+                    self._fixed_scenario = scenario
+                    return scenario
+            raise ValueError(f"Scenario id {self.fixed_scenario_id} not found.")
+        if self.fixed_scenario:
+            if seed is not None or self._fixed_scenario is None:
+                self._fixed_scenario = self._sample_scenario()
+            return self._fixed_scenario
+        return self._sample_scenario()
 
     def _sample_scenario(self) -> MIPBaselineScenario:
         scenarios = self.scenarios
