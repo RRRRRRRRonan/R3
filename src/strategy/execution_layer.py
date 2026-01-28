@@ -100,6 +100,9 @@ class ExecutionLayer:
             return ExecutionResult(end_time=state.t)
 
         tracker = self.task_pool.get_tracker(task_id)
+        if tracker and tracker.status in (TaskStatus.REJECTED, TaskStatus.COMPLETED):
+            state.metrics.infeasible_actions += 1
+            return ExecutionResult(end_time=state.t)
         if tracker and tracker.status == TaskStatus.PENDING:
             self.task_pool.assign_task(task_id, robot_id)
             self.simulator.mark_task_assigned(task_id, robot_id)
