@@ -103,7 +103,7 @@ def record_event_epochs(
         max_decision_steps=max_steps,
     )
 
-    obs, info = env.reset()
+    obs, info = env.reset(seed=seed)
     epoch_times: List[float] = []
     if info.get("event_time") is not None:
         epoch_times.append(float(info["event_time"]))
@@ -156,6 +156,9 @@ def apply_scenario_to_simulator(
         queue_estimates=scenario.queue_estimates_s or None,
         charging_availability=scenario.charging_availability or None,
         travel_time_factor=scenario.travel_time_factor,
+        task_availability=scenario.task_availability or None,
+        task_release_times=scenario.task_release_times or None,
+        task_demands=scenario.task_demands or None,
     )
 
 

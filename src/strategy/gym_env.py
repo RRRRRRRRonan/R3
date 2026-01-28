@@ -40,7 +40,7 @@ class RuleSelectionGymEnv(gym.Env):
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         super().reset(seed=seed)
-        obs, info = self.core_env.reset()
+        obs, info = self.core_env.reset(seed=seed)
         return self._flatten_obs(obs), info
 
     def step(self, action: int):

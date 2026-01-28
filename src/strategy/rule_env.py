@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import random
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from config import DEFAULT_COST_PARAMETERS
@@ -14,6 +15,7 @@ from strategy.action_mask import ALL_RULES, action_masks
 from strategy.rule_gating import get_available_rules, RULE_ACCEPT_FEASIBLE, RULE_CHARGE_URGENT
 from core.task import TaskStatus
 from baselines.mip.config import MIPBaselineSolverConfig
+from baselines.mip.model import MIPBaselineScenario
 from strategy.reward import compute_delta_cost, snapshot_metrics, to_info_dict
 from strategy.rules import apply as apply_rule
 
@@ -51,6 +53,8 @@ class RuleSelectionEnv:
         max_time_s: Optional[float] = None,
         cost_params=None,
         mip_solver_config: Optional[MIPBaselineSolverConfig] = None,
+        scenarios: Optional[Sequence[MIPBaselineScenario]] = None,
+        scenario_seed: Optional[int] = None,
         cost_log_path: Optional[str] = None,
         cost_log_csv_path: Optional[str] = None,
         decision_log_path: Optional[str] = None,
@@ -69,6 +73,9 @@ class RuleSelectionEnv:
         self.execution_layer = execution_layer
         self.max_decision_steps = max_decision_steps
         self.max_time_s = max_time_s
+        self.scenarios = list(scenarios) if scenarios else []
+        self._scenario_rng = random.Random(scenario_seed)
+        self._current_scenario: Optional[MIPBaselineScenario] = None
         if cost_params is None and mip_solver_config is not None:
             cost_params = mip_solver_config.cost_params
         self.cost_params = cost_params or DEFAULT_COST_PARAMETERS
@@ -96,8 +103,26 @@ class RuleSelectionEnv:
         self._decision_steps = 0
         self._task_snapshot: Dict[int, Tuple[str, Optional[int]]] = {}
 
-    def reset(self) -> Tuple[Dict[str, List[float]], Dict[str, object]]:
+    def set_seed(self, seed: Optional[int]) -> None:
+        if seed is None:
+            return
+        self._scenario_rng = random.Random(seed)
+
+    def reset(self, *, seed: Optional[int] = None) -> Tuple[Dict[str, List[float]], Dict[str, object]]:
         """Reset environment and return initial observation + info."""
+        if seed is not None:
+            self.set_seed(seed)
+        if self.scenarios:
+            scenario = self._sample_scenario()
+            self._current_scenario = scenario
+            self.simulator.apply_scenario(
+                queue_estimates=scenario.queue_estimates_s or None,
+                charging_availability=scenario.charging_availability or None,
+                travel_time_factor=scenario.travel_time_factor,
+                task_availability=scenario.task_availability or None,
+                task_release_times=scenario.task_release_times or None,
+                task_demands=scenario.task_demands or None,
+            )
         self.simulator.reset()
         event, _ = self.simulator.advance_to_next_decision_epoch()
         self._current_event = event
@@ -253,9 +278,28 @@ class RuleSelectionEnv:
             "event_type": event.event_type if event else None,
             "event_time": event.time if event else None,
         }
+        if self._current_scenario is not None:
+            info["scenario_id"] = self._current_scenario.scenario_id
+            info["scenario_probability"] = self._current_scenario.probability
         if mask is not None:
             info["mask"] = list(mask)
         return info
+
+    def _sample_scenario(self) -> MIPBaselineScenario:
+        scenarios = self.scenarios
+        if not scenarios:
+            raise ValueError("No scenarios available for sampling.")
+        weights = [max(0.0, scenario.probability) for scenario in scenarios]
+        total = sum(weights)
+        if total <= 0:
+            return self._scenario_rng.choice(scenarios)
+        threshold = self._scenario_rng.random() * total
+        cumulative = 0.0
+        for scenario, weight in zip(scenarios, weights):
+            cumulative += weight
+            if cumulative >= threshold:
+                return scenario
+        return scenarios[-1]
 
     def _check_termination(self) -> Tuple[bool, bool, Optional[str]]:
         if self._current_state is None:

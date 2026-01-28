@@ -11,7 +11,7 @@ import heapq
 import itertools
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from core.task import TaskPool
+from core.task import Task, TaskPool
 from core.vehicle import Vehicle
 from core.node import ChargingNode
 
@@ -124,6 +124,12 @@ class EventDrivenSimulator:
         self._arrived_task_ids: Set[int] = set()
         self._soc_low_vehicles: Set[int] = set()
         self._last_deadlock_time: Optional[float] = None
+        self._base_tasks: Dict[int, Task] = {
+            task.task_id: task for task in self.task_pool.get_all_tasks()
+        }
+        self._scenario_task_availability: Dict[int, int] = {}
+        self._scenario_task_release_times: Dict[int, float] = {}
+        self._scenario_task_demands: Dict[int, float] = {}
 
     def reset(self) -> EventDrivenState:
         """Reset the simulator and seed the initial events."""
@@ -139,9 +145,13 @@ class EventDrivenSimulator:
         self._last_deadlock_time = None
 
         for task in self.task_pool.get_all_tasks():
+            availability = self._scenario_task_availability.get(task.task_id, 1)
+            if availability <= 0:
+                continue
+            release_time = self._scenario_task_release_times.get(task.task_id, task.arrival_time)
             self.event_queue.push(
                 Event(
-                    time=float(task.arrival_time),
+                    time=float(release_time),
                     event_type=EVENT_TASK_ARRIVAL,
                     payload={"task_id": task.task_id},
                 )
@@ -307,6 +317,9 @@ class EventDrivenSimulator:
         queue_estimates: Optional[Dict[int, float]] = None,
         charging_availability: Optional[Dict[int, int]] = None,
         travel_time_factor: Optional[float] = None,
+        task_availability: Optional[Dict[int, int]] = None,
+        task_release_times: Optional[Dict[int, float]] = None,
+        task_demands: Optional[Dict[int, float]] = None,
     ) -> None:
         """Update simulator-level scenario perturbations."""
         if queue_estimates is not None:
@@ -315,6 +328,72 @@ class EventDrivenSimulator:
             self.charging_availability = charging_availability
         if travel_time_factor is not None:
             self.travel_time_factor = max(0.0, travel_time_factor)
+        if task_availability is not None:
+            self._scenario_task_availability = dict(task_availability)
+        if task_release_times is not None:
+            self._scenario_task_release_times = dict(task_release_times)
+        if task_demands is not None:
+            self._scenario_task_demands = dict(task_demands)
+        if any(value is not None for value in (task_availability, task_release_times, task_demands)):
+            self._apply_task_overrides()
+
+    def _apply_task_overrides(self) -> None:
+        from core.node import TaskNode
+
+        if not self._base_tasks:
+            self._base_tasks = {
+                task.task_id: task for task in self.task_pool.get_all_tasks()
+            }
+        else:
+            for task in self.task_pool.get_all_tasks():
+                self._base_tasks.setdefault(task.task_id, task)
+
+        for task_id, base_task in self._base_tasks.items():
+            demand_override = self._scenario_task_demands.get(task_id, base_task.demand)
+            release_override = self._scenario_task_release_times.get(
+                task_id, base_task.arrival_time
+            )
+            demand_value = max(0.0, float(demand_override))
+
+            if (
+                demand_value == base_task.demand
+                and release_override == base_task.arrival_time
+            ):
+                new_task = base_task
+            else:
+                pickup = base_task.pickup_node
+                delivery = base_task.delivery_node
+                new_pickup = TaskNode(
+                    node_id=pickup.node_id,
+                    node_type=pickup.node_type,
+                    coordinates=pickup.coordinates,
+                    task_id=pickup.task_id,
+                    time_window=pickup.time_window,
+                    service_time=pickup.service_time,
+                    demand=demand_value,
+                )
+                new_delivery = TaskNode(
+                    node_id=delivery.node_id,
+                    node_type=delivery.node_type,
+                    coordinates=delivery.coordinates,
+                    task_id=delivery.task_id,
+                    time_window=delivery.time_window,
+                    service_time=delivery.service_time,
+                    demand=demand_value,
+                )
+                new_task = Task(
+                    task_id=base_task.task_id,
+                    pickup_node=new_pickup,
+                    delivery_node=new_delivery,
+                    demand=demand_value,
+                    priority=base_task.priority,
+                    arrival_time=float(release_override),
+                )
+
+            self.task_pool.tasks[task_id] = new_task
+            tracker = self.task_pool.trackers.get(task_id)
+            if tracker is not None:
+                tracker.task = new_task
 
     def _set_vehicle_status(self, vehicle_id: int, status: VehicleStatus) -> None:
         for vehicle in self.vehicles:
