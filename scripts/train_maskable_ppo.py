@@ -88,9 +88,13 @@ def build_env(args, *, seed: int, log_dir: Path) -> RuleSelectionGymEnv:
 
     traffic = TrafficManager(headway_s=args.headway_s)
     simulator = EventDrivenSimulator(task_pool=pool, vehicles=vehicles, chargers=chargers, traffic_manager=traffic)
-    executor = ExecutionLayer(task_pool=pool, simulator=simulator, traffic_manager=traffic)
-
-    solver_config = MIPBaselineSolverConfig()
+    solver_config = MIPBaselineSolverConfig(min_soc_threshold=args.min_soc_threshold)
+    executor = ExecutionLayer(
+        task_pool=pool,
+        simulator=simulator,
+        traffic_manager=traffic,
+        min_soc_threshold=solver_config.min_soc_threshold,
+    )
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     core_env = RuleSelectionEnv(
         simulator=simulator,
@@ -118,6 +122,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--log-dir", type=str, default="results/rl")
     parser.add_argument("--eval-freq", type=int, default=2_000)
+    parser.add_argument("--min-soc-threshold", type=float, default=None)
     parser.add_argument("--eval-episodes", type=int, default=5)
     parser.add_argument("--num-tasks", type=int, default=8)
     parser.add_argument("--num-vehicles", type=int, default=2)

@@ -35,6 +35,7 @@ class MIPBaselineSolverConfig:
     rule6_charge_level_ratios: tuple[float, ...] = (0.3, 0.5, 0.8)
     rule7_min_charge_ratio: float = 0.8
     rule5_soc_threshold: float = 0.2
+    min_soc_threshold: float | None = None  # Optional hard SOC floor for simulation/execution layer. can change None to configure the value.
     standby_beta: float = 1.0
     charging_queue_default_s: float = 0.0
     charging_queue_estimates_s: dict[int, float] = field(default_factory=dict)

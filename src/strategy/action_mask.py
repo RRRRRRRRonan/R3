@@ -187,6 +187,27 @@ def _vehicle_can_serve_task(
         return False
     if not _energy_to_pickup_feasible(vehicle, task, energy_config):
         return False
+    config = energy_config or EnergyConfig()
+    min_battery = max(0.0, config.safety_threshold) * vehicle.battery_capacity
+    distance_pickup = _euclidean(vehicle.current_location, task.pickup_coordinates)
+    distance_delivery = _euclidean(task.pickup_coordinates, task.delivery_coordinates)
+    energy_to_pickup = calculate_energy_consumption(
+        distance=distance_pickup,
+        load=vehicle.current_load,
+        config=config,
+        vehicle_speed=vehicle.speed,
+        vehicle_capacity=vehicle.capacity,
+    )
+    energy_to_delivery = calculate_energy_consumption(
+        distance=distance_delivery,
+        load=vehicle.current_load + task.demand,
+        config=config,
+        vehicle_speed=vehicle.speed,
+        vehicle_capacity=vehicle.capacity,
+    )
+    remaining_after_delivery = vehicle.current_battery - energy_to_pickup - energy_to_delivery
+    if remaining_after_delivery < min_battery - 1e-6:
+        return False
     if not _hard_time_windows_feasible(vehicle, task, state):
         return False
     return True
@@ -206,7 +227,8 @@ def _energy_to_pickup_feasible(
         vehicle_speed=vehicle.speed,
         vehicle_capacity=vehicle.capacity,
     )
-    return required <= vehicle.current_battery + 1e-6
+    min_battery = max(0.0, config.safety_threshold) * vehicle.battery_capacity
+    return vehicle.current_battery - required >= min_battery - 1e-6
 
 
 def _hard_time_windows_feasible(
@@ -256,6 +278,7 @@ def _can_reach_any_charger(
     if not state.chargers:
         return False
     config = energy_config or EnergyConfig()
+    min_battery = max(0.0, config.safety_threshold) * vehicle.battery_capacity
     min_required = None
     for charger in state.chargers.values():
         if not charger.is_available:
@@ -272,7 +295,7 @@ def _can_reach_any_charger(
             min_required = required
     if min_required is None:
         return False
-    return min_required <= vehicle.current_battery + 1e-6
+    return vehicle.current_battery - min_required >= min_battery - 1e-6
 
 
 def _vehicle_soc(vehicle: object) -> float:

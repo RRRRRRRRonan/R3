@@ -74,7 +74,7 @@ class EnergySystemDefaults:
     max_charging_amount: float = 100.0
     battery_capacity_kwh: float = 100.0
     load_factor_coeff: float = 0.2
-    safety_threshold: float = 0.05
+    safety_threshold: float = 0.05  # Minimum SOC ratio enforced as a hard constraint in simulation.
     warning_threshold: float = 0.15
     comfort_threshold: float = 0.25
     critical_battery_threshold: float = 0.0

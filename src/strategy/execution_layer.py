@@ -47,6 +47,7 @@ class ExecutionLayer:
         wait_weight_charging: float = 3.0,
         wait_weight_depot: float = 0.5,
         wait_weight_scale: float = 1.0,
+        min_soc_threshold: Optional[float] = None,
     ) -> None:
         self.task_pool = task_pool
         self.simulator = simulator
@@ -60,6 +61,9 @@ class ExecutionLayer:
         self.wait_weight_default = max(0.0, wait_weight_default) * scale
         self.wait_weight_charging = max(0.0, wait_weight_charging) * scale
         self.wait_weight_depot = max(0.0, wait_weight_depot) * scale
+        if min_soc_threshold is None:
+            min_soc_threshold = self.energy_config.safety_threshold
+        self.min_soc_threshold = max(0.0, min_soc_threshold)
         self._route_executor: Optional[RouteExecutor] = None
 
     def execute(self, action: AtomicAction, state: SimulatorState, event: Optional[Event]) -> ExecutionResult:
@@ -103,6 +107,9 @@ class ExecutionLayer:
         if tracker and tracker.status in (TaskStatus.REJECTED, TaskStatus.COMPLETED):
             state.metrics.infeasible_actions += 1
             return ExecutionResult(end_time=state.t)
+        if not _dispatch_energy_feasible(vehicle, task, self.energy_config, self.min_soc_threshold):
+            state.metrics.infeasible_actions += 1
+            return ExecutionResult(end_time=state.t)
         if tracker and tracker.status == TaskStatus.PENDING:
             self.task_pool.assign_task(task_id, robot_id)
             self.simulator.mark_task_assigned(task_id, robot_id)
@@ -136,7 +143,15 @@ class ExecutionLayer:
         current_time = schedule[-1][1] if schedule else current_time
         conflict_waiting = conflict_wait
         waiting_weighted = 0.0
-        _consume_energy(vehicle, [edge_to_pickup], self.energy_config, self.travel_time_factor)
+        if not _consume_energy(
+            vehicle,
+            [edge_to_pickup],
+            self.energy_config,
+            self.travel_time_factor,
+            min_soc_threshold=self.min_soc_threshold,
+        ):
+            state.metrics.infeasible_actions += 1
+            return ExecutionResult(end_time=state.t)
 
         pickup_result = _visit_node(
             self.traffic_manager,
@@ -171,7 +186,15 @@ class ExecutionLayer:
         conflict_waiting += conflict_wait
         if distance <= 0.0:
             distance += edge_to_delivery.distance
-        _consume_energy(vehicle, [edge_to_delivery], self.energy_config, self.travel_time_factor)
+        if not _consume_energy(
+            vehicle,
+            [edge_to_delivery],
+            self.energy_config,
+            self.travel_time_factor,
+            min_soc_threshold=self.min_soc_threshold,
+        ):
+            state.metrics.infeasible_actions += 1
+            return ExecutionResult(end_time=state.t)
 
         delivery_result = _visit_node(
             self.traffic_manager,
@@ -228,6 +251,15 @@ class ExecutionLayer:
         charger = state.chargers.get(charger_id)
         if vehicle is None or charger is None:
             return ExecutionResult(end_time=state.t)
+        if not _travel_energy_feasible(
+            vehicle,
+            charger.coordinates,
+            vehicle.current_load,
+            self.energy_config,
+            self.min_soc_threshold,
+        ):
+            state.metrics.infeasible_actions += 1
+            return ExecutionResult(end_time=state.t)
 
         vehicle.status = VehicleStatus.CHARGING
         self.simulator.mark_vehicle_busy(robot_id)
@@ -253,7 +285,15 @@ class ExecutionLayer:
         conflict_waiting = conflict_wait
         travel_time = sum(end - start for start, end, _ in schedule)
 
-        _consume_energy(vehicle, [edge], self.energy_config, self.travel_time_factor)
+        if not _consume_energy(
+            vehicle,
+            [edge],
+            self.energy_config,
+            self.travel_time_factor,
+            min_soc_threshold=self.min_soc_threshold,
+        ):
+            state.metrics.infeasible_actions += 1
+            return ExecutionResult(end_time=state.t)
 
         queue_wait = max(0.0, charger.estimated_wait_s)
         earliest_charge = current_time + queue_wait
@@ -275,7 +315,7 @@ class ExecutionLayer:
         )
 
         conflict_waiting += node_wait
-        standby = queue_wait
+        standby = 0.0
         waiting = queue_wait
         waiting_weighted = queue_wait * self.wait_weight_charging
 
@@ -338,6 +378,15 @@ class ExecutionLayer:
         target_coord = _resolve_node_coordinates(state, node_id)
         if target_coord is None:
             target_coord = vehicle.current_location
+        if not _travel_energy_feasible(
+            vehicle,
+            target_coord,
+            vehicle.current_load,
+            self.energy_config,
+            self.min_soc_threshold,
+        ):
+            state.metrics.infeasible_actions += 1
+            return ExecutionResult(end_time=state.t)
 
         edge = _make_edge(
             _infer_start_node(vehicle, state)[0],
@@ -352,7 +401,15 @@ class ExecutionLayer:
         current_time = schedule[-1][1] if schedule else current_time
         travel_time = sum(end - start for start, end, _ in schedule)
 
-        _consume_energy(vehicle, [edge], self.energy_config, self.travel_time_factor)
+        if not _consume_energy(
+            vehicle,
+            [edge],
+            self.energy_config,
+            self.travel_time_factor,
+            min_soc_threshold=self.min_soc_threshold,
+        ):
+            state.metrics.infeasible_actions += 1
+            return ExecutionResult(end_time=state.t)
 
         dwell_time = self.time_config.default_service_time
         dwell_start, dwell_end, node_wait, _ = self.traffic_manager.reserve_node_with_window(
@@ -467,7 +524,9 @@ def _consume_energy(
     edges: Sequence[PathEdge],
     energy_config: EnergyConfig,
     travel_time_factor: float = 1.0,
-) -> None:
+    *,
+    min_soc_threshold: float = 0.0,
+) -> bool:
     for edge in edges:
         required = calculate_energy_consumption(
             distance=edge.distance,
@@ -476,10 +535,11 @@ def _consume_energy(
             vehicle_speed=vehicle.speed,
             vehicle_capacity=vehicle.capacity,
         ) * max(0.0, travel_time_factor)
-        try:
-            vehicle.consume_battery(required)
-        except ValueError:
-            vehicle.current_battery = max(0.0, vehicle.current_battery - required)
+        min_battery = max(0.0, min_soc_threshold) * vehicle.battery_capacity
+        if vehicle.current_battery - required < min_battery - 1e-6:
+            return False
+        vehicle.consume_battery(required)
+    return True
 
 
 def _visit_node(
@@ -543,6 +603,59 @@ def _build_charge_route(
     route = Route(vehicle_id=vehicle.vehicle_id, nodes=[start_node, charger_node, end_node])
     distance_matrix = _build_distance_matrix([start_node, charger_node, end_node], None)
     return route, distance_matrix
+
+
+def _travel_energy_feasible(
+    vehicle: Vehicle,
+    target: Tuple[float, float],
+    load: float,
+    energy_config: EnergyConfig,
+    min_soc_threshold: float,
+) -> bool:
+    distance = _euclidean(vehicle.current_location, target)
+    required = calculate_energy_consumption(
+        distance=distance,
+        load=load,
+        config=energy_config,
+        vehicle_speed=vehicle.speed,
+        vehicle_capacity=vehicle.capacity,
+    )
+    min_battery = max(0.0, min_soc_threshold) * vehicle.battery_capacity
+    return vehicle.current_battery - required >= min_battery - 1e-6
+
+
+def _dispatch_energy_feasible(
+    vehicle: Vehicle,
+    task,
+    energy_config: EnergyConfig,
+    min_soc_threshold: float,
+) -> bool:
+    pickup = task.pickup_node
+    delivery = task.delivery_node
+    distance_to_pickup = _euclidean(vehicle.current_location, pickup.coordinates)
+    required_pickup = calculate_energy_consumption(
+        distance=distance_to_pickup,
+        load=vehicle.current_load,
+        config=energy_config,
+        vehicle_speed=vehicle.speed,
+        vehicle_capacity=vehicle.capacity,
+    )
+    min_battery = max(0.0, min_soc_threshold) * vehicle.battery_capacity
+    battery_after_pickup = vehicle.current_battery - required_pickup
+    if battery_after_pickup < min_battery - 1e-6:
+        return False
+    distance_to_delivery = _euclidean(pickup.coordinates, delivery.coordinates)
+    required_delivery = calculate_energy_consumption(
+        distance=distance_to_delivery,
+        load=vehicle.current_load + task.demand,
+        config=energy_config,
+        vehicle_speed=vehicle.speed,
+        vehicle_capacity=vehicle.capacity,
+    )
+    battery_after_delivery = battery_after_pickup - required_delivery
+    if battery_after_delivery < min_battery - 1e-6:
+        return False
+    return True
 
 
 def _build_distance_matrix(nodes: Sequence[Node], state: Optional[SimulatorState]) -> DistanceMatrix:
