@@ -234,7 +234,6 @@ def build_model_spec(
         "C_wait * sum phi_i^{wait} * u_i^{a,w}",
         "C_conflict * sum w_i^{a,w}",
         "C_missing_task * sum (1 - z_r^w)",
-        "C_infeasible * sum (1 - z_r^w)",
         "C_standby * sum s_i^{a,w}",
     ]
 
