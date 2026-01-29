@@ -54,6 +54,7 @@ def apply(
     charge_level_ratios: Sequence[float] = (0.3, 0.5, 0.8),
     rule7_min_charge_ratio: float = 0.8,
     standby_beta: float = 1.0,
+    heatmap_scores: Optional[Dict[int, float]] = None,
 ) -> AtomicAction:
     """Return an atomic action for the given rule ID."""
 
@@ -90,6 +91,7 @@ def apply(
             event,
             state,
             standby_beta=standby_beta,
+            heatmap_scores=heatmap_scores,
         )
 
     return AtomicAction(kind="DWELL", payload=_fallback_dwell_payload(state, event))
@@ -210,6 +212,7 @@ def _apply_standby_rule(
     state: SimulatorState,
     *,
     standby_beta: float,
+    heatmap_scores: Optional[Dict[int, float]] = None,
 ) -> AtomicAction:
     vehicle = _select_vehicle_for_event(event, state)
     if vehicle is None:
@@ -219,7 +222,7 @@ def _apply_standby_rule(
         return AtomicAction(kind="DWELL", payload={"robot_id": vehicle.vehicle_id, "node_id": -1})
 
     if rule_id == RULE_STANDBY_HEATMAP:
-        node_id = _select_heatmap_node(state, vehicle)
+        node_id = _select_heatmap_node(state, vehicle, heatmap_scores)
         return AtomicAction(kind="DWELL", payload={"robot_id": vehicle.vehicle_id, "node_id": node_id})
 
     node_id = _select_low_cost_node(state, vehicle, standby_beta)
@@ -486,7 +489,23 @@ def _select_low_cost_node(state: SimulatorState, vehicle, standby_beta: float) -
     return best[1]
 
 
-def _select_heatmap_node(state: SimulatorState, vehicle) -> int:
+def _select_heatmap_node(
+    state: SimulatorState,
+    vehicle,
+    heatmap_scores: Optional[Dict[int, float]] = None,
+) -> int:
+    if heatmap_scores:
+        candidates = _collect_candidate_nodes(state)
+        best = None
+        for node_id in candidates:
+            score = heatmap_scores.get(node_id)
+            if score is None:
+                continue
+            if best is None or score > best[0]:
+                best = (score, node_id)
+        if best is not None:
+            return best[1]
+
     if not state.open_tasks:
         return 0
     best_task = max(
@@ -494,6 +513,16 @@ def _select_heatmap_node(state: SimulatorState, vehicle) -> int:
         key=lambda task: (task.priority, -_task_due_time(task)),
     )
     return best_task.pickup_node.node_id
+
+
+def _collect_candidate_nodes(state: SimulatorState) -> List[int]:
+    nodes = {0}
+    for task in state.open_tasks.values():
+        nodes.add(task.pickup_node.node_id)
+        nodes.add(task.delivery_node.node_id)
+    for charger in state.chargers.values():
+        nodes.add(charger.node_id)
+    return list(nodes)
 
 
 def _fallback_dwell_payload(state: SimulatorState, event: Optional[Event]) -> Dict[str, object]:

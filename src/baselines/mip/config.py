@@ -8,6 +8,19 @@ from config import CostParameters
 
 
 @dataclass(frozen=True)
+class ScenarioSynthConfig:
+    """Configuration for synthetic scenario generation."""
+
+    num_scenarios: int = 3
+    availability_prob: float = 1.0
+    release_jitter_s: float = 0.0
+    demand_noise_ratio: float = 0.0
+    travel_time_factor_range: tuple[float, float] = (1.0, 1.0)
+    queue_time_range_s: tuple[float, float] = (0.0, 0.0)
+    charging_available_prob: float = 1.0
+
+
+@dataclass(frozen=True)
 class MIPBaselineScale:
     """Define the smallest target scale used by the MIP baseline."""
 
@@ -44,3 +57,6 @@ class MIPBaselineSolverConfig:
     wait_weight_depot: float = 0.5
     wait_weight_scale: float = 1.0
     cost_params: CostParameters = field(default_factory=CostParameters)
+    auto_synthesize_scenarios: bool = True
+    scenario_synth_config: ScenarioSynthConfig = field(default_factory=ScenarioSynthConfig)
+    scenario_synth_seed: int | None = None

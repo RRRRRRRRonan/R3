@@ -14,9 +14,11 @@ from physics.energy import EnergyConfig
 from strategy.action_mask import ALL_RULES, action_masks
 from strategy.rule_gating import get_available_rules, RULE_ACCEPT_FEASIBLE, RULE_CHARGE_URGENT
 from core.task import TaskStatus
-from baselines.mip.config import MIPBaselineSolverConfig
+from baselines.mip.config import MIPBaselineSolverConfig, ScenarioSynthConfig
 from baselines.mip.model import MIPBaselineScenario
+from strategy.heatmap import HeatmapConfig, build_heatmap_from_task_log
 from strategy.reward import compute_delta_cost, snapshot_metrics, to_info_dict
+from strategy.scenario_synthesizer import synthesize_scenarios
 from strategy.rules import apply as apply_rule
 
 if TYPE_CHECKING:
@@ -57,6 +59,12 @@ class RuleSelectionEnv:
         scenario_seed: Optional[int] = None,
         fixed_scenario: bool = False,
         fixed_scenario_id: Optional[int] = None,
+        auto_synthesize_scenarios: bool = True,
+        synth_config: Optional[ScenarioSynthConfig] = None,
+        synth_seed: Optional[int] = None,
+        heatmap_log_path: Optional[str] = None,
+        heatmap_decay_half_life_s: Optional[float] = None,
+        heatmap_priority_weight: float = 0.1,
         cost_log_path: Optional[str] = None,
         cost_log_csv_path: Optional[str] = None,
         decision_log_path: Optional[str] = None,
@@ -76,11 +84,31 @@ class RuleSelectionEnv:
         self.max_decision_steps = max_decision_steps
         self.max_time_s = max_time_s
         self.scenarios = list(scenarios) if scenarios else []
+        if mip_solver_config is not None:
+            if synth_config is None:
+                synth_config = mip_solver_config.scenario_synth_config
+            if synth_seed is None:
+                synth_seed = mip_solver_config.scenario_synth_seed
+            if not mip_solver_config.auto_synthesize_scenarios:
+                auto_synthesize_scenarios = False
+        if not self.scenarios and auto_synthesize_scenarios:
+            synth_seed = scenario_seed if synth_seed is None else synth_seed
+            self.scenarios = synthesize_scenarios(
+                self.simulator.task_pool,
+                chargers=self.simulator.chargers,
+                seed=synth_seed,
+                config=synth_config,
+            )
         self._scenario_rng = random.Random(scenario_seed)
         self._current_scenario: Optional[MIPBaselineScenario] = None
         self.fixed_scenario = fixed_scenario
         self.fixed_scenario_id = fixed_scenario_id
         self._fixed_scenario: Optional[MIPBaselineScenario] = None
+        heatmap_cfg = HeatmapConfig(
+            decay_half_life_s=heatmap_decay_half_life_s,
+            priority_weight=heatmap_priority_weight,
+        )
+        self.heatmap_scores = build_heatmap_from_task_log(heatmap_log_path, config=heatmap_cfg)
         if cost_params is None and mip_solver_config is not None:
             cost_params = mip_solver_config.cost_params
         self.cost_params = cost_params or DEFAULT_COST_PARAMETERS
@@ -213,7 +241,12 @@ class RuleSelectionEnv:
         if self.execution_layer is None and self.rule_executor is not None:
             self.rule_executor(selected_rule_id, current_event, current_state, self.simulator)
 
-        atomic_action = apply_rule(selected_rule_id, current_event, current_state)
+        atomic_action = apply_rule(
+            selected_rule_id,
+            current_event,
+            current_state,
+            heatmap_scores=self.heatmap_scores or None,
+        )
         if self.execution_layer is not None:
             self.execution_layer.execute(atomic_action, current_state, current_event)
 

@@ -51,18 +51,36 @@ def get_available_rules(
 
     event_type = event.event_type if event else None
 
+    available: List[int] = []
+    has_tasks = bool(state.open_tasks)
+    has_energy_risk = _has_energy_risk(state, soc_threshold)
+
+    # Allow accept/reject decisions whenever there are pending tasks.
+    if has_tasks:
+        available.extend(ACCEPT_RULES)
+
     if event_type == EVENT_TASK_ARRIVAL:
-        return ACCEPT_RULES + DISPATCH_RULES
+        # On arrival, prioritize dispatch; allow charging if energy risk is present.
+        available.extend(DISPATCH_RULES)
+        if has_energy_risk:
+            available.extend(CHARGE_RULES)
+    elif event_type in {EVENT_ROBOT_IDLE, EVENT_CHARGE_DONE, EVENT_SOC_LOW, EVENT_DEADLOCK_RISK}:
+        # Idle-like events: allow charging when energy is risky, otherwise dispatch if tasks exist.
+        if has_energy_risk:
+            available.extend(CHARGE_RULES)
+        if has_tasks:
+            available.extend(DISPATCH_RULES)
+        if not has_tasks:
+            available.extend(STANDBY_RULES)
+    else:
+        # Fallback: allow dispatch if tasks exist; otherwise standby.
+        if has_tasks:
+            available.extend(DISPATCH_RULES)
+        else:
+            available.extend(STANDBY_RULES)
 
-    if event_type in {EVENT_ROBOT_IDLE, EVENT_CHARGE_DONE, EVENT_SOC_LOW, EVENT_DEADLOCK_RISK}:
-        if _has_energy_risk(state, soc_threshold):
-            return CHARGE_RULES
-        if state.open_tasks:
-            return DISPATCH_RULES
-        return STANDBY_RULES
-
-    # Fallback: prefer dispatch if there are tasks; otherwise standby.
-    return DISPATCH_RULES if state.open_tasks else STANDBY_RULES
+    # Preserve order while removing duplicates.
+    return list(dict.fromkeys(available))
 
 
 def _has_energy_risk(state: SimulatorState, soc_threshold: float) -> bool:
