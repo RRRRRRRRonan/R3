@@ -17,6 +17,13 @@ if str(SRC_PATH) not in sys.path:
 import numpy as np
 
 try:
+    import torch
+except ImportError as exc:  # pragma: no cover
+    raise SystemExit(
+        "torch is required for MaskablePPO reproducibility. Install via `python3 -m pip install torch`."
+    ) from exc
+
+try:
     import gymnasium as gym
 except ImportError as exc:  # pragma: no cover
     raise SystemExit(
@@ -137,6 +144,14 @@ def main() -> None:
 
     np.random.seed(args.seed)
     random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    try:
+        torch.use_deterministic_algorithms(True)
+    except Exception:
+        pass
+    if torch.backends.cudnn.is_available():
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
     train_env = build_env(args, seed=args.seed, log_dir=log_dir / "train")
     eval_env = build_env(args, seed=args.seed + 1, log_dir=log_dir / "eval")
