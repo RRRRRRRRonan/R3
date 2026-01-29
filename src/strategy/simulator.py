@@ -181,6 +181,20 @@ class EventDrivenSimulator:
                 return event, self._snapshot(event)
         return None, self._snapshot(None)
 
+    def advance_until(self, time: float) -> None:
+        """Process events up to the given time without stopping at decision epochs."""
+        target = float(time)
+        while len(self.event_queue) > 0:
+            event = self.event_queue.peek()
+            if event is None or event.time > target:
+                break
+            event = self.event_queue.pop()
+            if event is None:
+                break
+            self.current_time = event.time
+            self._apply_event(event)
+        self.current_time = max(self.current_time, target)
+
     def mark_task_assigned(self, task_id: int, vehicle_id: int) -> None:
         """Update internal state when a task is assigned to a vehicle."""
         self._pending_task_ids.discard(task_id)

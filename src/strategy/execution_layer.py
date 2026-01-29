@@ -140,9 +140,17 @@ class ExecutionLayer:
 
         pickup = task.pickup_node
         delivery = task.delivery_node
+        if mode == "insert" and vehicle.route is not None:
+            result = self._execute_full_route(
+                vehicle,
+                route,
+                distance_matrix,
+                state,
+                current_time,
+            )
+            return result
 
-        if mode != "insert" or vehicle.route is None:
-            route, distance_matrix = _build_dispatch_route(vehicle, task, state)
+        route, distance_matrix = _build_dispatch_route(vehicle, task, state)
         executor = self._get_route_executor(distance_matrix)
         executed_route = executor.execute(route, vehicle, start_time=current_time)
         vehicle.assign_route(executed_route)
@@ -260,6 +268,172 @@ class ExecutionLayer:
             travel_time=travel_time,
             delay=delay,
             waiting=waiting,
+        )
+
+    def _execute_full_route(
+        self,
+        vehicle: Vehicle,
+        route: Route,
+        distance_matrix: DistanceMatrix,
+        state: SimulatorState,
+        start_time: float,
+    ) -> ExecutionResult:
+        robot_id = vehicle.vehicle_id
+        executor = self._get_route_executor(distance_matrix)
+        executed_route = executor.execute(route, vehicle, start_time=0.0)
+        vehicle.assign_route(executed_route)
+
+        conflict_waiting = 0.0
+        distance = 0.0
+        travel_time = 0.0
+        delay = 0.0
+        waiting = 0.0
+        standby = 0.0
+        charging = 0.0
+        waiting_weighted = 0.0
+
+        vehicle.status = VehicleStatus.MOVING
+        self.simulator.mark_vehicle_busy(robot_id)
+        current_time = start_time
+
+        if not executed_route.nodes:
+            return ExecutionResult(end_time=current_time)
+
+        prev_node = executed_route.nodes[0]
+        prev_coord = prev_node.coordinates
+        prev_node_id = prev_node.node_id
+
+        for idx in range(1, len(executed_route.nodes)):
+            node = executed_route.nodes[idx]
+            edge = _make_edge(
+                prev_node_id,
+                node.node_id,
+                prev_coord,
+                node.coordinates,
+                vehicle.speed,
+                self.travel_time_factor,
+            )
+            schedule, edge_conflict = self.traffic_manager.reserve_path(
+                robot_id, [edge], current_time
+            )
+            travel_time += sum(end - start for start, end, _ in schedule)
+            distance += edge.distance
+            current_time = schedule[-1][1] if schedule else current_time
+            conflict_waiting += edge_conflict
+            if not _consume_energy(
+                vehicle,
+                [edge],
+                self.energy_config,
+                self.travel_time_factor,
+                min_soc_threshold=self.min_soc_threshold,
+            ):
+                state.metrics.infeasible_actions += 1
+                return ExecutionResult(end_time=state.t)
+            self.simulator.advance_until(current_time)
+
+            if node.is_charging_station():
+                charger = state.chargers.get(node.node_id)
+                if charger is None or not charger.is_available:
+                    state.metrics.infeasible_actions += 1
+                    return ExecutionResult(end_time=state.t)
+                queue_wait = max(0.0, charger.estimated_wait_s)
+                earliest_charge = current_time + queue_wait
+                charge_amount = 0.0
+                charge_time = 0.0
+                if executed_route.visits and idx < len(executed_route.visits):
+                    visit = executed_route.visits[idx]
+                    charge_amount = max(0.0, visit.battery_after_service - visit.battery_after_travel)
+                    charge_time = max(0.0, visit.departure_time - visit.start_service_time)
+                charge_start, charge_end, node_wait, _ = self.traffic_manager.reserve_node_with_window(
+                    robot_id,
+                    node.node_id,
+                    earliest_charge,
+                    charge_time,
+                    time_window=None,
+                )
+                conflict_waiting += node_wait
+                waiting += queue_wait
+                waiting_weighted += queue_wait * self.wait_weight_charging
+                vehicle.charge_battery(charge_amount, charge_end)
+                charging += charge_amount
+                current_time = charge_end
+                self.simulator.advance_until(current_time)
+            else:
+                time_window = getattr(node, "time_window", None)
+                service_time = getattr(node, "service_time", 0.0)
+                result = _visit_node(
+                    self.traffic_manager,
+                    robot_id,
+                    node.node_id,
+                    time_window,
+                    service_time,
+                    current_time,
+                    state,
+                )
+                current_time = result.end_time
+                conflict_waiting += result.conflict_waiting
+                delay += result.delay
+                waiting += result.waiting
+                waiting_weighted += result.waiting * self._waiting_weight(state, node.node_id)
+                self.simulator.advance_until(current_time)
+
+                if node.is_pickup():
+                    vehicle.current_load += getattr(node, "demand", 0.0)
+                    tracker = self.task_pool.get_tracker(node.task_id) if hasattr(node, "task_id") else None
+                    if (
+                        tracker
+                        and tracker.status == TaskStatus.ASSIGNED
+                        and tracker.assigned_vehicle_id == robot_id
+                    ):
+                        tracker.start_execution(result.end_time)
+                elif node.is_delivery():
+                    vehicle.current_load = max(0.0, vehicle.current_load - getattr(node, "demand", 0.0))
+                    tracker = self.task_pool.get_tracker(node.task_id) if hasattr(node, "task_id") else None
+                    if (
+                        tracker
+                        and tracker.status == TaskStatus.IN_PROGRESS
+                        and tracker.assigned_vehicle_id == robot_id
+                    ):
+                        tracker.complete(result.end_time)
+
+            if executed_route.visits and idx < len(executed_route.visits):
+                standby_time = max(0.0, executed_route.visits[idx].standby_time)
+                if standby_time > 0.0:
+                    standby += standby_time
+                    current_time += standby_time
+                    self.simulator.advance_until(current_time)
+
+            vehicle.current_location = node.coordinates
+            vehicle.current_time = current_time
+            prev_node_id = node.node_id
+            prev_coord = node.coordinates
+
+        state.metrics.total_distance += distance
+        state.metrics.total_travel_time += travel_time
+        state.metrics.total_conflict_waiting += conflict_waiting
+        state.metrics.total_delay += delay
+        state.metrics.total_waiting += waiting
+        state.metrics.total_waiting_weighted += waiting_weighted
+        state.metrics.total_standby += standby
+        state.metrics.total_charging += charging
+
+        self.simulator.update_soc_status(robot_id, time=current_time)
+        self.simulator.maybe_trigger_deadlock(
+            wait_s=conflict_waiting,
+            time=current_time,
+            payload={"robot_id": robot_id, "conflict_waiting": conflict_waiting},
+        )
+        self.simulator.mark_vehicle_idle(robot_id, time=current_time)
+
+        return ExecutionResult(
+            end_time=current_time,
+            conflict_waiting=conflict_waiting,
+            distance=distance,
+            travel_time=travel_time,
+            charging=charging,
+            delay=delay,
+            waiting=waiting,
+            standby=standby,
         )
 
     def _execute_charge(self, action: AtomicAction, state: SimulatorState, event: Optional[Event]) -> ExecutionResult:
