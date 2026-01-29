@@ -97,10 +97,14 @@ class ExecutionLayer:
     def _execute_dispatch(self, action: AtomicAction, state: SimulatorState, event: Optional[Event]) -> ExecutionResult:
         task_id = int(action.payload.get("task_id", -1))
         robot_id = int(action.payload.get("robot_id", -1))
+        mode = str(action.payload.get("mode", "dispatch"))
         task = self.task_pool.get_task(task_id)
         vehicle = _get_vehicle(state, robot_id)
 
         if task is None or vehicle is None:
+            return ExecutionResult(end_time=state.t)
+        if task.demand > vehicle.capacity + 1e-6:
+            state.metrics.infeasible_actions += 1
             return ExecutionResult(end_time=state.t)
 
         tracker = self.task_pool.get_tracker(task_id)
@@ -110,6 +114,21 @@ class ExecutionLayer:
         if not _dispatch_energy_feasible(vehicle, task, self.energy_config, self.min_soc_threshold):
             state.metrics.infeasible_actions += 1
             return ExecutionResult(end_time=state.t)
+        if mode == "insert" and vehicle.route is not None:
+            selection = _select_best_insert_route(
+                vehicle,
+                task,
+                state,
+                self.time_config,
+                self.energy_config,
+                self.traffic_manager,
+                self.travel_time_factor,
+                self.min_soc_threshold,
+            )
+            if selection is None:
+                state.metrics.infeasible_actions += 1
+                return ExecutionResult(end_time=state.t)
+            route, distance_matrix = selection
         if tracker and tracker.status == TaskStatus.PENDING:
             self.task_pool.assign_task(task_id, robot_id)
             self.simulator.mark_task_assigned(task_id, robot_id)
@@ -122,7 +141,8 @@ class ExecutionLayer:
         pickup = task.pickup_node
         delivery = task.delivery_node
 
-        route, distance_matrix = _build_dispatch_route(vehicle, task, state)
+        if mode != "insert" or vehicle.route is None:
+            route, distance_matrix = _build_dispatch_route(vehicle, task, state)
         executor = self._get_route_executor(distance_matrix)
         executed_route = executor.execute(route, vehicle, start_time=current_time)
         vehicle.assign_route(executed_route)
@@ -354,6 +374,9 @@ class ExecutionLayer:
 
         vehicle = _get_vehicle(state, robot_id)
         if vehicle is None:
+            return ExecutionResult(end_time=state.t)
+        if node_id in state.chargers:
+            state.metrics.infeasible_actions += 1
             return ExecutionResult(end_time=state.t)
 
         vehicle.status = VehicleStatus.MOVING
@@ -590,6 +613,24 @@ def _build_dispatch_route(vehicle: Vehicle, task, state: SimulatorState) -> Tupl
     return route, distance_matrix
 
 
+def _build_insert_base_nodes(
+    vehicle: Vehicle,
+) -> List[Node]:
+    start_id = _virtual_node_id(vehicle.vehicle_id, 0)
+    start_node = Node(node_id=start_id, coordinates=vehicle.current_location, node_type=NodeType.DEPOT)
+    nodes = [start_node]
+    if vehicle.route and vehicle.route.nodes:
+        tail = list(vehicle.route.nodes)
+        if tail and tail[0].is_depot():
+            tail = tail[1:]
+        nodes.extend(tail)
+    if not nodes[-1].is_depot():
+        end_id = _virtual_node_id(vehicle.vehicle_id, 1)
+        end_coord = nodes[-1].coordinates
+        nodes.append(Node(node_id=end_id, coordinates=end_coord, node_type=NodeType.DEPOT))
+    return nodes
+
+
 def _build_charge_route(
     vehicle: Vehicle,
     charger_id: int,
@@ -673,6 +714,135 @@ def _build_distance_matrix(nodes: Sequence[Node], state: Optional[SimulatorState
 
 def _virtual_node_id(vehicle_id: int, offset: int) -> int:
     return 10_000_000 + vehicle_id * 10 + offset
+
+
+def _select_best_insert_route(
+    vehicle: Vehicle,
+    task,
+    state: SimulatorState,
+    time_config: TimeConfig,
+    energy_config: EnergyConfig,
+    traffic_manager: TrafficManager,
+    travel_time_factor: float,
+    min_soc_threshold: float,
+) -> Optional[Tuple[Route, DistanceMatrix]]:
+    base_nodes = _build_insert_base_nodes(vehicle)
+    if len(base_nodes) < 2:
+        return None
+
+    end_index = len(base_nodes) - 1 if base_nodes[-1].is_depot() else len(base_nodes)
+    best = None
+    for pickup_pos in range(1, end_index + 1):
+        for delivery_pos in range(pickup_pos + 1, end_index + 2):
+            nodes = list(base_nodes)
+            nodes.insert(pickup_pos, task.pickup_node)
+            nodes.insert(delivery_pos, task.delivery_node)
+            candidate = _evaluate_insert_candidate(
+                nodes,
+                vehicle,
+                state,
+                time_config,
+                energy_config,
+                traffic_manager,
+                travel_time_factor,
+                min_soc_threshold,
+            )
+            if candidate is None:
+                continue
+            score, route, distance_matrix = candidate
+            if best is None or score < best[0]:
+                best = (score, route, distance_matrix)
+    if best is None:
+        return None
+    return best[1], best[2]
+
+
+def _evaluate_insert_candidate(
+    nodes: Sequence[Node],
+    vehicle: Vehicle,
+    state: SimulatorState,
+    time_config: TimeConfig,
+    energy_config: EnergyConfig,
+    traffic_manager: TrafficManager,
+    travel_time_factor: float,
+    min_soc_threshold: float,
+) -> Optional[Tuple[float, Route, DistanceMatrix]]:
+    route = Route(vehicle_id=vehicle.vehicle_id, nodes=list(nodes))
+    distance_matrix = _build_distance_matrix(nodes, state)
+    charging_availability = {node_id: int(ch.is_available) for node_id, ch in state.chargers.items()}
+    zero_waits = [0.0] * len(nodes)
+    if not route.compute_schedule(
+        distance_matrix,
+        vehicle_capacity=vehicle.capacity,
+        vehicle_battery_capacity=vehicle.battery_capacity,
+        initial_battery=vehicle.current_battery,
+        time_config=time_config,
+        energy_config=energy_config,
+        conflict_waiting_times=zero_waits,
+        standby_times=zero_waits,
+        min_soc_threshold=min_soc_threshold,
+        charging_availability=charging_availability,
+    ):
+        return None
+
+    conflict_waits = _preview_conflict_waits(
+        traffic_manager,
+        route,
+        distance_matrix,
+        vehicle.speed,
+        max(state.t, vehicle.current_time),
+        travel_time_factor,
+    )
+    if not route.compute_schedule(
+        distance_matrix,
+        vehicle_capacity=vehicle.capacity,
+        vehicle_battery_capacity=vehicle.battery_capacity,
+        initial_battery=vehicle.current_battery,
+        time_config=time_config,
+        energy_config=energy_config,
+        conflict_waiting_times=conflict_waits,
+        standby_times=zero_waits,
+        min_soc_threshold=min_soc_threshold,
+        charging_availability=charging_availability,
+    ):
+        return None
+
+    total_distance = route.calculate_total_distance(distance_matrix)
+    total_delay = route.calculate_total_delay()
+    score = total_distance + 0.001 * total_delay
+    return score, route, distance_matrix
+
+
+def _preview_conflict_waits(
+    traffic_manager: TrafficManager,
+    route: Route,
+    distance_matrix: DistanceMatrix,
+    speed: float,
+    earliest_start: float,
+    travel_time_factor: float,
+) -> List[float]:
+    if not route.nodes:
+        return []
+    waits = [0.0] * len(route.nodes)
+    edges: List[PathEdge] = []
+    for idx in range(1, len(route.nodes)):
+        prev_node = route.nodes[idx - 1]
+        node = route.nodes[idx]
+        dist = distance_matrix.get_distance(prev_node.node_id, node.node_id)
+        travel_time = calculate_travel_time(dist, max(speed, 1e-6)) * max(0.0, travel_time_factor)
+        edges.append(PathEdge(from_node=prev_node.node_id, to_node=node.node_id, travel_time=travel_time, distance=dist))
+    schedule, _ = traffic_manager.preview_reserve_path(edges, earliest_start)
+    for idx, (_, __, wait) in enumerate(schedule, start=1):
+        waits[idx] = wait
+    if route.visits:
+        for idx, visit in enumerate(route.visits):
+            node_wait = traffic_manager.preview_reserve_node(
+                visit.node.node_id,
+                visit.arrival_time + waits[idx],
+                visit.get_service_time(),
+            )[2]
+            waits[idx] += node_wait
+    return waits
 
 
 __all__ = ["ExecutionLayer", "ExecutionResult"]

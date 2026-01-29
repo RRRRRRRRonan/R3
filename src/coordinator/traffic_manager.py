@@ -51,6 +51,50 @@ class TrafficManager:
             current = end
         return schedule, total_conflict
 
+    def preview_reserve_path(
+        self,
+        path_edges: Sequence[PathEdge],
+        earliest_start: float,
+    ) -> Tuple[List[Tuple[float, float, float]], float]:
+        """Preview reservations without mutating the reservation tables."""
+        schedule: List[Tuple[float, float, float]] = []
+        current = earliest_start
+        total_conflict = 0.0
+        for edge in path_edges:
+            start, end, wait = self.preview_reserve_edge(
+                (edge.from_node, edge.to_node),
+                edge.travel_time,
+                current,
+            )
+            schedule.append((start, end, wait))
+            total_conflict += wait
+            current = end
+        return schedule, total_conflict
+
+    def preview_reserve_edge(
+        self,
+        edge_key: Tuple[int, int],
+        travel_time: float,
+        earliest_start: float,
+    ) -> Tuple[float, float, float]:
+        """Preview a single edge reservation without mutating state."""
+        reservations = self._edge_table.get(edge_key, [])
+        start = _find_slot(reservations, earliest_start, travel_time, self.headway_s)
+        end = start + max(0.0, travel_time)
+        return start, end, max(0.0, start - earliest_start)
+
+    def preview_reserve_node(
+        self,
+        node_id: int,
+        earliest_start: float,
+        dwell_time: float,
+    ) -> Tuple[float, float, float]:
+        """Preview a node reservation without mutating state."""
+        reservations = self._node_table.get(node_id, [])
+        start = _find_slot(reservations, earliest_start, dwell_time, self.headway_s)
+        end = start + max(0.0, dwell_time)
+        return start, end, max(0.0, start - earliest_start)
+
     def reserve_edge(
         self,
         robot_id: int,

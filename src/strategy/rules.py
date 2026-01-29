@@ -472,12 +472,6 @@ def _select_target_ratio(current_soc: float, ratios: Sequence[float]) -> float:
 
 def _select_low_cost_node(state: SimulatorState, vehicle, standby_beta: float) -> int:
     best = None
-    for charger in state.chargers.values():
-        travel = _travel_time(vehicle.current_location, charger.coordinates, vehicle.speed)
-        score = travel + standby_beta
-        if best is None or score < best[0]:
-            best = (score, charger.node_id)
-
     for task in state.open_tasks.values():
         travel = _travel_time(vehicle.current_location, task.pickup_coordinates, vehicle.speed)
         score = travel + standby_beta
@@ -495,7 +489,7 @@ def _select_heatmap_node(
     heatmap_scores: Optional[Dict[int, float]] = None,
 ) -> int:
     if heatmap_scores:
-        candidates = _collect_candidate_nodes(state)
+        candidates = _collect_candidate_nodes(state, exclude_chargers=True)
         best = None
         for node_id in candidates:
             score = heatmap_scores.get(node_id)
@@ -515,13 +509,14 @@ def _select_heatmap_node(
     return best_task.pickup_node.node_id
 
 
-def _collect_candidate_nodes(state: SimulatorState) -> List[int]:
+def _collect_candidate_nodes(state: SimulatorState, *, exclude_chargers: bool = False) -> List[int]:
     nodes = {0}
     for task in state.open_tasks.values():
         nodes.add(task.pickup_node.node_id)
         nodes.add(task.delivery_node.node_id)
-    for charger in state.chargers.values():
-        nodes.add(charger.node_id)
+    if not exclude_chargers:
+        for charger in state.chargers.values():
+            nodes.add(charger.node_id)
     return list(nodes)
 
 

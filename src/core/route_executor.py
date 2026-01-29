@@ -63,12 +63,13 @@ class RouteExecutor:
             distance_matrix=self.distance,
             vehicle_capacity=vehicle.capacity,
             vehicle_battery_capacity=vehicle.battery_capacity,
-            initial_battery=vehicle.initial_battery,
+            initial_battery=vehicle.current_battery,
             time_config=self.time_config,
             energy_config=self.energy_config,
             charging_strategy=strategy,
             conflict_waiting_times=executed_route.conflict_waiting_times,
             standby_times=executed_route.standby_times,
+            min_soc_threshold=self.energy_config.safety_threshold,
         )
         if start_time != 0.0 and executed_route.visits:
             # Apply a uniform time shift when a non-zero start is requested.

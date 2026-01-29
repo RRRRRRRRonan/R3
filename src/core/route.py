@@ -266,7 +266,9 @@ class Route:
                         energy_config: EnergyConfig = None,
                         charging_strategy=None,
                         conflict_waiting_times: Optional[List[float]] = None,
-                        standby_times: Optional[List[float]] = None) -> bool:
+                        standby_times: Optional[List[float]] = None,
+                        min_soc_threshold: float = 0.0,
+                        charging_availability: Optional[Dict[int, int]] = None) -> bool:
         """
         计算路径的完整时间表和状态轨迹
         
@@ -337,7 +339,7 @@ class Route:
         current_time = 0.0
         current_load = 0.0
         current_battery = initial_battery
-        min_battery = 0.0
+        min_battery = max(0.0, min_soc_threshold) * vehicle_battery_capacity
         
         for i, node in enumerate(self.nodes):
             visit = RouteNodeVisit(node=node)
@@ -438,6 +440,14 @@ class Route:
             
             # 5. 充电
             if node.is_charging_station():
+                if charging_availability is not None:
+                    available = charging_availability.get(node.node_id, 1)
+                    if not available:
+                        self.is_feasible = False
+                        self.infeasibility_info = (
+                            f"Charging station {node.node_id} unavailable"
+                        )
+                        return False
                 # 估算剩余能量需求
                 remaining_energy = 0.0
                 energy_to_next_station = 0.0
