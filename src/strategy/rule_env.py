@@ -16,7 +16,7 @@ from strategy.rule_gating import get_available_rules, RULE_ACCEPT_FEASIBLE, RULE
 from core.task import TaskStatus
 from baselines.mip.config import MIPBaselineSolverConfig, ScenarioSynthConfig
 from baselines.mip.model import MIPBaselineScenario
-from strategy.heatmap import HeatmapConfig, build_heatmap_from_task_log
+from strategy.heatmap import HeatmapConfig, HeatmapModel, build_heatmap_model
 from strategy.reward import compute_delta_cost, snapshot_metrics, to_info_dict
 from strategy.scenario_synthesizer import synthesize_scenarios
 from strategy.rules import apply as apply_rule
@@ -65,6 +65,8 @@ class RuleSelectionEnv:
         heatmap_log_path: Optional[str] = None,
         heatmap_decay_half_life_s: Optional[float] = None,
         heatmap_priority_weight: float = 0.1,
+        heatmap_bucket_size_s: float = 3600.0,
+        heatmap_lookback_buckets: int = 3,
         cost_log_path: Optional[str] = None,
         cost_log_csv_path: Optional[str] = None,
         decision_log_path: Optional[str] = None,
@@ -107,8 +109,13 @@ class RuleSelectionEnv:
         heatmap_cfg = HeatmapConfig(
             decay_half_life_s=heatmap_decay_half_life_s,
             priority_weight=heatmap_priority_weight,
+            bucket_size_s=heatmap_bucket_size_s,
+            lookback_buckets=heatmap_lookback_buckets,
         )
-        self.heatmap_scores = build_heatmap_from_task_log(heatmap_log_path, config=heatmap_cfg)
+        self.heatmap_model: Optional[HeatmapModel] = None
+        if heatmap_log_path is not None:
+            self.heatmap_model = build_heatmap_model(heatmap_log_path, config=heatmap_cfg)
+        self.heatmap_lookback_buckets = heatmap_lookback_buckets
         if cost_params is None and mip_solver_config is not None:
             cost_params = mip_solver_config.cost_params
         self.cost_params = cost_params or DEFAULT_COST_PARAMETERS
@@ -241,11 +248,17 @@ class RuleSelectionEnv:
         if self.execution_layer is None and self.rule_executor is not None:
             self.rule_executor(selected_rule_id, current_event, current_state, self.simulator)
 
+        heatmap_scores = None
+        if self.heatmap_model is not None:
+            heatmap_scores = self.heatmap_model.scores_at_time(
+                current_state.t,
+                lookback_buckets=self.heatmap_lookback_buckets,
+            )
         atomic_action = apply_rule(
             selected_rule_id,
             current_event,
             current_state,
-            heatmap_scores=self.heatmap_scores or None,
+            heatmap_scores=heatmap_scores,
         )
         if self.execution_layer is not None:
             self.execution_layer.execute(atomic_action, current_state, current_event)

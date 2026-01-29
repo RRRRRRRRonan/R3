@@ -48,6 +48,7 @@ from physics.time import TimeWindow, TimeWindowType
 from strategy.execution_layer import ExecutionLayer
 from strategy.gym_env import RuleSelectionGymEnv
 from strategy.rule_env import RuleSelectionEnv
+from strategy.scenario_synthesizer import synthesize_scenarios
 from strategy.simulator import EventDrivenSimulator
 
 
@@ -103,12 +104,22 @@ def build_env(args, *, seed: int, log_dir: Path) -> RuleSelectionGymEnv:
         min_soc_threshold=solver_config.min_soc_threshold,
     )
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    heatmap_log_path = _resolve_heatmap_log_path(
+        args.heatmap_log_path,
+        pool,
+        chargers,
+        solver_config,
+        seed=seed,
+        log_dir=log_dir,
+        auto_synth=args.auto_heatmap_from_synth,
+    )
     core_env = RuleSelectionEnv(
         simulator=simulator,
         execution_layer=executor,
         max_decision_steps=args.max_decision_steps,
         max_time_s=args.max_time_s,
         mip_solver_config=solver_config,
+        heatmap_log_path=heatmap_log_path,
         cost_log_path=str(log_dir / f"cost_log_{stamp}.jsonl"),
         cost_log_csv_path=str(log_dir / f"cost_log_{stamp}.csv"),
         decision_log_path=str(log_dir / f"decision_log_{stamp}.jsonl"),
@@ -137,6 +148,8 @@ def main() -> None:
     parser.add_argument("--max-decision-steps", type=int, default=200)
     parser.add_argument("--max-time-s", type=float, default=10_000.0)
     parser.add_argument("--headway-s", type=float, default=2.0)
+    parser.add_argument("--heatmap-log-path", type=str, default=None)
+    parser.add_argument("--auto-heatmap-from-synth", action="store_true", default=True)
     args = parser.parse_args()
 
     log_dir = Path(args.log_dir)
@@ -168,6 +181,104 @@ def main() -> None:
 
     model.learn(total_timesteps=args.total_timesteps, callback=eval_callback)
     model.save(str(log_dir / "final_model"))
+
+
+def _resolve_heatmap_log_path(
+    path: str | None,
+    pool: TaskPool,
+    chargers: List[ChargingNode],
+    solver_config: MIPBaselineSolverConfig,
+    *,
+    seed: int,
+    log_dir: Path,
+    auto_synth: bool,
+) -> str | None:
+    if path:
+        return path
+    if auto_synth:
+        return _generate_heatmap_log_from_synth(
+            pool,
+            chargers,
+            solver_config,
+            seed=seed,
+            log_dir=log_dir,
+        )
+    return _resolve_latest_task_log()
+
+
+def _resolve_latest_task_log() -> str | None:
+    logs_dir = ROOT / "results" / "logs"
+    if not logs_dir.exists():
+        return None
+    candidates = sorted(logs_dir.glob("task_log_*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if candidates:
+        return str(candidates[0])
+    return None
+
+
+def _generate_heatmap_log_from_synth(
+    pool: TaskPool,
+    chargers: List[ChargingNode],
+    solver_config: MIPBaselineSolverConfig,
+    *,
+    seed: int,
+    log_dir: Path,
+) -> str:
+    scenarios = synthesize_scenarios(
+        pool,
+        chargers=chargers,
+        seed=seed,
+        config=solver_config.scenario_synth_config,
+    )
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    path = log_dir / f"task_log_heatmap_{stamp}.csv"
+    fieldnames = [
+        "time",
+        "task_id",
+        "prev_status",
+        "status",
+        "prev_assigned_vehicle_id",
+        "assigned_vehicle_id",
+        "pickup_node_id",
+        "delivery_node_id",
+        "demand",
+        "priority",
+        "arrival_time",
+        "scenario_id",
+    ]
+    rows = []
+    tasks = {task.task_id: task for task in pool.get_all_tasks()}
+    for scenario in scenarios:
+        for task_id, task in tasks.items():
+            if scenario.task_availability.get(task_id, 1) <= 0:
+                continue
+            arrival_time = scenario.task_release_times.get(task_id, task.arrival_time)
+            demand = scenario.task_demands.get(task_id, task.demand)
+            rows.append(
+                {
+                    "time": float(arrival_time),
+                    "task_id": task_id,
+                    "prev_status": "pending",
+                    "status": "pending",
+                    "prev_assigned_vehicle_id": "",
+                    "assigned_vehicle_id": "",
+                    "pickup_node_id": task.pickup_node.node_id,
+                    "delivery_node_id": task.delivery_node.node_id,
+                    "demand": float(demand),
+                    "priority": int(task.priority),
+                    "arrival_time": float(arrival_time),
+                    "scenario_id": scenario.scenario_id,
+                }
+            )
+    rows.sort(key=lambda row: row["time"])
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        import csv
+
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    return str(path)
 
 
 if __name__ == "__main__":
