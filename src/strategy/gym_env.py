@@ -15,7 +15,7 @@ except ImportError as exc:  # pragma: no cover - optional dependency
     ) from exc
 
 from strategy.rule_env import RuleSelectionEnv, StepResult
-from strategy.state import EVENT_TYPES
+from strategy.state import EVENT_TYPES, VEHICLE_FEATURE_DIM
 
 
 class RuleSelectionGymEnv(gym.Env):
@@ -56,7 +56,7 @@ class RuleSelectionGymEnv(gym.Env):
         return np.asarray(values, dtype=np.float32)
 
     def _obs_dim(self) -> int:
-        vehicle_dim = 6 * self.num_vehicles
+        vehicle_dim = VEHICLE_FEATURE_DIM * self.num_vehicles
         task_dim = 4 * self.top_k_tasks
         charger_dim = 3 * self.top_k_chargers
         meta_dim = 1 + len(EVENT_TYPES)

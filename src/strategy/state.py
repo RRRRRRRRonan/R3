@@ -136,6 +136,7 @@ def env_get_obs(
         x, y = vehicle.current_location
         load_ratio = vehicle.current_load / vehicle.capacity if vehicle.capacity > 0 else 0.0
         dist_to_charger = _distance_to_nearest_charger(vehicle.current_location, state)
+        # Order matches VEHICLE_FEATURE_NAMES.
         vehicle_features.extend([soc, idle_flag, x, y, load_ratio, dist_to_charger])
 
     task_features: List[float] = []
@@ -236,6 +237,16 @@ EVENT_TYPES: List[str] = [
     "CONFLICT_RESOLVED",
 ]
 
+VEHICLE_FEATURE_NAMES: Tuple[str, ...] = (
+    "soc",
+    "idle_flag",
+    "x",
+    "y",
+    "load_ratio",
+    "dist_to_charger",
+)
+VEHICLE_FEATURE_DIM: int = len(VEHICLE_FEATURE_NAMES)
+
 
 def _euclidean(a: Tuple[float, float], b: Tuple[float, float]) -> float:
     dx = a[0] - b[0]
@@ -251,4 +262,6 @@ __all__ = [
     "build_simulator_state",
     "env_get_obs",
     "EVENT_TYPES",
+    "VEHICLE_FEATURE_NAMES",
+    "VEHICLE_FEATURE_DIM",
 ]
