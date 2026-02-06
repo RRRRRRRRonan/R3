@@ -23,22 +23,6 @@ except ImportError as exc:  # pragma: no cover
         "torch is required for MaskablePPO reproducibility. Install via `python3 -m pip install torch`."
     ) from exc
 
-try:
-    import gymnasium as gym
-except ImportError as exc:  # pragma: no cover
-    raise SystemExit(
-        "gymnasium is required. Install via `python3 -m pip install gymnasium`."
-    ) from exc
-
-try:
-    from sb3_contrib import MaskablePPO
-    from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
-    from sb3_contrib.common.maskable.wrappers import ActionMasker
-except ImportError as exc:  # pragma: no cover
-    raise SystemExit(
-        "sb3-contrib is required. Install via `python3 -m pip install sb3-contrib stable-baselines3`."
-    ) from exc
-
 from baselines.mip.config import MIPBaselineSolverConfig
 from coordinator.traffic_manager import TrafficManager
 from core.node import ChargingNode, NodeType, create_task_node_pair
@@ -46,8 +30,8 @@ from core.task import Task, TaskPool
 from core.vehicle import create_vehicle
 from physics.time import TimeWindow, TimeWindowType
 from strategy.execution_layer import ExecutionLayer
-from strategy.gym_env import RuleSelectionGymEnv
 from strategy.rule_env import RuleSelectionEnv
+from strategy.ppo_trainer import PPOTrainingConfig, make_masked_env, train_maskable_ppo
 from strategy.scenario_synthesizer import synthesize_scenarios
 from strategy.simulator import EventDrivenSimulator
 
@@ -130,8 +114,7 @@ def build_env(args, *, seed: int, log_dir: Path) -> RuleSelectionGymEnv:
         robot_log_csv_path=str(log_dir / f"robot_log_{stamp}.csv"),
     )
 
-    gym_env = RuleSelectionGymEnv(core_env)
-    return ActionMasker(gym_env, lambda env: env.action_masks())
+    return make_masked_env(core_env)
 
 
 def main() -> None:
@@ -169,18 +152,15 @@ def main() -> None:
     train_env = build_env(args, seed=args.seed, log_dir=log_dir / "train")
     eval_env = build_env(args, seed=args.seed + 1, log_dir=log_dir / "eval")
 
-    model = MaskablePPO("MlpPolicy", train_env, verbose=1, seed=args.seed)
-    eval_callback = MaskableEvalCallback(
-        eval_env,
-        best_model_save_path=str(log_dir / "best_model"),
-        log_path=str(log_dir / "eval_logs"),
+    config = PPOTrainingConfig(
+        total_timesteps=args.total_timesteps,
+        seed=args.seed,
+        log_dir=str(log_dir),
         eval_freq=args.eval_freq,
-        n_eval_episodes=args.eval_episodes,
-        deterministic=True,
+        eval_episodes=args.eval_episodes,
+        deterministic_eval=True,
     )
-
-    model.learn(total_timesteps=args.total_timesteps, callback=eval_callback)
-    model.save(str(log_dir / "final_model"))
+    train_maskable_ppo(train_env, eval_env, config=config)
 
 
 def _resolve_heatmap_log_path(

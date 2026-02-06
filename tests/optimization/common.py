@@ -265,7 +265,7 @@ def run_matheuristic_trial(
     """Run Matheuristic ALNS with FULL matheuristic capabilities enabled.
 
     This function uses tuned but fully-enabled matheuristic parameters for
-    fair comparison with Q-learning variant.
+    fair comparison across ALNS variants.
     """
 
     rng = random.Random(seed)

@@ -196,47 +196,17 @@ class ALNSHyperParameters:
     charging: ChargingDefaults = field(default_factory=ChargingDefaults)
     vehicle: VehicleDynamics = field(default_factory=VehicleDynamics)
     matheuristic: MatheuristicParams = field(default_factory=MatheuristicParams)
-    q_learning: "QLearningParams" = field(default_factory=lambda: QLearningParams())
+    stagnation: "StagnationParams" = field(default_factory=lambda: StagnationParams())
 
 
 @dataclass(frozen=True)
-class QLearningParams:
-    """Hyper-parameters for the Q-learning operator agent.
+class StagnationParams:
+    """Thresholds controlling ALNS stagnation phase transitions."""
 
-    Phase 1 Stability Fix: Conservative and adaptive parameters designed to
-    reduce seed variance from 50% to <15% by:
-    1. Slower epsilon decay (0.998 vs 0.995) for sustained exploration
-    2. Higher minimum epsilon (0.05 vs 0.01) for lifelong learning
-    3. Conservative initial Q-values (reduced LP bias)
-    4. Simplified reward function (removed ROI hyperparameters)
-    5. Relaxed state transitions (10%/18% vs 16%/28%)
-    """
-
-    # Learning parameters
-    alpha: float = 0.35
-    gamma: float = 0.95
-
-    # Adaptive epsilon (Phase 1.4 balanced: zero bias + moderate exploration)
-    initial_epsilon: float = 0.35        # ↑ from 0.30 (high initial exploration)
-    epsilon_decay: float = 0.9997        # ↓ from 0.9998 (slower decay)
-    epsilon_min: float = 0.28            # ↓ from 0.35 (balanced exploration - not too aggressive)
-    enable_online_updates: bool = True
-
-    # Simplified rewards (Phase 1 improvement: removed ROI scaling)
-    reward_new_best: float = 100.0
-    reward_improvement: float = 50.0     # ↑ from 36.0 (simplified, no ROI needed)
-    reward_accepted: float = 5.0         # ↓ from 10.0 (reduced noise)
-    reward_rejected: float = -5.0        # ↑ from -6.0 (gentler penalty)
-
-    # Simplified time penalty (Phase 1 improvement: single scale parameter)
-    time_penalty_threshold: float = 0.5  # ↑ from 0.18 (only penalize truly slow ops)
-    time_penalty_scale: float = 10.0     # Unified scale (replaced 3 separate scales)
-
-    # Relaxed state transitions (Phase 1 improvement: more exploration time)
-    stagnation_threshold: int = 20       # ↓ from 160 (will be scaled by ratio)
-    deep_stagnation_threshold: int = 35  # ↓ from 560 (will be scaled by ratio)
-    stagnation_ratio: float = 0.10       # ↓ from 0.16 (delayed stuck detection)
-    deep_stagnation_ratio: float = 0.18  # ↓ from 0.40 (delayed deep_stuck detection)
+    stagnation_threshold: int = 20
+    deep_stagnation_threshold: int = 35
+    stagnation_ratio: float = 0.10
+    deep_stagnation_ratio: float = 0.18
 
 
 @dataclass(frozen=True)
@@ -271,7 +241,7 @@ DEFAULT_VEHICLE_DYNAMICS = VehicleDynamics()
 DEFAULT_LP_REPAIR_PARAMS = LPRepairParams()
 DEFAULT_SEGMENT_OPTIMIZATION_PARAMS = SegmentOptimizationParams()
 DEFAULT_MATHEURISTIC_PARAMS = MatheuristicParams()
-DEFAULT_Q_LEARNING_PARAMS = QLearningParams()
+DEFAULT_STAGNATION_PARAMS = StagnationParams()
 DEFAULT_ALNS_HYPERPARAMETERS = ALNSHyperParameters()
 DEFAULT_OPTIMIZATION_SCENARIO = OptimizationScenarioDefaults(
     num_tasks=10,

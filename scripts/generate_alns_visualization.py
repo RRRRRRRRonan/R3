@@ -1,11 +1,10 @@
 """Generate unified ALNS regression summaries and visualisations.
 
 This utility reuses the optimisation test presets to collect deterministic
-baseline/optimised costs for the Minimal ALNS, Matheuristic ALNS, and
-Matheuristic + Q-learning variants across the small/medium/large scenarios.
-It saves the aggregated metrics to JSON, prints a Markdown table for inclusion
-in documentation, and renders a grouped bar chart that highlights the relative
-cost improvements per solver.
+baseline/optimised costs for the Minimal ALNS and Matheuristic ALNS variants
+across the small/medium/large scenarios. It saves the aggregated metrics to
+JSON, prints a Markdown table for inclusion in documentation, and renders a
+grouped bar chart that highlights the relative cost improvements per solver.
 """
 from __future__ import annotations
 
@@ -33,7 +32,6 @@ from tests.optimization.common import (
     run_matheuristic_trial,
     run_minimal_trial,
 )
-from tests.optimization.q_learning.utils import run_q_learning_trial
 
 
 @dataclass
@@ -57,7 +55,6 @@ class SolverResult:
 SOLVER_LABELS = {
     "minimal": "Minimal ALNS",
     "matheuristic": "Matheuristic ALNS",
-    "q_learning": "Matheuristic + Q-learning",
 }
 
 SCALES = ("small", "medium", "large")
@@ -115,49 +112,9 @@ def run_matheuristic(scale: str, seed: int, iteration_scale: float) -> SolverRes
     )
 
 
-def run_q_learning(scale: str, seed: int, iteration_scale: float) -> SolverResult:
-    config = _build_config(scale)
-    iterations = _scaled_iterations(scale, "q_learning", iteration_scale)
-    planner, baseline, optimised = run_q_learning_trial(
-        config,
-        iterations=iterations,
-        seed=seed,
-    )
-
-    # Print operator statistics for large scale
-    if scale == "large" and hasattr(planner, '_q_agent') and planner._q_agent is not None:
-        print("\n" + "="*70)
-        print(f"Q-LEARNING OPERATOR STATISTICS (Large Scale, seed={seed})")
-        print("="*70)
-        print(planner._q_agent.format_statistics())
-
-        stats = planner._q_agent.statistics()
-        repair_totals = {}
-        for state, state_stats in stats.items():
-            for stat in state_stats:
-                _, repair = stat.action
-                repair_totals[repair] = repair_totals.get(repair, 0) + stat.total_usage
-
-        total_actions = sum(repair_totals.values())
-        print("\nREPAIR OPERATOR USAGE SUMMARY:")
-        print(f"Total selections: {total_actions}")
-        for repair, count in sorted(repair_totals.items(), key=lambda x: x[1], reverse=True):
-            pct = 100 * count / total_actions if total_actions > 0 else 0
-            print(f"  {repair:12s}: {count:5d} times ({pct:5.1f}%)")
-        print("="*70 + "\n")
-
-    return SolverResult(
-        solver="q_learning",
-        scale=scale,
-        baseline_cost=baseline,
-        optimised_cost=optimised,
-    )
-
-
 RUNNERS = {
     "minimal": run_minimal,
     "matheuristic": run_matheuristic,
-    "q_learning": run_q_learning,
 }
 
 

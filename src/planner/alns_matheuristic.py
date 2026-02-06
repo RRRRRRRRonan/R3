@@ -26,7 +26,6 @@ import random
 from dataclasses import dataclass, replace
 from typing import Callable, List, Optional, Sequence, Tuple
 
-from planner.epsilon_strategy import EpsilonStrategy
 from config import (
     ALNSHyperParameters,
     CostParameters,
@@ -64,12 +63,10 @@ class MatheuristicALNS(MinimalALNS):
         use_adaptive: bool = True,
         *,
         verbose: bool = True,
-        adaptation_mode: str = "q_learning",  # NEW: Allow override
+        adaptation_mode: str = "roulette",
         hyper_params: Optional[ALNSHyperParameters] = None,
         matheuristic_params: Optional[MatheuristicParams] = None,
         adapt_matheuristic_params: bool = True,
-        epsilon_strategy: Optional[EpsilonStrategy] = None,
-        use_scale_aware_reward: bool = False,
         ) -> None:
         """Initialise the matheuristic ALNS solver.
 
@@ -92,8 +89,6 @@ class MatheuristicALNS(MinimalALNS):
             adaptation_mode=adaptation_mode,  # NEW: Pass through
             hyper_params=hyper_params,
             repair_operators=('greedy', 'regret2', 'random', 'lp'),
-            epsilon_strategy=epsilon_strategy,
-            use_scale_aware_reward=use_scale_aware_reward,
         )
 
         if matheuristic_params is None:
@@ -172,7 +167,7 @@ class MatheuristicALNS(MinimalALNS):
     ) -> Route:
         """Run ALNS with matheuristic intensification steps."""
 
-        self._maybe_reconfigure_q_agent(initial_route)
+        self._maybe_refresh_scale(initial_route)
         max_iterations = self._normalise_iteration_budget(max_iterations)
 
         current_route = initial_route.copy()
@@ -196,65 +191,25 @@ class MatheuristicALNS(MinimalALNS):
         self._log(f"初始成本: {best_cost:.2f}m")
         self._log(f"总迭代次数: {max_iterations}")
         if self.use_adaptive:
-            if self._use_q_learning:
-                self._log("使用Q-Learning算子选择 ✓ (Destroy + Repair)")
-            elif self.adaptation_mode == "roulette":
+            if self.adaptation_mode == "roulette":
                 self._log("使用自适应算子选择 ✓ (Destroy + Repair)")
 
         for iteration in range(max_iterations):
             if progress_callback is not None:
                 progress_callback(iteration, max_iterations, best_cost, "start", False)
-            q_state = self._determine_state(consecutive_no_improve)
+            phase_state = self._determine_state(consecutive_no_improve)
             (
                 destroy_operator,
                 repair_operator,
                 destroyed_route,
                 removed_task_ids,
                 candidate_route,
-                q_action,
-                action_runtime,
-            ) = self._execute_destroy_repair(current_route, state=q_state)
+            ) = self._execute_destroy_repair(current_route, state=phase_state)
 
             self._segment_optimizer._ensure_schedule(candidate_route)
             self._segment_optimizer._ensure_schedule(current_route)
             previous_cost = self._safe_evaluate(current_route)
             candidate_cost = self._safe_evaluate(candidate_route)
-            original_candidate_cost = candidate_cost
-            original_repair_operator = repair_operator
-
-            fallback_used = False
-
-            if (
-                self._use_q_learning
-                and q_action is not None
-            ):
-                fallback_operator = self._fallback_repair_operator(
-                    state=q_state,
-                    chosen_repair=repair_operator,
-                )
-                if fallback_operator and fallback_operator != repair_operator:
-                    fallback_route, fallback_runtime = self._build_fallback_candidate(
-                        destroyed_route=destroyed_route,
-                        removed_task_ids=removed_task_ids,
-                        fallback_operator=fallback_operator,
-                        postprocess=self._segment_optimizer._ensure_schedule,
-                    )
-                    fallback_cost = self._safe_evaluate(fallback_route)
-                    if fallback_cost + 1e-6 < candidate_cost:
-                        candidate_route = fallback_route
-                        candidate_cost = fallback_cost
-                        repair_operator = fallback_operator
-                        action_runtime = fallback_runtime
-                        fallback_used = True
-                        self._log_fallback_usage(
-                            iteration=iteration,
-                            state=q_state,
-                            chosen=original_repair_operator,
-                            fallback=fallback_operator,
-                            original_cost=original_candidate_cost,
-                            fallback_cost=fallback_cost,
-                        )
-
             destroy_usage[destroy_operator] += 1
             repair_usage[repair_operator] += 1
 
@@ -305,25 +260,6 @@ class MatheuristicALNS(MinimalALNS):
                 consecutive_no_improve = 0
             else:
                 consecutive_no_improve += 1
-
-            if (
-                self._use_q_learning
-                and q_state is not None
-                and q_action is not None
-            ):
-                reward = self._compute_q_reward(
-                    improvement=improvement,
-                    is_new_best=is_new_best,
-                    is_accepted=is_accepted,
-                    action_cost=action_runtime,
-                    repair_operator=repair_operator,
-                    previous_cost=previous_cost,
-                )
-                if fallback_used:
-                    reward = min(reward, -self._fallback_penalty_value())
-                next_state = self._determine_state(consecutive_no_improve)
-                self._q_agent.update(q_state, q_action, reward, next_state)
-                self._q_agent.decay_epsilon()
 
             self._update_elite_pool(current_route)
 
@@ -392,9 +328,6 @@ class MatheuristicALNS(MinimalALNS):
                 self._log("Destroy算子自适应统计")
                 self._log("=" * 70)
                 self._log(self.adaptive_destroy_selector.format_statistics())
-
-        if self._use_q_learning:
-            self._log_q_learning_statistics()
 
         return best_route
 

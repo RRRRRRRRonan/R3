@@ -1,10 +1,10 @@
 """Shared scale presets for ALNS optimisation regression suites.
 
 Centralises the scenario overrides and iteration budgets used by the Minimal
-ALNS, Matheuristic ALNS, and Matheuristic + Q-learning tests.  Keeping the
-numbers in a single place ensures that when we tune runtimes or difficulty for
-one solver we automatically propagate the change to the other variants, keeping
-comparisons fair and maintenance light.
+ALNS and Matheuristic ALNS tests. Keeping the numbers in a single place ensures
+that when we tune runtimes or difficulty for one solver we automatically
+propagate the change to the other variants, keeping comparisons fair and
+maintenance light.
 """
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ class IterationPreset:
 
     minimal: int
     matheuristic: int
-    q_learning: int
 
 
 @dataclass(frozen=True)
@@ -34,23 +33,15 @@ ALNS_TEST_PRESETS: Dict[str, ScalePreset] = {
         # Increased difficulty: 10→15 tasks for meaningful optimization
         # Previous: 10 tasks had limited optimization space (greedy was already good)
         scenario_overrides={"num_tasks": 15, "num_charging": 1, "seed": 11},
-        # CRITICAL: Use SAME iterations for fair comparison
-        # Previous q_learning=50 caused worse performance (over-learning)
-        iterations=IterationPreset(minimal=24, matheuristic=40, q_learning=40),
+        iterations=IterationPreset(minimal=24, matheuristic=40),
     ),
     "medium": ScalePreset(
         scenario_overrides={"num_tasks": 24, "num_charging": 1, "seed": 19},
-        # CRITICAL: Use SAME iterations for fair comparison
-        # Previous q_learning=55 but only medium performed well
-        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=44),
+        iterations=IterationPreset(minimal=32, matheuristic=44),
     ),
     "large": ScalePreset(
         scenario_overrides={"num_tasks": 30, "num_charging": 3, "seed": 17},
-        # Phase 1.4 balanced: Complete equality (all Q=10) with moderate exploration
-        # With epsilon_min=0.28 and complete Q-value equality (all 10.0)
-        # 80 iterations balances learning time vs LP performance issues
-        # 28% exploration = ~22 random selections + 58 exploit selections
-        iterations=IterationPreset(minimal=32, matheuristic=44, q_learning=80),
+        iterations=IterationPreset(minimal=32, matheuristic=44),
     ),
 }
 

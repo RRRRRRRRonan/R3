@@ -8,7 +8,7 @@
 tests/
 ├── warehouse_regression/ # 仓储回归阶段场景回归 (MinimalALNS)
 ├── charging/             # 充电策略对比与验证
-└── optimization/         # ALNS 优化规模回归 (Minimal / Matheuristic / Q-learning)
+└── optimization/         # ALNS 优化规模回归 (Minimal / Matheuristic)
 ```
 
 ## 仓储回归场景（`tests/warehouse_regression/`）
@@ -58,11 +58,6 @@ optimization/
 │   ├── test_matheuristic_medium.py
 │   └── test_matheuristic_large.py
 ├── presets.py
-├── q_learning/
-│   ├── test_q_learning_small.py
-│   ├── test_q_learning_medium.py
-│   ├── test_q_learning_large.py
-│   └── utils.py
 └── test_alns_matheuristic.py
 ```
 
@@ -72,7 +67,7 @@ optimization/
 |------|-----------------|------|
 | `minimal/test_minimal_small.py` | 10 任务 / 16 迭代 | 验证基础版 ALNS 在统一小场景下优于贪心基线 |
 | `minimal/test_minimal_medium.py` | 24 任务 / 32 迭代 | 中规模统一场景的回归，确保成本改进 |
-| `minimal/test_minimal_large.py` | 30 任务 / 32 迭代 | 大规模统一场景，确认 Q-learning 模式下的稳健性 |
+| `minimal/test_minimal_large.py` | 30 任务 / 32 迭代 | 大规模统一场景，确认 ALNS 在大规模下的稳健性 |
 
 ### Matheuristic ALNS（大/中/小规模）
 
@@ -82,21 +77,12 @@ optimization/
 | `matheuristic/test_matheuristic_medium.py` | 24 任务 / 44 迭代 | 周期性回归，验证统一中规模场景的成本改进 |
 | `matheuristic/test_matheuristic_large.py` | 30 任务 / 44 迭代 | 压力测试，覆盖自适应算子在大规模下的表现 |
 
-### Matheuristic + Q-learning（大/中/小规模）
-
-| 文件 | 场景规模 / 迭代 | 说明 |
-|------|-----------------|------|
-| `q_learning/test_q_learning_small.py` | 10 任务 / 18 迭代 | 验证 Q-learning 算子在小规模下的学习与成本改进 |
-| `q_learning/test_q_learning_medium.py` | 24 任务 / 36 迭代 | 确认 Q-learning 在中规模下仍能持续获得正奖励 |
-| `q_learning/test_q_learning_large.py` | 30 任务 / 30 迭代 | 大规模压力测试，确保 Q-learning 统计和成本表现稳定 |
-
-各测试均使用确定性的场景生成器，参数统一由 `optimization/presets.py` 管理：`minimal/` 套件验证基础 ALNS，`matheuristic/` 套件覆盖三种充电策略，而 `q_learning/` 套件专注于单一配置以验证强化学习信号（Q 值更新、epsilon 衰减、算子使用次数）。
+各测试均使用确定性的场景生成器，参数统一由 `optimization/presets.py` 管理：`minimal/` 套件验证基础 ALNS，`matheuristic/` 套件覆盖三种充电策略。
 
 运行示例：
 
 ```bash
 python3 -m pytest tests/optimization/matheuristic/test_matheuristic_small.py -q
-python3 -m pytest tests/optimization/q_learning/test_q_learning_small.py -q
 ```
 
 > ⚠️ **命令不可用？**

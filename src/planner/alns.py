@@ -11,8 +11,7 @@ stay compatible with the vehicle energy configuration and charging strategy.
 from collections import Counter
 import math
 import random
-import time
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from core.route import Route
 from core.task import Task
@@ -21,15 +20,11 @@ from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
 from physics.time import TimeConfig
 from planner.operators import AdaptiveOperatorSelector
-from planner.epsilon_strategy import EpsilonStrategy
-from planner.q_learning import Action, QLearningOperatorAgent
 from config import (
     ALNSHyperParameters,
     CostParameters,
     DEFAULT_ALNS_HYPERPARAMETERS,
     DEFAULT_COST_PARAMETERS,
-    DEFAULT_Q_LEARNING_PARAMS,
-    QLearningParams,
 )
 
 class MinimalALNS:
@@ -53,12 +48,9 @@ class MinimalALNS:
         use_adaptive: bool = True,
         *,
         verbose: bool = True,
-        adaptation_mode: str = "q_learning",
+        adaptation_mode: str = "roulette",
         hyper_params: Optional[ALNSHyperParameters] = None,
         repair_operators: Optional[Sequence[str]] = None,
-        q_learning_initial_q: Optional[Dict[str, Dict[Action, float]]] = None,
-        epsilon_strategy: Optional[EpsilonStrategy] = None,
-        use_scale_aware_reward: bool = False,
     ):
         """Initialise the ALNS planner with distance data and candidate tasks."""
         self.distance = distance_matrix
@@ -78,47 +70,19 @@ class MinimalALNS:
 
         self._destroy_operators = ('random_removal', 'partial_removal')
         self.adaptation_mode = adaptation_mode
-        self._use_q_learning = self.use_adaptive and adaptation_mode == 'q_learning'
         self._stagnation_threshold: Optional[int] = None
         self._deep_stagnation_threshold: Optional[int] = None
 
         self._scenario_task_count = self._estimate_task_count(task_pool)
         self._scenario_scale = self._infer_scenario_scale(self._scenario_task_count)
-        self._q_state_labels = self._build_state_labels()
 
-        self._q_params: QLearningParams = getattr(
-            self.hyper, 'q_learning', DEFAULT_Q_LEARNING_PARAMS
-        )
-
-        self._matheuristic_repairs = {
-            operator
-            for operator in self.repair_operators
-            if operator in {'lp'}
-        }
-
-        normalised_initial_q = self._normalise_initial_q_values(q_learning_initial_q)
-        self._user_provided_initial_q = normalised_initial_q
-        self._epsilon_strategy = epsilon_strategy
-        self.use_scale_aware_reward = use_scale_aware_reward
-        self._reward_calculator = None
-
-        if self._use_q_learning:
-            initial_q_values = (
-                normalised_initial_q or self._default_q_learning_initial_q()
+        if adaptation_mode == "q_learning":
+            raise ValueError(
+                "ALNS Q-learning adaptation has been removed. Use adaptation_mode='roulette' "
+                "or disable adaptive selection."
             )
-            self._q_agent = QLearningOperatorAgent(
-                destroy_operators=self._destroy_operators,
-                repair_operators=self.repair_operators,
-                params=self._q_params,
-                initial_q_values=initial_q_values,
-                state_labels=self._q_state_labels,
-                epsilon_strategy=epsilon_strategy,
-            )
-            if not self._q_params.enable_online_updates:
-                self._q_agent.set_epsilon(self._q_params.epsilon_min)
-            self.adaptive_repair_selector = None
-            self.adaptive_destroy_selector = None
-        elif self.use_adaptive and adaptation_mode == 'roulette':
+
+        if self.use_adaptive and adaptation_mode == 'roulette':
             self.adaptive_repair_selector = AdaptiveOperatorSelector(
                 operators=self.repair_operators,
                 params=self.hyper.adaptive_selector
@@ -127,11 +91,9 @@ class MinimalALNS:
                 operators=list(self._destroy_operators),
                 params=self.hyper.adaptive_selector
             )
-            self._q_agent = None
         else:
             self.adaptive_repair_selector = None
             self.adaptive_destroy_selector = None
-            self._q_agent = None
         self.initial_temp = self.hyper.simulated_annealing.initial_temperature
         self.cooling_rate = self.hyper.simulated_annealing.cooling_rate
 
@@ -171,11 +133,6 @@ class MinimalALNS:
             return "medium"
         return "small"
 
-    def _build_state_labels(self) -> Tuple[str, ...]:
-        """Return the Q-learning state labels (kept stable for compatibility)."""
-
-        return ("explore", "stuck", "deep_stuck")
-
     def _compose_state_label(self, phase: str) -> str:
         return phase
 
@@ -208,11 +165,8 @@ class MinimalALNS:
             return 220
         return 170
 
-    def _maybe_reconfigure_q_agent(self, initial_route: Route) -> None:
-        """Rebuild the Q-agent if the scenario scale becomes known later."""
-
-        if not self._use_q_learning:
-            return
+    def _maybe_refresh_scale(self, initial_route: Route) -> None:
+        """Update scenario scale once route data reveals task count."""
 
         if self._scenario_task_count > 0:
             return
@@ -222,24 +176,7 @@ class MinimalALNS:
             return
 
         self._scenario_task_count = task_count
-        new_scale = self._infer_scenario_scale(task_count)
-        if new_scale == self._scenario_scale:
-            return
-
-        self._scenario_scale = new_scale
-        self._q_state_labels = self._build_state_labels()
-        initial_q_values = (
-            self._user_provided_initial_q or self._default_q_learning_initial_q()
-        )
-        self._q_agent = QLearningOperatorAgent(
-            destroy_operators=self._destroy_operators,
-            repair_operators=self.repair_operators,
-            params=self._q_params,
-            initial_q_values=initial_q_values,
-            state_labels=self._q_state_labels,
-        )
-        if not self._q_params.enable_online_updates:
-            self._q_agent.set_epsilon(self._q_params.epsilon_min)
+        self._scenario_scale = self._infer_scenario_scale(task_count)
 
     def _destroy_fraction_config(
         self, task_count: int
@@ -273,126 +210,6 @@ class MinimalALNS:
         }
 
         return fraction_map, min_remove
-
-    def _normalise_initial_q_values(
-        self, initial_q: Optional[Dict[str, Dict[Action, float]]]
-    ) -> Optional[Dict[str, Dict[Action, float]]]:
-        if not initial_q:
-            return None
-
-        normalised: Dict[str, Dict[Action, float]] = {}
-        for state_key, action_map in initial_q.items():
-            phase = self._extract_phase(state_key)
-            label = self._compose_state_label(phase)
-            state_values: Dict[Action, float] = {}
-            for action, value in action_map.items():
-                state_values[action] = float(value)
-            normalised[label] = state_values
-        return normalised
-
-    def _scenario_time_penalty_threshold(self, base_threshold: float) -> float:
-        """Relax runtime penalties for expensive operators on smaller cases."""
-
-        scale = self._scenario_scale
-        if scale == "small":
-            return base_threshold * 1.75
-        if scale == "medium":
-            return base_threshold * 1.45
-        return base_threshold
-
-    def _scenario_penalty_factor(self, *, is_matheuristic: bool) -> float:
-        if not is_matheuristic:
-            return 1.0
-        scale = self._scenario_scale
-        if scale == "small":
-            return 0.55
-        if scale == "medium":
-            return 0.72
-        return 1.0
-
-    def _fallback_repair_operator(
-        self,
-        *,
-        state: Optional[str],
-        chosen_repair: str,
-    ) -> Optional[str]:
-        """Return a safeguard repair operator when Q-learning underperforms."""
-
-        if not self._use_q_learning:
-            return None
-
-        phase = self._extract_phase(state)
-        scale = self._scenario_scale
-
-        prefers_lp = (
-            "lp" in self.repair_operators
-            and chosen_repair != "lp"
-            and (phase in {"stuck", "deep_stuck"} or scale == "large")
-        )
-        if prefers_lp:
-            return "lp"
-
-        if "regret2" in self.repair_operators and chosen_repair != "regret2":
-            return "regret2"
-        if "greedy" in self.repair_operators and chosen_repair != "greedy":
-            return "greedy"
-        return None
-
-    def _build_fallback_candidate(
-        self,
-        *,
-        destroyed_route: Route,
-        removed_task_ids: List[int],
-        fallback_operator: str,
-        postprocess: Optional[Callable[[Route], None]] = None,
-    ) -> Tuple[Route, float]:
-        """Construct a fallback candidate and return it with the runtime."""
-
-        route_copy = destroyed_route.copy()
-        start = time.perf_counter()
-        candidate = self._run_repair_operator(
-            fallback_operator,
-            route_copy,
-            list(removed_task_ids),
-        )
-        if postprocess is not None:
-            postprocess(candidate)
-        runtime = time.perf_counter() - start
-        return candidate, runtime
-
-    def _fallback_penalty_value(self) -> float:
-        params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
-        return abs(params.reward_rejected) + params.reward_improvement
-
-    def _log_fallback_usage(
-        self,
-        *,
-        iteration: int,
-        state: Optional[str],
-        chosen: str,
-        fallback: str,
-        original_cost: float,
-        fallback_cost: float,
-    ) -> None:
-        if not self.verbose:
-            return
-
-        phase = self._extract_phase(state)
-        self._log(
-            "  [Q-Guard] 迭代 "
-            f"{iteration + 1}: {phase}阶段将修复算子 {chosen} → {fallback} "
-            f"(成本 {original_cost:.2f} → {fallback_cost:.2f})"
-        )
-
-    def _scenario_roi_multiplier(self, improvement: float) -> float:
-        if improvement <= 0:
-            return 1.0
-        scale = self._scenario_scale
-        if scale == "small":
-            return 1.45
-        if scale == "medium":
-            return 1.25
-        return 1.0
 
     def _apply_destroy_operator(
         self,
@@ -430,40 +247,8 @@ class MinimalALNS:
         current_route: Route,
         *,
         state: Optional[str] = None,
-    ) -> Tuple[
-        str,
-        str,
-        Route,
-        List[int],
-        Route,
-        Optional[Tuple[str, str]],
-        float,
-    ]:
+    ) -> Tuple[str, str, Route, List[int], Route]:
         destroy_params = self._select_destroy_parameters(current_route, state)
-
-        if self._use_q_learning:
-            if state is None:
-                raise ValueError("state must be provided when using Q-learning adaptation")
-            mask = self._build_action_mask(state)
-            action = self._q_agent.select_action(state, mask=mask)
-            destroy_operator, repair_operator = action
-            start_time = time.perf_counter()
-            destroyed_route, removed_task_ids = self._run_destroy_operator(
-                destroy_operator, current_route, destroy_params
-            )
-            candidate_route = self._run_repair_operator(
-                repair_operator, destroyed_route, removed_task_ids
-            )
-            elapsed = time.perf_counter() - start_time
-            return (
-                destroy_operator,
-                repair_operator,
-                destroyed_route,
-                removed_task_ids,
-                candidate_route,
-                action,
-                elapsed,
-            )
 
         destroy_operator, destroyed_route, removed_task_ids = self._apply_destroy_operator(
             current_route, destroy_params
@@ -477,8 +262,6 @@ class MinimalALNS:
             destroyed_route,
             removed_task_ids,
             candidate_route,
-            None,
-            0.0,
         )
 
     def _deterministic_repair_choice(self) -> str:
@@ -521,7 +304,7 @@ class MinimalALNS:
     def _prepare_stagnation_thresholds(self, max_iterations: int) -> None:
         """Scale stagnation thresholds to the upcoming iteration budget."""
 
-        params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
+        params = self.hyper.stagnation
         scaled_stuck = max(
             1,
             int(round(max_iterations * params.stagnation_ratio)),
@@ -542,7 +325,7 @@ class MinimalALNS:
         deep_threshold = self._deep_stagnation_threshold
 
         if stuck_threshold is None or deep_threshold is None:
-            params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
+            params = self.hyper.stagnation
             stuck_threshold = params.stagnation_threshold
             deep_threshold = params.deep_stagnation_threshold
 
@@ -551,181 +334,6 @@ class MinimalALNS:
         if consecutive_no_improve >= stuck_threshold:
             return self._compose_state_label('stuck')
         return self._compose_state_label('explore')
-
-    def _default_q_learning_initial_q(self) -> Dict[str, Dict[Action, float]]:
-        """Return conservative scale-aware initial Q-values for destroy/repair pairs.
-
-        Phase 1.1 Stability Fix: Conservative base + scale-specific adjustments.
-
-        Base values (conservative, reduced LP bias):
-        - explore: LP=12, greedy=9 (1.3x gap)
-        - stuck: LP=15, greedy=10 (1.5x gap)
-        - deep_stuck: LP=20, greedy=10 (2.0x gap)
-
-        Scale adjustments (critical for large problems):
-        - large: LP gets +9/+12/+14 bonuses in explore/stuck/deep_stuck
-        - This helps Q-learning discover that LP is essential for large-scale instances
-
-        Combined approach: Conservative base prevents excessive LP bias on small/medium,
-        while scale adjustments ensure LP is properly prioritized on large instances.
-        """
-
-        # Phase 1.4: COMPLETE equality - zero initial bias
-        # All operators start at exactly 10.0 to force pure learning
-        base_values = {
-            'explore': {
-                'lp': 10.0,      # Complete equality (Phase 1.4)
-                'regret2': 10.0, # All operators equal
-                'greedy': 10.0,  # Zero bias
-                'random': 10.0,  # Random gets equal chance
-            },
-            'stuck': {
-                'lp': 10.0,      # Complete equality (Phase 1.4)
-                'regret2': 10.0, # All operators equal
-                'greedy': 10.0,  # Zero bias
-                'random': 10.0,  # Random gets equal chance
-            },
-            'deep_stuck': {
-                'lp': 10.0,      # Complete equality (Phase 1.4)
-                'regret2': 10.0, # All operators equal
-                'greedy': 10.0,  # Zero bias
-                'random': 10.0,  # Random gets equal chance
-            },
-        }
-
-        # Phase 1.4: Remove ALL scale-specific adjustments
-        # Let Q-learning discover operator value through experience
-        scale_adjustments = {
-            'small': {
-                'explore': {'lp': 0.0},
-                'stuck': {'lp': 0.0},
-                'deep_stuck': {'lp': 0.0},
-            },
-            'medium': {
-                'explore': {'lp': 0.0},   # No bias
-                'stuck': {'lp': 0.0},
-                'deep_stuck': {'lp': 0.0},
-            },
-            'large': {
-                'explore': {'lp': 0.0},    # Zero bias - pure learning (Phase 1.4)
-                'stuck': {'lp': 0.0},      # Let experience guide selection
-                'deep_stuck': {'lp': 0.0}, # Trust Q-learning, not initialization
-            },
-        }
-
-        default_value = 8.0
-        scale = self._scenario_scale
-        adjustments = scale_adjustments.get(scale, scale_adjustments['small'])
-
-        initial_values: Dict[str, Dict[Action, float]] = {}
-        for state, repair_map in base_values.items():
-            state_adjust = adjustments.get(state, {})
-            state_label = self._compose_state_label(state)
-            state_values: Dict[Action, float] = {}
-            for destroy in self._destroy_operators:
-                for repair in self.repair_operators:
-                    base = repair_map.get(repair, default_value)
-                    bonus = state_adjust.get(repair, 0.0)
-                    state_values[(destroy, repair)] = base + bonus
-            initial_values[state_label] = state_values
-        return initial_values
-
-    def _compute_q_reward(
-        self,
-        *,
-        improvement: float,
-        is_new_best: bool,
-        is_accepted: bool,
-        action_cost: float,
-        repair_operator: str,
-        previous_cost: float,
-    ) -> float:
-        """Compute Q-learning reward with ROI-aware time penalty or scale-aware normalization.
-
-        If use_scale_aware_reward=True, uses the scale-aware reward normalization framework.
-        Otherwise, uses the original ROI-aware reward function.
-
-        Changes from original:
-        1. Removed ROI hyperparameters (roi_positive_scale=220, roi_negative_scale=260)
-        2. Natural scaling using relative improvement (no manual tuning needed)
-        3. Simplified time penalty: only for matheuristic, gentler, no penalty for new best
-        4. Removed complex scale factors and scenario multipliers
-
-        This simplification reduces seed variance by avoiding overfitting to specific
-        parameter combinations that don't generalize across different problem instances.
-
-        Reward structure:
-        - New best: 100 points (always)
-        - Improvement: 0-50 points (scaled by relative improvement %)
-        - Accepted (no improvement): 5 points
-        - Rejected: -5 points
-        - Time penalty (matheuristic only): max 20 points
-        """
-        # Scale-aware reward path (Week 5 experiments)
-        if self.use_scale_aware_reward:
-            # Initialize reward calculator on first call
-            if self._reward_calculator is None:
-                from planner.scale_aware_reward import ScaleAwareRewardCalculator
-
-                num_requests = self._scenario_task_count
-                baseline_cost = previous_cost  # Use first cost as baseline
-                max_iterations = getattr(self, 'max_iterations', 1000)
-
-                self._reward_calculator = ScaleAwareRewardCalculator(
-                    num_requests=num_requests,
-                    baseline_cost=baseline_cost,
-                    max_iterations=max_iterations,
-                )
-
-            # Compute scale-aware reward
-            if improvement > 0:
-                reward = self._reward_calculator.compute_reward(
-                    improvement=improvement,
-                    previous_cost=previous_cost,
-                    is_new_global_best=is_new_best,
-                    iteration=getattr(self, 'iteration', 0),
-                )
-            elif improvement == 0:
-                reward = self._reward_calculator.compute_no_change_reward(
-                    iteration=getattr(self, 'iteration', 0)
-                )
-            else:  # Worsening
-                reward = self._reward_calculator.compute_worsening_penalty(
-                    iteration=getattr(self, 'iteration', 0)
-                )
-
-            return reward
-
-        # Original ROI-aware reward path
-        params = self._q_params or DEFAULT_Q_LEARNING_PARAMS
-
-        # Step 1: Quality-based reward (3-tier system)
-        if is_new_best:
-            quality = params.reward_new_best
-        elif improvement > 0:
-            # Natural scaling: relative improvement → proportional reward
-            # 1% improvement → 5 points, 10% improvement → 50 points (capped)
-            baseline_cost = max(previous_cost, 1.0)
-            relative_improvement = improvement / baseline_cost
-            quality = min(params.reward_improvement, relative_improvement * 500.0)
-        elif is_accepted:
-            quality = params.reward_accepted
-        else:
-            quality = params.reward_rejected
-
-        # Step 2: Simplified time penalty (only for matheuristic, only if slow)
-        penalty = 0.0
-        is_matheuristic = repair_operator in self._current_matheuristic_repairs()
-
-        if is_matheuristic and action_cost > params.time_penalty_threshold:
-            # No penalty for finding new best (expensive ops justified)
-            if is_new_best:
-                penalty = 0.0
-            else:
-                # Gentle penalty: max 20 points (vs original ~100+ points)
-                penalty = min(20.0, action_cost * params.time_penalty_scale)
-
-        return quality - penalty
 
     def _select_destroy_parameters(
         self, route: Route, state: Optional[str]
@@ -765,73 +373,6 @@ class MinimalALNS:
 
         return q, remove_prob
 
-    def _build_action_mask(self, state: str) -> List[bool]:
-        """Filter operator pairs that violate expert guidance for the state.
-
-        CRITICAL INSIGHT: We REMOVED the explore-phase LP blocking that was
-        preventing Q-learning from ever discovering LP's value. The previous
-        implementation had a fatal flaw:
-        - Explore phase: LP blocked by mask
-        - By the time 'stuck' was reached, epsilon had decayed to ~0
-        - Q-learning never got a chance to learn LP's ROI
-
-        New strategy:
-        1. Explore: ALLOW ALL operators - let Q-learning learn through ROI rewards
-        2. Stuck: ALLOW ALL operators - Q-learning should prefer LP by now
-        3. Deep_stuck: FORCE matheuristic - guaranteed escape from local optimum
-
-        The ROI-aware reward function is sufficient to guide learning without
-        heavy-handed action masking.
-        """
-
-        if not self._use_q_learning:
-            return []
-
-        matheuristic_repairs = self._current_matheuristic_repairs()
-        if not matheuristic_repairs:
-            # No matheuristic operators available, allow all
-            return [True] * len(self._q_agent.actions)
-
-        mask: List[bool] = []
-
-        phase = self._extract_phase(state)
-
-        for destroy, repair in self._q_agent.actions:
-            allowed = True
-            is_matheuristic_repair = repair in matheuristic_repairs
-
-            # Rule 1: Explore phase - ALLOW ALL (removed LP blocking!)
-            # Q-learning needs to try LP early to learn its ROI value
-            # The ROI-aware reward will naturally discourage wasteful LP usage
-            if phase == 'explore':
-                # Allow everything - trust the ROI-aware rewards
-                pass
-
-            # Rule 2: Stuck phase - ALLOW ALL
-            # Q-learning should have learned LP's value by now
-            elif phase == 'stuck':
-                # Allow everything - Q-learning decides based on learned Q-values
-                pass
-
-            # Rule 3: Deep stuck - FORCE matheuristic (only strict rule)
-            # At this point we override Q-learning for guaranteed escape
-            elif phase == 'deep_stuck':
-                if not is_matheuristic_repair:
-                    allowed = False
-
-            mask.append(allowed)
-
-        return mask
-
-    def _current_matheuristic_repairs(self) -> set:
-        """Return the set of expensive repair operators available."""
-
-        candidates = {'lp'}
-        available = {op for op in self.repair_operators if op in candidates}
-        if available != self._matheuristic_repairs:
-            self._matheuristic_repairs = available
-        return available
-
     def _resolve_destroy_params(
         self, route: Route, destroy_params: Optional[Tuple[int, float]]
     ) -> Tuple[int, float]:
@@ -858,15 +399,6 @@ class MinimalALNS:
             remove_prob = 0.0
 
         return q, remove_prob
-
-    def _log_q_learning_statistics(self) -> None:
-        if not self._use_q_learning or not self.verbose:
-            return
-
-        self._log("\n" + "=" * 70)
-        self._log("Q-Learning算子统计")
-        self._log("=" * 70)
-        self._log(self._q_agent.format_statistics())
 
     def _update_adaptive_weights(
         self,
@@ -905,7 +437,7 @@ class MinimalALNS:
         返回：
             优化后的最佳路径
         """
-        self._maybe_reconfigure_q_agent(initial_route)
+        self._maybe_refresh_scale(initial_route)
         max_iterations = self._normalise_iteration_budget(max_iterations)
 
         current_route = initial_route.copy()
@@ -925,62 +457,24 @@ class MinimalALNS:
         self._log(f"初始成本: {best_cost:.2f}m")
         self._log(f"总迭代次数: {max_iterations}")
         if self.use_adaptive:
-            if self._use_q_learning:
-                self._log("使用Q-Learning算子选择 ✓ (Destroy + Repair)")
-            elif self.adaptation_mode == 'roulette':
+            if self.adaptation_mode == 'roulette':
                 self._log("使用自适应算子选择 ✓ (Destroy + Repair)")
 
         self._prepare_stagnation_thresholds(max_iterations)
 
         for iteration in range(max_iterations):
-            q_state = self._determine_state(consecutive_no_improve)
+            phase_state = self._determine_state(consecutive_no_improve)
             (
                 destroy_operator,
                 repair_operator,
                 destroyed_route,
                 removed_task_ids,
                 candidate_route,
-                q_action,
-                action_runtime,
-            ) = self._execute_destroy_repair(current_route, state=q_state)
+            ) = self._execute_destroy_repair(current_route, state=phase_state)
 
             # 评估成本
             previous_cost = self.evaluate_cost(current_route)
             candidate_cost = self.evaluate_cost(candidate_route)
-            original_candidate_cost = candidate_cost
-            original_repair_operator = repair_operator
-
-            fallback_used = False
-
-            if (
-                self._use_q_learning
-                and q_action is not None
-            ):
-                fallback_operator = self._fallback_repair_operator(
-                    state=q_state,
-                    chosen_repair=repair_operator,
-                )
-                if fallback_operator and fallback_operator != repair_operator:
-                    fallback_route, fallback_runtime = self._build_fallback_candidate(
-                        destroyed_route=destroyed_route,
-                        removed_task_ids=removed_task_ids,
-                        fallback_operator=fallback_operator,
-                    )
-                    fallback_cost = self.evaluate_cost(fallback_route)
-                    if fallback_cost + 1e-6 < candidate_cost:
-                        candidate_route = fallback_route
-                        candidate_cost = fallback_cost
-                        repair_operator = fallback_operator
-                        action_runtime = fallback_runtime
-                        fallback_used = True
-                        self._log_fallback_usage(
-                            iteration=iteration,
-                            state=q_state,
-                            chosen=original_repair_operator,
-                            fallback=fallback_operator,
-                            original_cost=original_candidate_cost,
-                            fallback_cost=fallback_cost,
-                        )
 
             destroy_usage[destroy_operator] += 1
             repair_usage[repair_operator] += 1
@@ -1015,25 +509,6 @@ class MinimalALNS:
             else:
                 consecutive_no_improve += 1
 
-            if (
-                self._use_q_learning
-                and q_state is not None
-                and q_action is not None
-            ):
-                reward = self._compute_q_reward(
-                    improvement=improvement,
-                    is_new_best=is_new_best,
-                    is_accepted=is_accepted,
-                    action_cost=action_runtime,
-                    repair_operator=repair_operator,
-                    previous_cost=previous_cost,
-                )
-                if fallback_used:
-                    reward = min(reward, -self._fallback_penalty_value())
-                next_state = self._determine_state(consecutive_no_improve)
-                self._q_agent.update(q_state, q_action, reward, next_state)
-                self._q_agent.decay_epsilon()
-
             # Week 5: Track cost at end of each iteration
             self._cost_history.append(best_cost)
 
@@ -1067,9 +542,6 @@ class MinimalALNS:
                 self._log("Destroy算子自适应统计")
                 self._log("=" * 70)
                 self._log(self.adaptive_destroy_selector.format_statistics())
-
-        if self._use_q_learning:
-            self._log_q_learning_statistics()
 
         return best_route
     
