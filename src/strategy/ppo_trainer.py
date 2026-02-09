@@ -9,6 +9,22 @@ from typing import Optional
 from strategy.rule_env import RuleSelectionEnv
 
 
+def _default_ppo_kwargs() -> dict[str, object]:
+    # Tuned defaults for MaskablePPO. Returned via a factory to avoid sharing
+    # mutable nested objects (e.g., policy network architecture).
+    return {
+        "gamma": 1.0,
+        "gae_lambda": 0.95,
+        "clip_range": 0.2,
+        "learning_rate": 3e-4,
+        "batch_size": 256,
+        "n_epochs": 4,
+        "ent_coef": 0.01,
+        "n_steps": 2048,
+        "policy_kwargs": {"net_arch": [256, 128]},
+    }
+
+
 @dataclass(frozen=True)
 class PPOTrainingConfig:
     """Configuration for MaskablePPO training."""
@@ -20,7 +36,7 @@ class PPOTrainingConfig:
     eval_freq: int = 2_000
     eval_episodes: int = 5
     deterministic_eval: bool = True
-    ppo_kwargs: dict[str, object] = field(default_factory=dict)
+    ppo_kwargs: dict[str, object] = field(default_factory=_default_ppo_kwargs)
 
 
 def make_masked_env(core_env: RuleSelectionEnv):
