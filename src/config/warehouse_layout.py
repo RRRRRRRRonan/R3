@@ -682,3 +682,19 @@ PPO_TRAINING = WarehouseLayoutConfig(
     charging_placement=ChargingPlacement.DIAGONAL,
     seed=42,
 )
+
+
+# Unified preset registry used by tests/scripts/docs.
+LAYOUT_PRESETS: Dict[str, WarehouseLayoutConfig] = {
+    "paper_default": PAPER_DEFAULT_LAYOUT,
+    "warehouse_small_5": WAREHOUSE_SMALL_5,
+    "warehouse_small_10": WAREHOUSE_SMALL_10,
+    "warehouse_medium_20": WAREHOUSE_MEDIUM_20,
+    "warehouse_medium_30": WAREHOUSE_MEDIUM_30,
+    "warehouse_large_50": WAREHOUSE_LARGE_50,
+    "warehouse_large_100": WAREHOUSE_LARGE_100,
+    "optimization_small": OPTIMIZATION_SMALL,
+    "optimization_medium": OPTIMIZATION_MEDIUM,
+    "optimization_large": OPTIMIZATION_LARGE,
+    "ppo_training": PPO_TRAINING,
+}

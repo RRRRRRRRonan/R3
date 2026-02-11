@@ -15,6 +15,7 @@ from __future__ import annotations
 from .warehouse_layout import (  # noqa: F401
     ChargingPlacement,
     DepotPosition,
+    LAYOUT_PRESETS,
     PAPER_DEFAULT_LAYOUT,
     PPO_TRAINING,
     OPTIMIZATION_LARGE,
@@ -38,6 +39,7 @@ from .warehouse_layout import (  # noqa: F401
 __all__ = [
     "ChargingPlacement",
     "DepotPosition",
+    "LAYOUT_PRESETS",
     "PAPER_DEFAULT_LAYOUT",
     "PPO_TRAINING",
     "OPTIMIZATION_LARGE",

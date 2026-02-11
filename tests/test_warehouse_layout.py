@@ -21,6 +21,7 @@ from config.warehouse_layout import (
     WAREHOUSE_MEDIUM_30,
     WAREHOUSE_LARGE_50,
     WAREHOUSE_LARGE_100,
+    LAYOUT_PRESETS,
     OPTIMIZATION_SMALL,
     OPTIMIZATION_MEDIUM,
     OPTIMIZATION_LARGE,
@@ -40,6 +41,12 @@ ALL_PRESETS = [
     OPTIMIZATION_LARGE,
     PPO_TRAINING,
 ]
+
+
+def test_unified_preset_registry_has_11_configs():
+    """TODO-1 contract: unified layout generator exposes 11 canonical presets."""
+    assert len(LAYOUT_PRESETS) == 11
+    assert list(LAYOUT_PRESETS.values()) == ALL_PRESETS
 
 
 @pytest.mark.parametrize("config", ALL_PRESETS, ids=lambda c: f"n{c.num_tasks}_cs{c.num_charging_stations}")
