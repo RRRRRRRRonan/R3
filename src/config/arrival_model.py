@@ -181,9 +181,9 @@ def build_default_nhpp_model(
     The default ratio is peak : normal : off-peak = 3 : 1 : 0.5.
 
     Segment order (default):
-    - off-peak  : [0, 1/3) of the episode
-    - peak      : [1/3, 2/3)
-    - normal    : [2/3, 1)
+    - peak      : [0, 1/3) of the episode
+    - normal    : [1/3, 2/3)
+    - off-peak  : [2/3, 1)
     """
 
     horizon = float(episode_length_s)
@@ -201,9 +201,9 @@ def build_default_nhpp_model(
     t3 = horizon * b3
 
     segments = (
-        RateSegment(start_s=t0, end_s=t1, multiplier=offpeak_multiplier),
-        RateSegment(start_s=t1, end_s=t2, multiplier=peak_multiplier),
-        RateSegment(start_s=t2, end_s=t3, multiplier=normal_multiplier),
+        RateSegment(start_s=t0, end_s=t1, multiplier=peak_multiplier),
+        RateSegment(start_s=t1, end_s=t2, multiplier=normal_multiplier),
+        RateSegment(start_s=t2, end_s=t3, multiplier=offpeak_multiplier),
     )
     return NonhomogeneousPoissonArrivalModel(
         base_rate_per_s=float(base_rate_per_s),
@@ -216,4 +216,3 @@ __all__ = [
     "NonhomogeneousPoissonArrivalModel",
     "build_default_nhpp_model",
 ]
-

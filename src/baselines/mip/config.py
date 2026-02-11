@@ -24,6 +24,7 @@ class ScenarioSynthConfig:
     nhpp_peak_multiplier: float = 3.0
     nhpp_normal_multiplier: float = 1.0
     nhpp_offpeak_multiplier: float = 0.5
+    # Segment boundaries for build_default_nhpp_model (peak -> normal -> off-peak).
     nhpp_segment_fractions: tuple[float, float, float, float] = (
         0.0,
         1.0 / 3.0,
