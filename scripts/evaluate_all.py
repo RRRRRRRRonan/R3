@@ -86,6 +86,11 @@ def _parse_algorithms(raw: str) -> List[str]:
     return values
 
 
+def _parse_scale_set(raw: str) -> set[str]:
+    values = [item.strip().upper() for item in str(raw).split(",") if item.strip()]
+    return set(values)
+
+
 def _resolve_instances(args: argparse.Namespace) -> List[InstanceRun]:
     manifest = load_manifest(args.manifest_json)
     entries = list_manifest_entries(
@@ -398,6 +403,9 @@ def _run_alns(
 def _run_mip(
     experiment: ExperimentScenario,
     args: argparse.Namespace,
+    *,
+    time_limit_s: float,
+    decision_epochs: int,
 ) -> Dict[str, Any]:
     layout_instance = generate_warehouse_instance(experiment.layout)
     task_pool = layout_instance.create_task_pool()
@@ -409,12 +417,12 @@ def _run_mip(
         charging_stations=layout_instance.charging_nodes,
         distance_matrix=layout_instance.distance_matrix,
         rule_count=args.mip_rule_count,
-        decision_epochs=args.mip_decision_epochs,
+        decision_epochs=decision_epochs,
         scenarios=experiment.scenarios,
     )
     solver_config = MIPBaselineSolverConfig(
         solver_name=args.mip_solver_name,
-        time_limit_s=args.mip_time_limit_s,
+        time_limit_s=time_limit_s,
         mip_gap=args.mip_gap,
         scenario_mode=args.mip_scenario_mode,
     )
@@ -423,11 +431,44 @@ def _run_mip(
     data: Dict[str, Any] = {
         "status": result.status,
         "cost": result.objective_value,
+        "mip_time_limit_s": time_limit_s,
+        "mip_decision_epochs": decision_epochs,
     }
     if result.details:
         for key, value in result.details.items():
             data[f"details_{key}"] = value
     return data
+
+
+def _resolve_mip_runtime_budget(scale: str, args: argparse.Namespace) -> Dict[str, Any]:
+    """Return MIP runtime policy by scale.
+
+    Default policy:
+    - S: use ``--mip-time-limit-s``.
+    - M: use ``--mip-time-limit-s-medium``.
+    - L/XL: skip by default (configurable via ``--mip-skip-scales``).
+    """
+
+    scale_key = str(scale).strip().upper()
+    skip_scales = _parse_scale_set(args.mip_skip_scales)
+    if scale_key in skip_scales:
+        return {
+            "skip": True,
+            "skip_reason": f"mip_budget_disabled_for_scale_{scale_key}",
+            "time_limit_s": None,
+            "decision_epochs": None,
+        }
+
+    if scale_key == "M":
+        time_limit_s = float(args.mip_time_limit_s_medium)
+    else:
+        time_limit_s = float(args.mip_time_limit_s)
+
+    return {
+        "skip": False,
+        "time_limit_s": time_limit_s,
+        "decision_epochs": int(args.mip_decision_epochs),
+    }
 
 
 def _load_maskable_ppo_model(path: str):
@@ -496,7 +537,18 @@ def _evaluate_algorithm(
             charge_strategy=PartialRechargeFixedStrategy(charge_ratio=args.alns_pr_charge_ratio),
         )
     if algo == "mip_hind":
-        return _run_mip(instance.experiment, args)
+        budget = _resolve_mip_runtime_budget(instance.entry.scale, args)
+        if budget["skip"]:
+            return {
+                "status": "SKIPPED",
+                "skip_reason": budget["skip_reason"],
+            }
+        return _run_mip(
+            instance.experiment,
+            args,
+            time_limit_s=float(budget["time_limit_s"]),
+            decision_epochs=int(budget["decision_epochs"]),
+        )
     raise ValueError(f"Unknown algorithm: {algo}")
 
 
@@ -609,11 +661,23 @@ def main() -> int:
     parser.add_argument("--alns-verbose", action="store_true")
 
     parser.add_argument("--mip-time-limit-s", type=float, default=5.0)
+    parser.add_argument(
+        "--mip-time-limit-s-medium",
+        type=float,
+        default=30.0,
+        help="M-scale (30-40 tasks) MIP time limit in seconds.",
+    )
     parser.add_argument("--mip-gap", type=float, default=0.0)
     parser.add_argument("--mip-solver-name", type=str, default="ortools")
     parser.add_argument("--mip-scenario-mode", type=str, default="minimal", choices=("minimal", "medium"))
     parser.add_argument("--mip-rule-count", type=int, default=13)
     parser.add_argument("--mip-decision-epochs", type=int, default=3)
+    parser.add_argument(
+        "--mip-skip-scales",
+        type=str,
+        default="L,XL",
+        help="Comma-separated scales to skip for MIP-Hind due to runtime budget.",
+    )
 
     args = parser.parse_args()
     if args.rl_stochastic:

@@ -91,3 +91,9 @@ def test_run_mip_baseline_cli_exposes_experiment_and_manifest_options():
     assert "--experiment-json" in output
     assert "--manifest-json" in output
 
+
+def test_evaluate_all_cli_exposes_mip_budget_options():
+    output = _run_help("evaluate_all.py")
+    assert "--mip-time-limit-s" in output
+    assert "--mip-time-limit-s-medium" in output
+    assert "--mip-skip-scales" in output
