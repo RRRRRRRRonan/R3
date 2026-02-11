@@ -97,3 +97,15 @@ def test_evaluate_all_cli_exposes_mip_budget_options():
     assert "--mip-time-limit-s" in output
     assert "--mip-time-limit-s-medium" in output
     assert "--mip-skip-scales" in output
+
+
+def test_train_maskable_ppo_cli_default_max_time_is_28800s():
+    output = _run_help("train_maskable_ppo.py")
+    assert "--max-time-s MAX_TIME_S" in output
+    assert "(default: 28800.0)" in output
+
+
+def test_generate_benchmark_instances_cli_default_episode_length_is_28800s():
+    output = _run_help("generate_benchmark_instances.py")
+    assert "--episode-length-s EPISODE_LENGTH_S" in output
+    assert "(default: 28800.0)" in output

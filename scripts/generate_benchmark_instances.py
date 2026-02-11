@@ -241,7 +241,10 @@ def generate_instances(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate fixed-count benchmark instance JSON files.")
+    parser = argparse.ArgumentParser(
+        description="Generate fixed-count benchmark instance JSON files.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
     parser.add_argument(
         "--output-root",
         type=str,

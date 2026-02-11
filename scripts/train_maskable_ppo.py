@@ -124,7 +124,9 @@ def build_env(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
     parser.add_argument("--total-timesteps", type=int, default=50_000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--log-dir", type=str, default="results/rl")
@@ -136,7 +138,12 @@ def main() -> None:
     parser.add_argument("--num-chargers", type=int, default=2)
     parser.add_argument("--max-decision-steps", type=int, default=200)
     # Paper Section 5.1: 8h episode horizon.
-    parser.add_argument("--max-time-s", type=float, default=28_800.0)
+    parser.add_argument(
+        "--max-time-s",
+        type=float,
+        default=28_800.0,
+        help="Episode horizon in seconds (paper Section 5.1: 8h).",
+    )
     parser.add_argument(
         "--experiment-json",
         type=str,
