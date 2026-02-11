@@ -7,15 +7,20 @@ within acceptable bounds.
 
 import random
 import time
-from typing import List, Tuple
-from core.node import DepotNode, create_task_node_pair, create_charging_node
-from core.task import Task, TaskPool
+from core.task import TaskPool
 from core.route import Route, create_empty_route
 from core.vehicle import create_vehicle
-from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
 from config import CostParameters
 from planner.alns import MinimalALNS
+
+from config.instance_generator import (
+    ChargingPlacement,
+    DepotPosition,
+    WarehouseLayoutConfig,
+    ZoneStrategy,
+    generate_warehouse_instance,
+)
 
 from warehouse_test_config import (
     LARGE_WAREHOUSE_50_TASKS,
@@ -23,102 +28,29 @@ from warehouse_test_config import (
     print_config_summary
 )
 
-
-def create_grid_layout(warehouse_size: Tuple[float, float],
-                       num_tasks: int,
-                       num_charging_stations: int = 0):
-    """创建仓库网格布局"""
-    width, height = warehouse_size
-    depot = DepotNode(coordinates=(width/2, height/2))
-
-    # Pickup点：左半区域
-    pickup_coords_list = []
-    grid_size = int(num_tasks ** 0.5) + 1
-    for i in range(num_tasks):
-        row = i // grid_size
-        col = i % grid_size
-        x = width * 0.15 + (col * width * 0.3 / max(1, grid_size-1)) if grid_size > 1 else width * 0.25
-        y = height * 0.15 + (row * height * 0.7 / max(1, grid_size-1)) if grid_size > 1 else height * 0.5
-        x += random.uniform(-width*0.05, width*0.05)
-        y += random.uniform(-height*0.05, height*0.05)
-        pickup_coords_list.append((x, y))
-
-    # Delivery点：右半区域
-    delivery_coords_list = []
-    for i in range(num_tasks):
-        row = i // grid_size
-        col = i % grid_size
-        x = width * 0.55 + (col * width * 0.3 / max(1, grid_size-1)) if grid_size > 1 else width * 0.75
-        y = height * 0.15 + (row * height * 0.7 / max(1, grid_size-1)) if grid_size > 1 else height * 0.5
-        x += random.uniform(-width*0.05, width*0.05)
-        y += random.uniform(-height*0.05, height*0.05)
-        delivery_coords_list.append((x, y))
-
-    # 充电站位置（均匀分布）
-    charging_coords_list = []
-    if num_charging_stations > 0:
-        positions = [
-            (width * 0.15, height * 0.15),
-            (width * 0.85, height * 0.15),
-            (width * 0.15, height * 0.85),
-            (width * 0.85, height * 0.85),
-        ]
-        charging_coords_list = positions[:num_charging_stations]
-
-    return depot, pickup_coords_list, delivery_coords_list, charging_coords_list
-
-
 def create_warehouse_scenario(config):
     """根据配置创建仓库场景"""
     print(f"\n创建场景：{config.name}")
     print(f"  仓库：{config.warehouse_size[0]}m × {config.warehouse_size[1]}m")
     print(f"  任务数：{config.num_tasks}")
     print(f"  充电站：{config.num_charging_stations}个")
-
-    depot, pickup_coords_list, delivery_coords_list, charging_coords_list = create_grid_layout(
-        config.warehouse_size,
-        config.num_tasks,
-        config.num_charging_stations
-    )
-
-    tasks = []
-    node_id_counter = 1
-    coordinates = {0: depot.coordinates}
-
-    for i in range(config.num_tasks):
-        task_id = i + 1
-        pickup_coords = pickup_coords_list[i]
-        delivery_coords = delivery_coords_list[i]
-        demand = random.uniform(*config.task_demand_range)
-
-        pickup, delivery = create_task_node_pair(
-            task_id=task_id,
-            pickup_id=node_id_counter,
-            delivery_id=node_id_counter + 1,
-            pickup_coords=pickup_coords,
-            delivery_coords=delivery_coords,
-            demand=demand
-        )
-
-        task = Task(task_id=task_id, pickup_node=pickup, delivery_node=delivery, demand=demand)
-        tasks.append(task)
-        coordinates[pickup.node_id] = pickup_coords
-        coordinates[delivery.node_id] = delivery_coords
-        node_id_counter += 2
-
-    charging_nodes = []
-    for i, charging_coords in enumerate(charging_coords_list):
-        charging_node_id = 100 + i
-        charging_node = create_charging_node(node_id=charging_node_id, coordinates=charging_coords)
-        charging_nodes.append(charging_node)
-        coordinates[charging_node_id] = charging_coords
-
-    print(f"  创建距离矩阵中...（{len(coordinates)}个坐标点）")
-    distance_matrix = DistanceMatrix(
-        coordinates=coordinates,
+    width, height = config.warehouse_size
+    layout = WarehouseLayoutConfig(
+        width=width,
+        height=height,
+        depot_position=DepotPosition.CENTER,
         num_tasks=config.num_tasks,
-        num_charging_stations=config.num_charging_stations
+        zone_strategy=ZoneStrategy.LEFT_RIGHT,
+        demand_range=config.task_demand_range,
+        num_charging_stations=config.num_charging_stations,
+        charging_placement=ChargingPlacement.CORNER,
+        seed=42,
     )
+    instance = generate_warehouse_instance(layout)
+    depot = instance.depot
+    tasks = instance.tasks
+    distance_matrix = instance.distance_matrix
+    charging_nodes = instance.charging_nodes
 
     vehicle = create_vehicle(
         vehicle_id=1,
@@ -126,6 +58,7 @@ def create_warehouse_scenario(config):
         battery_capacity=config.robot_battery,
         initial_battery=config.robot_battery
     )
+    vehicle.speed = config.robot_speed
 
     energy_config = EnergyConfig(
         consumption_rate=config.consumption_rate,

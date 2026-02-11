@@ -1,0 +1,419 @@
+{
+  "mode": "fixed_task_count",
+  "episode_length_s": 28800.0,
+  "total_instances": 40,
+  "scales": [
+    "S",
+    "M",
+    "L",
+    "XL"
+  ],
+  "entries": [
+    {
+      "scale": "S",
+      "seed": 1001,
+      "split": "train",
+      "path": "S/S_seed1001.json",
+      "num_tasks": 15,
+      "num_vehicles": 3,
+      "num_charging_stations": 2
+    },
+    {
+      "scale": "S",
+      "seed": 1002,
+      "split": "train",
+      "path": "S/S_seed1002.json",
+      "num_tasks": 19,
+      "num_vehicles": 3,
+      "num_charging_stations": 2
+    },
+    {
+      "scale": "S",
+      "seed": 1003,
+      "split": "train",
+      "path": "S/S_seed1003.json",
+      "num_tasks": 18,
+      "num_vehicles": 3,
+      "num_charging_stations": 2
+    },
+    {
+      "scale": "S",
+      "seed": 1004,
+      "split": "train",
+      "path": "S/S_seed1004.json",
+      "num_tasks": 18,
+      "num_vehicles": 3,
+      "num_charging_stations": 2
+    },
+    {
+      "scale": "S",
+      "seed": 1005,
+      "split": "train",
+      "path": "S/S_seed1005.json",
+      "num_tasks": 18,
+      "num_vehicles": 3,
+      "num_charging_stations": 2
+    },
+    {
+      "scale": "S",
+      "seed": 1006,
+      "split": "test",
+      "path": "S/S_seed1006.json",
+      "num_tasks": 17,
+      "num_vehicles": 3,
+      "num_charging_stations": 2
+    },
+    {
+      "scale": "S",
+      "seed": 1007,
+      "split": "test",
+      "path": "S/S_seed1007.json",
+      "num_tasks": 15,
+      "num_vehicles": 3,
+      "num_charging_stations": 2
+    },
+    {
+      "scale": "S",
+      "seed": 1008,
+      "split": "test",
+      "path": "S/S_seed1008.json",
+      "num_tasks": 19,
+      "num_vehicles": 3,
+      "num_charging_stations": 2
+    },
+    {
+      "scale": "S",
+      "seed": 1009,
+      "split": "test",
+      "path": "S/S_seed1009.json",
+      "num_tasks": 16,
+      "num_vehicles": 3,
+      "num_charging_stations": 2
+    },
+    {
+      "scale": "S",
+      "seed": 1010,
+      "split": "test",
+      "path": "S/S_seed1010.json",
+      "num_tasks": 20,
+      "num_vehicles": 3,
+      "num_charging_stations": 2
+    },
+    {
+      "scale": "M",
+      "seed": 2001,
+      "split": "train",
+      "path": "M/M_seed2001.json",
+      "num_tasks": 39,
+      "num_vehicles": 5,
+      "num_charging_stations": 3
+    },
+    {
+      "scale": "M",
+      "seed": 2002,
+      "split": "train",
+      "path": "M/M_seed2002.json",
+      "num_tasks": 30,
+      "num_vehicles": 5,
+      "num_charging_stations": 3
+    },
+    {
+      "scale": "M",
+      "seed": 2003,
+      "split": "train",
+      "path": "M/M_seed2003.json",
+      "num_tasks": 31,
+      "num_vehicles": 5,
+      "num_charging_stations": 3
+    },
+    {
+      "scale": "M",
+      "seed": 2004,
+      "split": "train",
+      "path": "M/M_seed2004.json",
+      "num_tasks": 38,
+      "num_vehicles": 5,
+      "num_charging_stations": 3
+    },
+    {
+      "scale": "M",
+      "seed": 2005,
+      "split": "train",
+      "path": "M/M_seed2005.json",
+      "num_tasks": 37,
+      "num_vehicles": 5,
+      "num_charging_stations": 3
+    },
+    {
+      "scale": "M",
+      "seed": 2006,
+      "split": "test",
+      "path": "M/M_seed2006.json",
+      "num_tasks": 38,
+      "num_vehicles": 5,
+      "num_charging_stations": 3
+    },
+    {
+      "scale": "M",
+      "seed": 2007,
+      "split": "test",
+      "path": "M/M_seed2007.json",
+      "num_tasks": 33,
+      "num_vehicles": 5,
+      "num_charging_stations": 3
+    },
+    {
+      "scale": "M",
+      "seed": 2008,
+      "split": "test",
+      "path": "M/M_seed2008.json",
+      "num_tasks": 32,
+      "num_vehicles": 5,
+      "num_charging_stations": 3
+    },
+    {
+      "scale": "M",
+      "seed": 2009,
+      "split": "test",
+      "path": "M/M_seed2009.json",
+      "num_tasks": 34,
+      "num_vehicles": 5,
+      "num_charging_stations": 3
+    },
+    {
+      "scale": "M",
+      "seed": 2010,
+      "split": "test",
+      "path": "M/M_seed2010.json",
+      "num_tasks": 32,
+      "num_vehicles": 5,
+      "num_charging_stations": 3
+    },
+    {
+      "scale": "L",
+      "seed": 3001,
+      "split": "train",
+      "path": "L/L_seed3001.json",
+      "num_tasks": 54,
+      "num_vehicles": 8,
+      "num_charging_stations": 4
+    },
+    {
+      "scale": "L",
+      "seed": 3002,
+      "split": "train",
+      "path": "L/L_seed3002.json",
+      "num_tasks": 53,
+      "num_vehicles": 8,
+      "num_charging_stations": 4
+    },
+    {
+      "scale": "L",
+      "seed": 3003,
+      "split": "train",
+      "path": "L/L_seed3003.json",
+      "num_tasks": 58,
+      "num_vehicles": 8,
+      "num_charging_stations": 4
+    },
+    {
+      "scale": "L",
+      "seed": 3004,
+      "split": "train",
+      "path": "L/L_seed3004.json",
+      "num_tasks": 57,
+      "num_vehicles": 8,
+      "num_charging_stations": 4
+    },
+    {
+      "scale": "L",
+      "seed": 3005,
+      "split": "train",
+      "path": "L/L_seed3005.json",
+      "num_tasks": 50,
+      "num_vehicles": 8,
+      "num_charging_stations": 4
+    },
+    {
+      "scale": "L",
+      "seed": 3006,
+      "split": "test",
+      "path": "L/L_seed3006.json",
+      "num_tasks": 58,
+      "num_vehicles": 8,
+      "num_charging_stations": 4
+    },
+    {
+      "scale": "L",
+      "seed": 3007,
+      "split": "test",
+      "path": "L/L_seed3007.json",
+      "num_tasks": 60,
+      "num_vehicles": 8,
+      "num_charging_stations": 4
+    },
+    {
+      "scale": "L",
+      "seed": 3008,
+      "split": "test",
+      "path": "L/L_seed3008.json",
+      "num_tasks": 54,
+      "num_vehicles": 8,
+      "num_charging_stations": 4
+    },
+    {
+      "scale": "L",
+      "seed": 3009,
+      "split": "test",
+      "path": "L/L_seed3009.json",
+      "num_tasks": 57,
+      "num_vehicles": 8,
+      "num_charging_stations": 4
+    },
+    {
+      "scale": "L",
+      "seed": 3010,
+      "split": "test",
+      "path": "L/L_seed3010.json",
+      "num_tasks": 60,
+      "num_vehicles": 8,
+      "num_charging_stations": 4
+    },
+    {
+      "scale": "XL",
+      "seed": 4001,
+      "split": "train",
+      "path": "XL/XL_seed4001.json",
+      "num_tasks": 93,
+      "num_vehicles": 12,
+      "num_charging_stations": 6
+    },
+    {
+      "scale": "XL",
+      "seed": 4002,
+      "split": "train",
+      "path": "XL/XL_seed4002.json",
+      "num_tasks": 100,
+      "num_vehicles": 12,
+      "num_charging_stations": 6
+    },
+    {
+      "scale": "XL",
+      "seed": 4003,
+      "split": "train",
+      "path": "XL/XL_seed4003.json",
+      "num_tasks": 87,
+      "num_vehicles": 12,
+      "num_charging_stations": 6
+    },
+    {
+      "scale": "XL",
+      "seed": 4004,
+      "split": "train",
+      "path": "XL/XL_seed4004.json",
+      "num_tasks": 95,
+      "num_vehicles": 12,
+      "num_charging_stations": 6
+    },
+    {
+      "scale": "XL",
+      "seed": 4005,
+      "split": "train",
+      "path": "XL/XL_seed4005.json",
+      "num_tasks": 87,
+      "num_vehicles": 12,
+      "num_charging_stations": 6
+    },
+    {
+      "scale": "XL",
+      "seed": 4006,
+      "split": "test",
+      "path": "XL/XL_seed4006.json",
+      "num_tasks": 96,
+      "num_vehicles": 12,
+      "num_charging_stations": 6
+    },
+    {
+      "scale": "XL",
+      "seed": 4007,
+      "split": "test",
+      "path": "XL/XL_seed4007.json",
+      "num_tasks": 85,
+      "num_vehicles": 12,
+      "num_charging_stations": 6
+    },
+    {
+      "scale": "XL",
+      "seed": 4008,
+      "split": "test",
+      "path": "XL/XL_seed4008.json",
+      "num_tasks": 96,
+      "num_vehicles": 12,
+      "num_charging_stations": 6
+    },
+    {
+      "scale": "XL",
+      "seed": 4009,
+      "split": "test",
+      "path": "XL/XL_seed4009.json",
+      "num_tasks": 94,
+      "num_vehicles": 12,
+      "num_charging_stations": 6
+    },
+    {
+      "scale": "XL",
+      "seed": 4010,
+      "split": "test",
+      "path": "XL/XL_seed4010.json",
+      "num_tasks": 84,
+      "num_vehicles": 12,
+      "num_charging_stations": 6
+    }
+  ],
+  "splits": {
+    "train": [
+      "S/S_seed1001.json",
+      "S/S_seed1002.json",
+      "S/S_seed1003.json",
+      "S/S_seed1004.json",
+      "S/S_seed1005.json",
+      "M/M_seed2001.json",
+      "M/M_seed2002.json",
+      "M/M_seed2003.json",
+      "M/M_seed2004.json",
+      "M/M_seed2005.json",
+      "L/L_seed3001.json",
+      "L/L_seed3002.json",
+      "L/L_seed3003.json",
+      "L/L_seed3004.json",
+      "L/L_seed3005.json",
+      "XL/XL_seed4001.json",
+      "XL/XL_seed4002.json",
+      "XL/XL_seed4003.json",
+      "XL/XL_seed4004.json",
+      "XL/XL_seed4005.json"
+    ],
+    "test": [
+      "S/S_seed1006.json",
+      "S/S_seed1007.json",
+      "S/S_seed1008.json",
+      "S/S_seed1009.json",
+      "S/S_seed1010.json",
+      "M/M_seed2006.json",
+      "M/M_seed2007.json",
+      "M/M_seed2008.json",
+      "M/M_seed2009.json",
+      "M/M_seed2010.json",
+      "L/L_seed3006.json",
+      "L/L_seed3007.json",
+      "L/L_seed3008.json",
+      "L/L_seed3009.json",
+      "L/L_seed3010.json",
+      "XL/XL_seed4006.json",
+      "XL/XL_seed4007.json",
+      "XL/XL_seed4008.json",
+      "XL/XL_seed4009.json",
+      "XL/XL_seed4010.json"
+    ]
+  }
+}

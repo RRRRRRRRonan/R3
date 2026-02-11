@@ -100,7 +100,12 @@ def _require_maskable_ppo():
     try:
         from sb3_contrib import MaskablePPO
         from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
-        from sb3_contrib.common.maskable.wrappers import ActionMasker
+        try:
+            # Newer sb3-contrib versions expose ActionMasker here.
+            from sb3_contrib.common.wrappers.action_masker import ActionMasker
+        except ImportError:
+            # Backward compatibility for older layouts.
+            from sb3_contrib.common.maskable.wrappers import ActionMasker
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "sb3-contrib (and stable-baselines3) is required. "

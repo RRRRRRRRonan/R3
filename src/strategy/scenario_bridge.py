@@ -159,6 +159,8 @@ def apply_scenario_to_simulator(
         task_availability=scenario.task_availability or None,
         task_release_times=scenario.task_release_times or None,
         task_demands=scenario.task_demands or None,
+        node_time_windows=scenario.node_time_windows or None,
+        node_service_times=scenario.node_service_times or None,
     )
 
 

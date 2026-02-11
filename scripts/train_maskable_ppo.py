@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 import random
 import sys
-from typing import List, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC_PATH = ROOT / "src"
@@ -23,12 +23,17 @@ except ImportError as exc:  # pragma: no cover
         "torch is required for MaskablePPO reproducibility. Install via `python3 -m pip install torch`."
     ) from exc
 
+from config.instance_generator import PPO_TRAINING, generate_warehouse_instance
+from config.benchmark_manifest import (
+    load_manifest,
+    resolve_entry_path,
+    select_manifest_entry,
+)
 from baselines.mip.config import MIPBaselineSolverConfig
+from baselines.mip.scenario_io import ExperimentScenario, load_experiment_json
 from coordinator.traffic_manager import TrafficManager
-from core.node import ChargingNode, NodeType, create_task_node_pair
-from core.task import Task, TaskPool
+from core.task import TaskPool
 from core.vehicle import create_vehicle
-from physics.time import TimeWindow, TimeWindowType
 from strategy.execution_layer import ExecutionLayer
 from strategy.rule_env import RuleSelectionEnv
 from strategy.ppo_trainer import PPOTrainingConfig, make_masked_env, train_maskable_ppo
@@ -36,47 +41,47 @@ from strategy.scenario_synthesizer import synthesize_scenarios
 from strategy.simulator import EventDrivenSimulator
 
 
-def build_synthetic_tasks(num_tasks: int, seed: int) -> Tuple[List[Task], dict]:
-    rng = random.Random(seed)
-    tasks: List[Task] = []
-    coordinates = {0: (0.0, 0.0)}
-
-    for task_id in range(1, num_tasks + 1):
-        pickup_xy = (rng.uniform(5.0, 45.0), rng.uniform(5.0, 45.0))
-        delivery_xy = (rng.uniform(5.0, 45.0), rng.uniform(5.0, 45.0))
-        pickup, delivery = create_task_node_pair(
-            task_id=task_id,
-            pickup_id=task_id * 2 - 1,
-            delivery_id=task_id * 2,
-            pickup_coords=pickup_xy,
-            delivery_coords=delivery_xy,
-            demand=5.0,
-            service_time=10.0,
-            pickup_time_window=TimeWindow(0.0, 10_000.0, TimeWindowType.SOFT),
-            delivery_time_window=TimeWindow(0.0, 10_000.0, TimeWindowType.SOFT),
+def build_env(
+    args,
+    *,
+    seed: int,
+    log_dir: Path,
+    experiment: ExperimentScenario | None = None,
+) -> RuleSelectionGymEnv:
+    if experiment is None:
+        layout = replace(
+            PPO_TRAINING,
+            num_tasks=args.num_tasks,
+            num_charging_stations=args.num_chargers,
+            seed=seed,
         )
-        task = Task(task_id=task_id, pickup_node=pickup, delivery_node=delivery, demand=5.0, arrival_time=0.0)
-        tasks.append(task)
-        coordinates[pickup.node_id] = pickup.coordinates
-        coordinates[delivery.node_id] = delivery.coordinates
-    return tasks, coordinates
+        scenarios = None
+        max_time_s = args.max_time_s
+    else:
+        # Replay: keep the exact layout/scenarios stored on disk.
+        layout = experiment.layout
+        scenarios = experiment.scenarios
+        max_time_s = experiment.episode_length_s
+    instance = generate_warehouse_instance(layout)
 
-
-def build_env(args, *, seed: int, log_dir: Path) -> RuleSelectionGymEnv:
-    tasks, coords = build_synthetic_tasks(args.num_tasks, seed)
     pool = TaskPool()
-    pool.add_tasks(tasks)
+    pool.add_tasks(instance.tasks)
+
+    depot_xy = instance.depot.coordinates
+    num_vehicles = args.num_vehicles
+    if experiment is not None:
+        num_vehicles = int(experiment.metadata.get("num_vehicles", num_vehicles))
 
     vehicles = [
-        create_vehicle(vehicle_id=i + 1, initial_location=(0.0, 0.0), battery_capacity=100.0, initial_battery=100.0)
-        for i in range(args.num_vehicles)
+        create_vehicle(
+            vehicle_id=i + 1,
+            initial_location=depot_xy,
+            battery_capacity=100.0,
+            initial_battery=100.0,
+        )
+        for i in range(num_vehicles)
     ]
-
-    chargers = []
-    for idx in range(args.num_chargers):
-        node_id = 10_000 + idx
-        coord = (10.0 + idx * 20.0, 10.0 + idx * 20.0)
-        chargers.append(ChargingNode(node_id=node_id, coordinates=coord, node_type=NodeType.CHARGING))
+    chargers = instance.charging_nodes
 
     traffic = TrafficManager(headway_s=args.headway_s)
     simulator = EventDrivenSimulator(task_pool=pool, vehicles=vehicles, chargers=chargers, traffic_manager=traffic)
@@ -101,8 +106,9 @@ def build_env(args, *, seed: int, log_dir: Path) -> RuleSelectionGymEnv:
         simulator=simulator,
         execution_layer=executor,
         max_decision_steps=args.max_decision_steps,
-        max_time_s=args.max_time_s,
+        max_time_s=max_time_s,
         mip_solver_config=solver_config,
+        scenarios=scenarios,
         heatmap_log_path=heatmap_log_path,
         cost_log_path=str(log_dir / f"cost_log_{stamp}.jsonl"),
         cost_log_csv_path=str(log_dir / f"cost_log_{stamp}.csv"),
@@ -129,7 +135,62 @@ def main() -> None:
     parser.add_argument("--num-vehicles", type=int, default=2)
     parser.add_argument("--num-chargers", type=int, default=2)
     parser.add_argument("--max-decision-steps", type=int, default=200)
-    parser.add_argument("--max-time-s", type=float, default=10_000.0)
+    # Paper Section 5.1: 8h episode horizon.
+    parser.add_argument("--max-time-s", type=float, default=28_800.0)
+    parser.add_argument(
+        "--experiment-json",
+        type=str,
+        default=None,
+        help="Optional ExperimentScenario JSON for deterministic replay (layout + scenarios).",
+    )
+    parser.add_argument(
+        "--manifest-json",
+        type=str,
+        default=None,
+        help="Optional benchmark manifest path. Used when --experiment-json is omitted.",
+    )
+    parser.add_argument(
+        "--instances-root",
+        type=str,
+        default=None,
+        help="Optional root for manifest entry paths. Defaults to manifest parent.",
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        default="train",
+        help="Manifest split filter for train env (train/test).",
+    )
+    parser.add_argument(
+        "--eval-split",
+        type=str,
+        default="test",
+        help="Manifest split filter for eval env (train/test).",
+    )
+    parser.add_argument(
+        "--scale",
+        type=str,
+        default=None,
+        help="Optional manifest scale filter (S/M/L/XL).",
+    )
+    parser.add_argument(
+        "--seed-id",
+        type=int,
+        default=None,
+        help="Optional manifest seed filter.",
+    )
+    parser.add_argument(
+        "--entry-index",
+        type=int,
+        default=0,
+        help="Entry index among filtered train manifest entries.",
+    )
+    parser.add_argument(
+        "--eval-entry-index",
+        type=int,
+        default=0,
+        help="Entry index among filtered eval manifest entries.",
+    )
     parser.add_argument("--headway-s", type=float, default=2.0)
     parser.add_argument("--heatmap-log-path", type=str, default=None)
     parser.add_argument("--auto-heatmap-from-synth", action="store_true", default=True)
@@ -149,8 +210,36 @@ def main() -> None:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-    train_env = build_env(args, seed=args.seed, log_dir=log_dir / "train")
-    eval_env = build_env(args, seed=args.seed + 1, log_dir=log_dir / "eval")
+    train_experiment = None
+    eval_experiment = None
+    if args.experiment_json:
+        train_experiment = load_experiment_json(args.experiment_json)
+        eval_experiment = train_experiment
+    elif args.manifest_json:
+        manifest = load_manifest(args.manifest_json)
+        instances_root = args.instances_root or str(Path(args.manifest_json).resolve().parent)
+
+        train_entry = select_manifest_entry(
+            manifest,
+            split=args.split,
+            scale=args.scale,
+            seed=args.seed_id,
+            entry_index=args.entry_index,
+        )
+        eval_entry = select_manifest_entry(
+            manifest,
+            split=args.eval_split,
+            scale=args.scale,
+            seed=args.seed_id,
+            entry_index=args.eval_entry_index,
+        )
+        train_path = resolve_entry_path(train_entry, instances_root=instances_root)
+        eval_path = resolve_entry_path(eval_entry, instances_root=instances_root)
+        train_experiment = load_experiment_json(train_path)
+        eval_experiment = load_experiment_json(eval_path)
+
+    train_env = build_env(args, seed=args.seed, log_dir=log_dir / "train", experiment=train_experiment)
+    eval_env = build_env(args, seed=args.seed + 1, log_dir=log_dir / "eval", experiment=eval_experiment)
 
     config = PPOTrainingConfig(
         total_timesteps=args.total_timesteps,

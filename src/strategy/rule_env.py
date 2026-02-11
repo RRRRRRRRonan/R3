@@ -84,6 +84,9 @@ class RuleSelectionEnv:
         self.rule_executor = rule_executor
         self.execution_layer = execution_layer
         self.max_decision_steps = max_decision_steps
+        if max_time_s is None and mip_solver_config is not None:
+            # Paper-aligned default episode horizon.
+            max_time_s = mip_solver_config.scenario_synth_config.episode_length_s
         self.max_time_s = max_time_s
         self.scenarios = list(scenarios) if scenarios else []
         if mip_solver_config is not None:
@@ -162,6 +165,8 @@ class RuleSelectionEnv:
                 task_availability=scenario.task_availability or None,
                 task_release_times=scenario.task_release_times or None,
                 task_demands=scenario.task_demands or None,
+                node_time_windows=scenario.node_time_windows or None,
+                node_service_times=scenario.node_service_times or None,
             )
         self.simulator.reset()
         event, _ = self.simulator.advance_to_next_decision_epoch()
@@ -408,7 +413,7 @@ class RuleSelectionEnv:
                 with self.cost_log_path.open("a", encoding="utf-8") as handle:
                     import json
 
-                    handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+                    handle.write(json.dumps(record, ensure_ascii=True, default=_json_default) + "\n")
             except OSError:
                 pass
 
@@ -563,7 +568,7 @@ def _append_jsonl(path: Path, record: Dict[str, object]) -> None:
         with path.open("a", encoding="utf-8") as handle:
             import json
 
-            handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+            handle.write(json.dumps(record, ensure_ascii=True, default=_json_default) + "\n")
     except OSError:
         return
 
@@ -582,6 +587,21 @@ def _append_csv(path: Path, row: Dict[str, object]) -> None:
             writer.writerow(row)
     except OSError:
         return
+
+
+def _json_default(value):
+    """Best-effort conversion for NumPy/PyTorch scalar-like objects."""
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+    if hasattr(value, "tolist"):
+        try:
+            return value.tolist()
+        except Exception:
+            pass
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def _flatten_record(record: Dict[str, object]) -> Dict[str, object]:

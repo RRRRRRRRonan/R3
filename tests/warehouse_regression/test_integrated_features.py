@@ -5,7 +5,7 @@ capacity/energy feasibility checks on a ten-task scenario to validate that the
 entire stack works end to end.
 """
 
-from core.node import DepotNode, create_task_node_pair, ChargingNode
+from core.node import DepotNode, create_task_node_pair
 from core.task import Task, TaskPool
 from core.route import create_empty_route
 from core.vehicle import create_vehicle
@@ -19,9 +19,15 @@ from strategy.charging_strategies import (
     PartialRechargeFixedStrategy,
     PartialRechargeMinimalStrategy
 )
-import random
 
-random.seed(42)
+from config.instance_generator import (
+    ChargingPlacement,
+    DepotPosition,
+    TimeWindowMode,
+    WarehouseLayoutConfig,
+    ZoneStrategy,
+    generate_warehouse_instance,
+)
 
 
 def create_test_scenario_with_time_windows(num_tasks=10):
@@ -34,56 +40,28 @@ def create_test_scenario_with_time_windows(num_tasks=10):
     - 1个充电站
     - 容量约束：每个任务20kg，车辆150kg
     """
-    depot = DepotNode(coordinates=(0.0, 0.0))
-
-    # 创建充电站
-    from core.node import NodeType
-    charging_station = ChargingNode(
-        node_id=999,
-        coordinates=(25.0, 25.0),
-        node_type=NodeType.CHARGING
-    )
-
-    tasks = []
-    coordinates = {0: depot.coordinates, 999: charging_station.coordinates}
-
-    # 创建任务（带时间窗）
-    for i in range(1, num_tasks + 1):
-        # 任务位置：均匀分布在50x50区域
-        pickup_x = random.uniform(5, 45)
-        pickup_y = random.uniform(5, 45)
-        delivery_x = random.uniform(5, 45)
-        delivery_y = random.uniform(5, 45)
-
-        # 时间窗：每个任务间隔100秒
-        pickup_tw_start = i * 100
-        pickup_tw_end = pickup_tw_start + 200
-        delivery_tw_start = pickup_tw_end + 50
-        delivery_tw_end = delivery_tw_start + 200
-
-        pickup, delivery = create_task_node_pair(
-            task_id=i,
-            pickup_id=i*2-1,
-            delivery_id=i*2,
-            pickup_coords=(pickup_x, pickup_y),
-            delivery_coords=(delivery_x, delivery_y),
-            demand=20.0,
-            pickup_time_window=TimeWindow(pickup_tw_start, pickup_tw_end, TimeWindowType.SOFT),
-            delivery_time_window=TimeWindow(delivery_tw_start, delivery_tw_end, TimeWindowType.SOFT)
-        )
-
-        task = Task(task_id=i, pickup_node=pickup, delivery_node=delivery, demand=20.0)
-        tasks.append(task)
-        coordinates[pickup.node_id] = pickup.coordinates
-        coordinates[delivery.node_id] = delivery.coordinates
-
-    # 创建distance matrix
-    all_coords = coordinates.copy()
-    distance_matrix = DistanceMatrix(
-        coordinates=all_coords,
+    layout = WarehouseLayoutConfig(
+        width=50.0,
+        height=50.0,
+        depot_position=DepotPosition.ORIGIN,
         num_tasks=num_tasks,
-        num_charging_stations=1
+        zone_strategy=ZoneStrategy.UNIFORM,
+        uniform_margin=0.1,  # 5..45 in a 50x50 warehouse
+        demand_fixed=20.0,
+        time_window_mode=TimeWindowMode.SEQUENTIAL,
+        tw_pickup_width=200.0,
+        tw_delivery_gap=50.0,
+        tw_stagger_interval=100.0,
+        num_charging_stations=1,
+        charging_placement=ChargingPlacement.CUSTOM,
+        charging_custom_coords=((25.0, 25.0),),
+        seed=42,
     )
+    instance = generate_warehouse_instance(layout)
+    depot = instance.depot
+    tasks = instance.tasks
+    charging_station = instance.charging_nodes[0]
+    distance_matrix = instance.distance_matrix
 
     # 创建vehicle
     vehicle = create_vehicle(
@@ -204,12 +182,13 @@ def test_hard_vs_soft_time_windows():
     depot = DepotNode(coordinates=(0.0, 0.0))
     coordinates = {0: depot.coordinates}
 
-    # 创建2个任务
+    # 创建2个任务 (math-model IDs: pickup 1..n, delivery n+1..2n)
+    num_tasks = 2
     # 任务1：硬时间窗 [50, 100]
     pickup1, delivery1 = create_task_node_pair(
         task_id=1,
         pickup_id=1,
-        delivery_id=2,
+        delivery_id=1 + num_tasks,
         pickup_coords=(10.0, 0.0),
         delivery_coords=(10.0, 10.0),
         demand=20.0,
@@ -217,25 +196,25 @@ def test_hard_vs_soft_time_windows():
     )
     task1 = Task(task_id=1, pickup_node=pickup1, delivery_node=delivery1, demand=20.0)
     coordinates[1] = pickup1.coordinates
-    coordinates[2] = delivery1.coordinates
+    coordinates[1 + num_tasks] = delivery1.coordinates
 
     # 任务2：软时间窗 [150, 200]
     pickup2, delivery2 = create_task_node_pair(
         task_id=2,
-        pickup_id=3,
-        delivery_id=4,
+        pickup_id=2,
+        delivery_id=2 + num_tasks,
         pickup_coords=(30.0, 0.0),
         delivery_coords=(30.0, 10.0),
         demand=20.0,
         pickup_time_window=TimeWindow(150.0, 200.0, TimeWindowType.SOFT)
     )
     task2 = Task(task_id=2, pickup_node=pickup2, delivery_node=delivery2, demand=20.0)
-    coordinates[3] = pickup2.coordinates
-    coordinates[4] = delivery2.coordinates
+    coordinates[2] = pickup2.coordinates
+    coordinates[2 + num_tasks] = delivery2.coordinates
 
     tasks = [task1, task2]
 
-    distance_matrix = DistanceMatrix(coordinates=coordinates, num_tasks=2, num_charging_stations=0)
+    distance_matrix = DistanceMatrix(coordinates=coordinates, num_tasks=num_tasks, num_charging_stations=0)
     vehicle = create_vehicle(vehicle_id=1, capacity=100.0, battery_capacity=10.0, initial_battery=10.0)
 
     task_pool = TaskPool()

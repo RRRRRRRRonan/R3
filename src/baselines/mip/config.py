@@ -4,12 +4,45 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from config import CostParameters
+from config import CostParameters, DEFAULT_TIME_SYSTEM, DEFAULT_VEHICLE_DEFAULTS
 
 
 @dataclass(frozen=True)
 class ScenarioSynthConfig:
     """Configuration for synthetic scenario generation."""
+
+    # Episode / horizon
+    episode_length_s: float = 28_800.0  # 8h (paper Section 5.1)
+
+    # Arrival model (NHPP with 3 segments, peak:normal:off-peak = 3:1:0.5)
+    use_nhpp_arrivals: bool = True
+    # Release-time sampling mode:
+    # - "fixed_count": keep task count fixed, sample release-time density via NHPP.
+    # - "thinning": sample via NHPP thinning first, then map to tasks (best-effort).
+    arrival_time_sampling_mode: str = "fixed_count"
+    nhpp_base_rate_per_s: float = 0.0005
+    nhpp_peak_multiplier: float = 3.0
+    nhpp_normal_multiplier: float = 1.0
+    nhpp_offpeak_multiplier: float = 0.5
+    nhpp_segment_fractions: tuple[float, float, float, float] = (
+        0.0,
+        1.0 / 3.0,
+        2.0 / 3.0,
+        1.0,
+    )
+
+    # Demand model (truncated normal)
+    use_truncnorm_demands: bool = True
+    demand_mean_kg: float = 75.0
+    demand_std_kg: float = 22.5
+    demand_min_kg: float = 0.0
+    demand_max_kg: float = DEFAULT_VEHICLE_DEFAULTS.capacity_kg
+
+    # Time windows anchored to task release time (seconds)
+    use_release_time_windows: bool = True
+    pickup_tw_width_s: float = 1800.0
+    delivery_tw_width_s: float = 3600.0
+    vehicle_speed_m_s: float = DEFAULT_TIME_SYSTEM.vehicle_speed_m_s
 
     num_scenarios: int = 3
     availability_prob: float = 1.0
@@ -24,12 +57,13 @@ class ScenarioSynthConfig:
 class MIPBaselineScale:
     """Define the smallest target scale used by the MIP baseline."""
 
-    max_tasks: int = 8
-    max_vehicles: int = 2
-    max_charging_stations: int = 2
+    # Covers benchmark scales S/M/L/XL (up to 100 tasks, 12 vehicles, 6 chargers).
+    max_tasks: int = 100
+    max_vehicles: int = 12
+    max_charging_stations: int = 6
     max_rules: int = 13
-    max_decision_epochs: int = 3
-    max_scenarios: int = 3
+    max_decision_epochs: int = 128
+    max_scenarios: int = 16
 
 
 @dataclass(frozen=True)

@@ -275,4 +275,14 @@ OPTIMIZATION_SCENARIO_PRESETS: Dict[str, OptimizationScenarioDefaults] = {
         charging_rate=6.0 / 3600.0,
         seed=17,
     ),
+    "xlarge": OptimizationScenarioDefaults(
+        num_tasks=80,
+        num_charging=6,
+        area_size=(4000.0, 4000.0),
+        vehicle_capacity=260.0,
+        battery_capacity=2.4,
+        consumption_per_km=0.55,
+        charging_rate=6.5 / 3600.0,
+        seed=23,
+    ),
 }

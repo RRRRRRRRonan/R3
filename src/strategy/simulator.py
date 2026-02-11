@@ -130,6 +130,8 @@ class EventDrivenSimulator:
         self._scenario_task_availability: Dict[int, int] = {}
         self._scenario_task_release_times: Dict[int, float] = {}
         self._scenario_task_demands: Dict[int, float] = {}
+        self._scenario_node_time_windows: Dict[int, Tuple[float, float]] = {}
+        self._scenario_node_service_times: Dict[int, float] = {}
 
     def reset(self) -> EventDrivenState:
         """Reset the simulator and seed the initial events."""
@@ -334,6 +336,8 @@ class EventDrivenSimulator:
         task_availability: Optional[Dict[int, int]] = None,
         task_release_times: Optional[Dict[int, float]] = None,
         task_demands: Optional[Dict[int, float]] = None,
+        node_time_windows: Optional[Dict[int, Tuple[float, float]]] = None,
+        node_service_times: Optional[Dict[int, float]] = None,
     ) -> None:
         """Update simulator-level scenario perturbations."""
         if queue_estimates is not None:
@@ -348,11 +352,25 @@ class EventDrivenSimulator:
             self._scenario_task_release_times = dict(task_release_times)
         if task_demands is not None:
             self._scenario_task_demands = dict(task_demands)
-        if any(value is not None for value in (task_availability, task_release_times, task_demands)):
+        if node_time_windows is not None:
+            self._scenario_node_time_windows = dict(node_time_windows)
+        if node_service_times is not None:
+            self._scenario_node_service_times = dict(node_service_times)
+        if any(
+            value is not None
+            for value in (
+                task_availability,
+                task_release_times,
+                task_demands,
+                node_time_windows,
+                node_service_times,
+            )
+        ):
             self._apply_task_overrides()
 
     def _apply_task_overrides(self) -> None:
         from core.node import TaskNode
+        from physics.time import TimeWindow, TimeWindowType
 
         if not self._base_tasks:
             self._base_tasks = {
@@ -369,21 +387,52 @@ class EventDrivenSimulator:
             )
             demand_value = max(0.0, float(demand_override))
 
+            pickup = base_task.pickup_node
+            delivery = base_task.delivery_node
+
+            pickup_tw_override = self._scenario_node_time_windows.get(pickup.node_id)
+            delivery_tw_override = self._scenario_node_time_windows.get(delivery.node_id)
+
+            def _apply_tw(
+                base_tw,
+                override: Optional[Tuple[float, float]],
+            ):
+                if override is None:
+                    return base_tw
+                window_type = base_tw.window_type if base_tw is not None else TimeWindowType.SOFT
+                return TimeWindow(
+                    earliest=float(override[0]),
+                    latest=float(override[1]),
+                    window_type=window_type,
+                )
+
+            pickup_tw = _apply_tw(pickup.time_window, pickup_tw_override)
+            delivery_tw = _apply_tw(delivery.time_window, delivery_tw_override)
+
+            pickup_service = float(
+                self._scenario_node_service_times.get(pickup.node_id, pickup.service_time)
+            )
+            delivery_service = float(
+                self._scenario_node_service_times.get(delivery.node_id, delivery.service_time)
+            )
+
             if (
                 demand_value == base_task.demand
                 and release_override == base_task.arrival_time
+                and pickup_tw == pickup.time_window
+                and delivery_tw == delivery.time_window
+                and pickup_service == pickup.service_time
+                and delivery_service == delivery.service_time
             ):
                 new_task = base_task
             else:
-                pickup = base_task.pickup_node
-                delivery = base_task.delivery_node
                 new_pickup = TaskNode(
                     node_id=pickup.node_id,
                     node_type=pickup.node_type,
                     coordinates=pickup.coordinates,
                     task_id=pickup.task_id,
-                    time_window=pickup.time_window,
-                    service_time=pickup.service_time,
+                    time_window=pickup_tw,
+                    service_time=pickup_service,
                     demand=demand_value,
                 )
                 new_delivery = TaskNode(
@@ -391,8 +440,8 @@ class EventDrivenSimulator:
                     node_type=delivery.node_type,
                     coordinates=delivery.coordinates,
                     task_id=delivery.task_id,
-                    time_window=delivery.time_window,
-                    service_time=delivery.service_time,
+                    time_window=delivery_tw,
+                    service_time=delivery_service,
                     demand=demand_value,
                 )
                 new_task = Task(

@@ -21,25 +21,25 @@ def create_test_scenario():
     depot = DepotNode(coordinates=(0.0, 0.0))
 
     tasks = []
-    node_id_counter = 1
     coordinates = {0: depot.coordinates}
+    num_tasks = 3
 
-    for i in range(1, 4):
+    for task_id in range(1, num_tasks + 1):
         # 距离保持在几十米级别，确保能量约束不过早触发
-        pickup_coords = (i * 10.0, 0.0)
-        delivery_coords = (i * 10.0, 15.0)
+        pickup_coords = (task_id * 10.0, 0.0)
+        delivery_coords = (task_id * 10.0, 15.0)
 
         pickup, delivery = create_task_node_pair(
-            task_id=i,
-            pickup_id=node_id_counter,
-            delivery_id=node_id_counter + 1,
+            task_id=task_id,
+            pickup_id=task_id,
+            delivery_id=task_id + num_tasks,
             pickup_coords=pickup_coords,
             delivery_coords=delivery_coords,
             demand=30.0  # 降低需求量
         )
 
         task = Task(
-            task_id=i,
+            task_id=task_id,
             pickup_node=pickup,
             delivery_node=delivery,
             demand=30.0  # 降低需求量
@@ -48,11 +48,10 @@ def create_test_scenario():
 
         coordinates[pickup.node_id] = pickup_coords
         coordinates[delivery.node_id] = delivery_coords
-        node_id_counter += 2
 
     distance_matrix = DistanceMatrix(
         coordinates=coordinates,
-        num_tasks=3,
+        num_tasks=num_tasks,
         num_charging_stations=0
     )
 

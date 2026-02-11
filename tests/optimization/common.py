@@ -11,13 +11,11 @@ from typing import Dict, List, Sequence, Tuple
 from copy import deepcopy
 import random
 
-from core.node import DepotNode, ChargingNode, NodeType, create_task_node_pair
 from core.route import create_empty_route
 from core.task import Task, TaskPool
 from core.vehicle import Vehicle, create_vehicle
-from physics.distance import DistanceMatrix
 from physics.energy import EnergyConfig
-from physics.time import TimeWindow, TimeWindowType
+from physics.distance import DistanceMatrix
 from config import (
     CostParameters,
     DestroyRepairParams,
@@ -33,6 +31,14 @@ from planner.alns import MinimalALNS
 from planner.alns_matheuristic import MatheuristicALNS
 from planner.fleet import FleetPlanner
 from tests.optimization.presets import get_scale_preset
+from config.instance_generator import (
+    ChargingPlacement,
+    DepotPosition,
+    TimeWindowMode,
+    WarehouseLayoutConfig,
+    ZoneStrategy,
+    generate_warehouse_instance,
+)
 
 
 @dataclass
@@ -85,76 +91,29 @@ class Scenario:
 def build_scenario(config: ScenarioConfig) -> Scenario:
     """Generate a deterministic scenario for a given configuration."""
 
-    rng = random.Random(config.seed)
-
-    depot = DepotNode(coordinates=(0.0, 0.0))
-    coordinates: Dict[int, Tuple[float, float]] = {0: depot.coordinates}
-
     width, height = config.area_size
 
-    base_cs_id = config.num_tasks * 2 + 1
-    for idx in range(config.num_charging):
-        node_id = base_cs_id + idx
-        offset_x = (idx + 1) / (config.num_charging + 1)
-        coordinate = (width * offset_x, height * (0.3 + 0.4 * offset_x))
-        station = ChargingNode(
-            node_id=node_id,
-            coordinates=coordinate,
-            node_type=NodeType.CHARGING,
-        )
-        coordinates[node_id] = station.coordinates
-
-    tasks: List[Task] = []
-    for task_id in range(1, config.num_tasks + 1):
-        pickup_coords = (
-            rng.uniform(width * 0.1, width * 0.9),
-            rng.uniform(height * 0.1, height * 0.9),
-        )
-        delivery_coords = (
-            rng.uniform(width * 0.1, width * 0.9),
-            rng.uniform(height * 0.1, height * 0.9),
-        )
-
-        pickup_tw_start = task_id * config.service_time
-        pickup_tw_end = pickup_tw_start + config.pickup_tw_width
-        delivery_tw_start = pickup_tw_end + config.delivery_gap
-        delivery_tw_end = delivery_tw_start + config.pickup_tw_width
-
-        pickup, delivery = create_task_node_pair(
-            task_id=task_id,
-            pickup_id=task_id * 2 - 1,
-            delivery_id=task_id * 2,
-            pickup_coords=pickup_coords,
-            delivery_coords=delivery_coords,
-            demand=config.vehicle_capacity * 0.08,
-            service_time=config.service_time,
-            pickup_time_window=TimeWindow(
-                earliest=pickup_tw_start,
-                latest=pickup_tw_end,
-                window_type=TimeWindowType.SOFT,
-            ),
-            delivery_time_window=TimeWindow(
-                earliest=delivery_tw_start,
-                latest=delivery_tw_end,
-                window_type=TimeWindowType.SOFT,
-            ),
-        )
-
-        task = Task(
-            task_id=task_id,
-            pickup_node=pickup,
-            delivery_node=delivery,
-            demand=pickup.demand,
-        )
-        tasks.append(task)
-        coordinates[pickup.node_id] = pickup.coordinates
-        coordinates[delivery.node_id] = delivery.coordinates
-
-    distance = DistanceMatrix(
-        coordinates=coordinates,
+    layout = WarehouseLayoutConfig(
+        width=width,
+        height=height,
+        depot_position=DepotPosition.ORIGIN,
         num_tasks=config.num_tasks,
+        zone_strategy=ZoneStrategy.UNIFORM,
+        uniform_margin=0.1,
+        demand_fixed=config.vehicle_capacity * 0.08,
+        service_time=config.service_time,
+        time_window_mode=TimeWindowMode.SEQUENTIAL,
+        tw_pickup_width=config.pickup_tw_width,
+        tw_delivery_gap=config.delivery_gap,
+        tw_stagger_interval=config.service_time,
         num_charging_stations=config.num_charging,
+        charging_placement=ChargingPlacement.DIAGONAL,
+        seed=config.seed,
     )
+    instance = generate_warehouse_instance(layout)
+    depot = instance.depot
+    tasks = instance.tasks
+    distance = instance.distance_matrix
 
     if config.num_vehicles <= 0:
         raise ValueError("ScenarioConfig.num_vehicles must be at least 1")

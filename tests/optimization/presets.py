@@ -43,6 +43,10 @@ ALNS_TEST_PRESETS: Dict[str, ScalePreset] = {
         scenario_overrides={"num_tasks": 30, "num_charging": 3, "seed": 17},
         iterations=IterationPreset(minimal=32, matheuristic=44),
     ),
+    "xlarge": ScalePreset(
+        scenario_overrides={"num_tasks": 80, "num_charging": 6, "seed": 23},
+        iterations=IterationPreset(minimal=40, matheuristic=56),
+    ),
 }
 
 

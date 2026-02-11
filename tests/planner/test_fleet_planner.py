@@ -12,22 +12,23 @@ def _build_tasks(num_tasks: int):
     depot = DepotNode(coordinates=(0.0, 0.0))
     tasks = []
     coordinates = {0: depot.coordinates}
-    next_node_id = 1
 
     for idx in range(num_tasks):
+        task_id = idx + 1
+        pickup_id = task_id
+        delivery_id = task_id + num_tasks
         x_offset = 50.0 * (idx + 1)
         pickup, delivery = create_task_node_pair(
-            task_id=idx + 1,
-            pickup_id=next_node_id,
-            delivery_id=next_node_id + 1,
+            task_id=task_id,
+            pickup_id=pickup_id,
+            delivery_id=delivery_id,
             pickup_coords=(x_offset, 0.0),
             delivery_coords=(x_offset, 40.0),
             demand=10.0,
         )
-        next_node_id += 2
         tasks.append(
             Task(
-                task_id=idx + 1,
+                task_id=task_id,
                 pickup_node=pickup,
                 delivery_node=delivery,
                 demand=10.0,

@@ -71,29 +71,30 @@ def create_test_scenario():
     # → 可以真正对比不同充电策略的差异
 
     tasks = []
-    node_id_counter = 1  # 从1开始分配节点ID
+    num_tasks = len(task_locations)
     for i, (pickup_loc, delivery_loc) in enumerate(task_locations):
+        task_id = i + 1
         pickup, delivery = create_task_node_pair(
-            task_id=i+1,
-            pickup_id=node_id_counter,
-            delivery_id=node_id_counter + 1,
+            task_id=task_id,
+            pickup_id=task_id,
+            delivery_id=task_id + num_tasks,
             pickup_coords=pickup_loc,
             delivery_coords=delivery_loc,
             demand=20.0
         )
         tasks.append(Task(
-            task_id=i+1,
+            task_id=task_id,
             pickup_node=pickup,
             delivery_node=delivery,
             demand=20.0
         ))
-        node_id_counter += 2  # 每个任务占用2个节点ID
 
     # 3. 创建充电站 (战略位置 - 覆盖更大任务区域)
+    base_cs_id = 2 * num_tasks + 1
     charging_stations = [
-        create_charging_node(100, (25000, 12000)),  # CS1: 东部区域（T1-T3后）
-        create_charging_node(101, (15000, 28000)),  # CS2: 北部区域（T4-T6后）
-        create_charging_node(102, (5000, 18000)),   # CS3: 西部区域（T7-T8后）
+        create_charging_node(base_cs_id + 0, (25000, 12000)),  # CS1: 东部区域（T1-T3后）
+        create_charging_node(base_cs_id + 1, (15000, 28000)),  # CS2: 北部区域（T4-T6后）
+        create_charging_node(base_cs_id + 2, (5000, 18000)),   # CS3: 西部区域（T7-T8后）
     ]
 
     # 4. 创建距离矩阵

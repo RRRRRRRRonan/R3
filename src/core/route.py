@@ -448,23 +448,34 @@ class Route:
                             f"Charging station {node.node_id} unavailable"
                         )
                         return False
-                # 估算剩余能量需求
+                # 估算剩余能量需求（使用与主循环一致的载重敏感能耗模型）
                 remaining_energy = 0.0
                 energy_to_next_station = 0.0
                 next_station_found = False
+                sim_load = current_load
                 for j in range(i, len(self.nodes) - 1):
-                    seg_distance = distance_matrix.get_distance(
-                        self.nodes[j].node_id,
-                        self.nodes[j + 1].node_id
+                    from_node = self.nodes[j]
+                    to_node = self.nodes[j + 1]
+                    seg_distance = distance_matrix.get_distance(from_node.node_id, to_node.node_id)
+                    seg_energy = calculate_energy_consumption(
+                        distance=seg_distance,
+                        load=sim_load,
+                        config=energy_config,
+                        vehicle_speed=time_config.vehicle_speed,
+                        vehicle_capacity=vehicle_capacity,
                     )
-                    seg_time = calculate_travel_time(seg_distance, time_config.vehicle_speed)
-                    seg_energy = energy_config.consumption_rate * seg_time
                     remaining_energy += seg_energy
                     if not next_station_found:
                         energy_to_next_station += seg_energy
-                    if self.nodes[j + 1].is_charging_station() and j >= i:
+                    if to_node.is_charging_station() and j >= i:
                         next_station_found = True
                         break
+                    # Load changes after servicing the next node, which impacts the
+                    # energy consumption of subsequent travel legs.
+                    if to_node.is_pickup() and hasattr(to_node, "demand"):
+                        sim_load += float(getattr(to_node, "demand", 0.0))
+                    elif to_node.is_delivery() and hasattr(to_node, "demand"):
+                        sim_load = max(0.0, sim_load - float(getattr(to_node, "demand", 0.0)))
 
                 if not next_station_found:
                     energy_to_next_station = remaining_energy
@@ -1091,7 +1102,13 @@ class Route:
                     next_node.node_id
                 )
                 travel_time = distance / vehicle_speed  # 秒
-                energy_needed = energy_config.consumption_rate * travel_time  # kWh
+                energy_needed = calculate_energy_consumption(
+                    distance=distance,
+                    load=current_load,
+                    config=energy_config,
+                    vehicle_speed=vehicle_speed,
+                    vehicle_capacity=vehicle.capacity,
+                )
                 safety_threshold_value = energy_config.safety_threshold * vehicle.battery_capacity
 
                 # 在充电站补能
@@ -1102,18 +1119,27 @@ class Route:
                     remaining_energy_demand = 0.0
                     energy_to_next_stop = 0.0
                     next_stop_is_cs = False
+                    sim_load = current_load
                     for j in range(i, len(temp_nodes) - 1):
-                        seg_distance = distance_matrix.get_distance(
-                            temp_nodes[j].node_id,
-                            temp_nodes[j + 1].node_id
+                        from_node = temp_nodes[j]
+                        to_node = temp_nodes[j + 1]
+                        seg_distance = distance_matrix.get_distance(from_node.node_id, to_node.node_id)
+                        seg_energy = calculate_energy_consumption(
+                            distance=seg_distance,
+                            load=sim_load,
+                            config=energy_config,
+                            vehicle_speed=vehicle_speed,
+                            vehicle_capacity=vehicle.capacity,
                         )
-                        travel_time = seg_distance / vehicle_speed
-                        seg_energy = energy_config.consumption_rate * travel_time
                         remaining_energy_demand += seg_energy
                         energy_to_next_stop += seg_energy
-                        if temp_nodes[j + 1].is_charging_station() and j >= i:
+                        if to_node.is_charging_station() and j >= i:
                             next_stop_is_cs = True
                             break
+                        if to_node.is_pickup() and hasattr(to_node, 'demand'):
+                            sim_load += float(getattr(to_node, 'demand', 0.0))
+                        elif to_node.is_delivery() and hasattr(to_node, 'demand'):
+                            sim_load = max(0.0, sim_load - float(getattr(to_node, 'demand', 0.0)))
 
                     if not next_stop_is_cs:
                         energy_to_next_stop = remaining_energy_demand

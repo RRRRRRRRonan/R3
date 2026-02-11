@@ -96,8 +96,8 @@ class ORToolsSolver(MIPBaselineSolver):
         scale = MIPBaselineScale()
         instance.validate_scale(scale)
 
-        cost_params = cost_params or config.cost_params or CostParameters()
         config = self.solver_config
+        cost_params = cost_params or config.cost_params or CostParameters()
 
         vehicles = list(instance.vehicles)
         vehicle_ids = [vehicle.vehicle_id for vehicle in vehicles]

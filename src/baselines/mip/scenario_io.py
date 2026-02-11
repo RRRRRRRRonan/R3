@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from baselines.mip.model import MIPBaselineScenario
+from config.warehouse_layout import (
+    ChargingPlacement,
+    DepotPosition,
+    TimeWindowMode,
+    WarehouseLayoutConfig,
+    ZoneStrategy,
+)
+from physics.time import TimeWindowType
 
 
 def scenario_to_dict(scenario: MIPBaselineScenario) -> Dict:
@@ -132,11 +140,113 @@ def save_scenarios_csv(
 
 
 __all__ = [
+    "ExperimentScenario",
+    "experiment_from_dict",
+    "experiment_to_dict",
     "scenario_to_dict",
     "scenario_from_dict",
+    "layout_config_from_dict",
+    "layout_config_to_dict",
     "save_scenarios_json",
     "load_scenarios_json",
     "save_scenarios_jsonl",
     "load_scenarios_jsonl",
     "save_scenarios_csv",
+    "save_experiment_json",
+    "load_experiment_json",
 ]
+
+
+def layout_config_to_dict(config: WarehouseLayoutConfig) -> Dict[str, Any]:
+    """Return a JSON-serialisable representation of ``WarehouseLayoutConfig``."""
+
+    data = asdict(config)
+    data["depot_position"] = config.depot_position.value
+    data["zone_strategy"] = config.zone_strategy.value
+    data["charging_placement"] = config.charging_placement.value
+    data["time_window_mode"] = config.time_window_mode.value
+    data["time_window_type"] = config.time_window_type.value
+    return data
+
+
+def layout_config_from_dict(data: Dict[str, Any]) -> WarehouseLayoutConfig:
+    """Parse ``WarehouseLayoutConfig`` from ``layout_config_to_dict`` output."""
+
+    kwargs: Dict[str, Any] = {}
+    for key in WarehouseLayoutConfig.__dataclass_fields__:
+        if key in data:
+            kwargs[key] = data[key]
+
+    if "depot_position" in kwargs:
+        kwargs["depot_position"] = DepotPosition(str(kwargs["depot_position"]))
+    if "zone_strategy" in kwargs:
+        kwargs["zone_strategy"] = ZoneStrategy(str(kwargs["zone_strategy"]))
+    if "charging_placement" in kwargs:
+        kwargs["charging_placement"] = ChargingPlacement(str(kwargs["charging_placement"]))
+    if "time_window_mode" in kwargs:
+        kwargs["time_window_mode"] = TimeWindowMode(str(kwargs["time_window_mode"]))
+    if "time_window_type" in kwargs:
+        kwargs["time_window_type"] = TimeWindowType(str(kwargs["time_window_type"]))
+
+    # Normalise common tuple-like fields loaded as lists.
+    if kwargs.get("depot_custom_xy") is not None:
+        kwargs["depot_custom_xy"] = tuple(float(x) for x in kwargs["depot_custom_xy"])
+    if kwargs.get("pickup_x_range") is not None:
+        kwargs["pickup_x_range"] = tuple(float(x) for x in kwargs["pickup_x_range"])
+    if kwargs.get("pickup_y_range") is not None:
+        kwargs["pickup_y_range"] = tuple(float(x) for x in kwargs["pickup_y_range"])
+    if kwargs.get("delivery_x_range") is not None:
+        kwargs["delivery_x_range"] = tuple(float(x) for x in kwargs["delivery_x_range"])
+    if kwargs.get("delivery_y_range") is not None:
+        kwargs["delivery_y_range"] = tuple(float(x) for x in kwargs["delivery_y_range"])
+    if kwargs.get("demand_range") is not None:
+        kwargs["demand_range"] = tuple(float(x) for x in kwargs["demand_range"])
+
+    if kwargs.get("charging_custom_coords") is not None:
+        kwargs["charging_custom_coords"] = tuple(
+            tuple(float(x) for x in pair) for pair in kwargs["charging_custom_coords"]
+        )
+
+    return WarehouseLayoutConfig(**kwargs)
+
+
+@dataclass(frozen=True)
+class ExperimentScenario:
+    """Unified, replayable experiment bundle (layout + dynamic scenarios)."""
+
+    layout: WarehouseLayoutConfig
+    episode_length_s: float = 28_800.0
+    scenarios: List[MIPBaselineScenario] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+def experiment_to_dict(experiment: ExperimentScenario) -> Dict[str, Any]:
+    return {
+        "layout": layout_config_to_dict(experiment.layout),
+        "episode_length_s": float(experiment.episode_length_s),
+        "scenarios": [scenario_to_dict(s) for s in experiment.scenarios],
+        "metadata": dict(experiment.metadata),
+    }
+
+
+def experiment_from_dict(data: Dict[str, Any]) -> ExperimentScenario:
+    layout = layout_config_from_dict(data.get("layout", {}))
+    scenarios = [scenario_from_dict(item) for item in data.get("scenarios", [])]
+    return ExperimentScenario(
+        layout=layout,
+        episode_length_s=float(data.get("episode_length_s", 28_800.0)),
+        scenarios=scenarios,
+        metadata=dict(data.get("metadata", {})),
+    )
+
+
+def save_experiment_json(path: str | Path, experiment: ExperimentScenario) -> None:
+    Path(path).write_text(
+        json.dumps(experiment_to_dict(experiment), ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def load_experiment_json(path: str | Path) -> ExperimentScenario:
+    content = json.loads(Path(path).read_text(encoding="utf-8"))
+    return experiment_from_dict(content)
