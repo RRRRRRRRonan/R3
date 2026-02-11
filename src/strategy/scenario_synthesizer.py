@@ -261,7 +261,8 @@ def _build_time_window_overrides(
             delivery.coordinates[1],
         )
         travel_pd = calculate_travel_time(dist_pd, speed)
-        t_min = float(pickup.service_time) + float(travel_pd)
+        # Section 5.1 mapping: t_min is pickup->delivery minimum travel time.
+        t_min = float(travel_pd)
         node_time_windows[delivery.node_id] = (
             release + t_min,
             release + t_min + delivery_width,

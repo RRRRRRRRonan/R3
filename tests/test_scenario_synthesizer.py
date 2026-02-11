@@ -14,6 +14,8 @@ from dataclasses import replace
 from baselines.mip.config import ScenarioSynthConfig
 from core.task import TaskPool
 from core.vehicle import create_vehicle
+from physics.distance import euclidean_distance
+from physics.time import calculate_travel_time
 from strategy.scenario_synthesizer import synthesize_scenarios
 from strategy.simulator import EventDrivenSimulator
 
@@ -59,13 +61,25 @@ def test_synthesizer_generates_release_times_demands_and_time_windows():
     # Demands stay within truncation bounds.
     assert all(cfg.demand_min_kg <= d <= cfg.demand_max_kg for d in scenario.task_demands.values())
 
-    # Time windows are anchored to release time for pickup nodes.
+    # Time windows are anchored to release time for pickup nodes and to t_r+t_min for delivery.
     for task in instance.tasks:
         release = scenario.task_release_times[task.task_id]
         pickup_tw = scenario.node_time_windows.get(task.pickup_node.node_id)
+        delivery_tw = scenario.node_time_windows.get(task.delivery_node.node_id)
         assert pickup_tw is not None
+        assert delivery_tw is not None
         assert pickup_tw[0] == release
         assert pickup_tw[1] == release + cfg.pickup_tw_width_s
+
+        dist_pd = euclidean_distance(
+            task.pickup_node.coordinates[0],
+            task.pickup_node.coordinates[1],
+            task.delivery_node.coordinates[0],
+            task.delivery_node.coordinates[1],
+        )
+        t_min = calculate_travel_time(dist_pd, cfg.vehicle_speed_m_s)
+        assert delivery_tw[0] == release + t_min
+        assert delivery_tw[1] == release + t_min + cfg.delivery_tw_width_s
 
     # Simulator applies the time-window overrides to its task pool.
     simulator = EventDrivenSimulator(task_pool=pool, vehicles=[create_vehicle(1)], chargers=[])
