@@ -31,6 +31,11 @@ class BenchmarkScaleConfig:
     seed_range: Tuple[int, int]
     # (peak, normal, off-peak) rates in events/second.
     arrival_rates_per_s: Tuple[float, float, float]
+    # Truncated-normal demand model parameters (kg).
+    demand_mean_kg: float = 75.0
+    demand_std_kg: float = 22.5
+    demand_min_kg: float = 0.0
+    demand_max_kg: float = 150.0
 
     def seeds(self) -> Tuple[int, ...]:
         start, end = self.seed_range
@@ -141,4 +146,3 @@ __all__ = [
     "build_benchmark_layout",
     "get_benchmark_scale",
 ]
-
