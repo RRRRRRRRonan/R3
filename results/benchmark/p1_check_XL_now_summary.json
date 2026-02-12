@@ -1,0 +1,10 @@
+{
+  "total_rows": 1,
+  "algorithms": {
+    "alns_pr": {
+      "count": 1,
+      "success_count": 1,
+      "avg_cost": 223616.40037305397
+    }
+  }
+}

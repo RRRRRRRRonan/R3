@@ -1,0 +1,40 @@
+{
+  "total_rows": 35,
+  "algorithms": {
+    "rl_apc": {
+      "count": 5,
+      "success_count": 5,
+      "avg_cost": 109407.63836177476
+    },
+    "alns_fr": {
+      "count": 5,
+      "success_count": 5,
+      "avg_cost": 187009.17645907708
+    },
+    "alns_pr": {
+      "count": 5,
+      "success_count": 5,
+      "avg_cost": 187457.8482128491
+    },
+    "greedy_fr": {
+      "count": 5,
+      "success_count": 5,
+      "avg_cost": 21233.919064932645
+    },
+    "greedy_pr": {
+      "count": 5,
+      "success_count": 5,
+      "avg_cost": 53230.5987419337
+    },
+    "random_rule": {
+      "count": 5,
+      "success_count": 5,
+      "avg_cost": 316312.937586865
+    },
+    "mip_hind": {
+      "count": 5,
+      "success_count": 0,
+      "avg_cost": null
+    }
+  }
+}
