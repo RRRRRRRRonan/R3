@@ -34,6 +34,8 @@ def _base_args() -> Namespace:
         battery_capacity_kwh=None,
         initial_battery_kwh=None,
         vehicle_speed_m_s=None,
+        alns_pr_fallback_charge_ratios="0.9,1.0",
+        alns_pr_disable_fallback=False,
     )
 
 
@@ -128,6 +130,87 @@ def test_run_alns_marks_non_finite_cost_as_error(monkeypatch):
         scenario_index=0,
         args=args,
         charge_strategy=None,
+    )
+    assert result["status"] == "ERROR"
+    assert result["error"] == "non_finite_alns_cost"
+
+
+def test_run_alns_pr_fallback_to_fr_when_non_finite(monkeypatch):
+    @dataclass
+    class FakePlan:
+        initial_cost: float
+        optimised_cost: float
+        unassigned_tasks: list = None
+
+        def __post_init__(self):
+            if self.unassigned_tasks is None:
+                self.unassigned_tasks = []
+
+    class FakePlanner:
+        def __init__(self, *args, **kwargs):
+            self.charging_strategy = kwargs.get("charging_strategy")
+
+        def plan_routes(self, max_iterations: int):
+            strategy = self.charging_strategy
+            if isinstance(strategy, eval_mod.PartialRechargeFixedStrategy):
+                return FakePlan(initial_cost=float("inf"), optimised_cost=10.0)
+            return FakePlan(initial_cost=100.0, optimised_cost=80.0)
+
+    args = _base_args()
+    args.alns_repair_mode = "mixed"
+    args.alns_no_adaptive = True
+    args.alns_verbose = False
+    args.alns_iterations = 1
+    args.alns_pr_charge_ratio = 0.8
+    args.alns_pr_fallback_charge_ratios = "0.9,1.0"
+    args.alns_pr_disable_fallback = False
+
+    inst = _instance("M")
+    monkeypatch.setattr(eval_mod, "FleetPlanner", FakePlanner)
+    result = _run_alns(
+        inst.experiment,
+        scenario_index=0,
+        args=args,
+        charge_strategy=eval_mod.PartialRechargeFixedStrategy(charge_ratio=0.8),
+    )
+    assert result["status"] == "OK"
+    assert result["fallback_used"] is True
+    assert result["fallback_attempts"] >= 1
+    assert "Full Recharge" in str(result["effective_strategy"])
+
+
+def test_run_alns_pr_disable_fallback_preserves_error(monkeypatch):
+    @dataclass
+    class FakePlan:
+        initial_cost: float = float("inf")
+        optimised_cost: float = 10.0
+        unassigned_tasks: list = None
+
+        def __post_init__(self):
+            if self.unassigned_tasks is None:
+                self.unassigned_tasks = []
+
+    class FakePlanner:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def plan_routes(self, max_iterations: int):
+            return FakePlan()
+
+    args = _base_args()
+    args.alns_repair_mode = "mixed"
+    args.alns_no_adaptive = True
+    args.alns_verbose = False
+    args.alns_iterations = 1
+    args.alns_pr_disable_fallback = True
+
+    inst = _instance("M")
+    monkeypatch.setattr(eval_mod, "FleetPlanner", FakePlanner)
+    result = _run_alns(
+        inst.experiment,
+        scenario_index=0,
+        args=args,
+        charge_strategy=eval_mod.PartialRechargeFixedStrategy(charge_ratio=0.8),
     )
     assert result["status"] == "ERROR"
     assert result["error"] == "non_finite_alns_cost"

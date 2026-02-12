@@ -377,64 +377,139 @@ def _run_alns(
     args: argparse.Namespace,
     charge_strategy,
 ) -> Dict[str, Any]:
+    def _build_planner(tasks: Sequence[Task], strategy):
+        pool = TaskPool()
+        pool.add_tasks(tasks)
+        vehicles = _build_fleet_from_experiment(experiment, warehouse.depot.coordinates, args)
+        return FleetPlanner(
+            distance_matrix=warehouse.distance_matrix,
+            depot=warehouse.depot,
+            vehicles=vehicles,
+            task_pool=pool,
+            energy_config=EnergyConfig(),
+            cost_params=CostParameters(),
+            charging_strategy=strategy,
+            repair_mode=args.alns_repair_mode,
+            use_adaptive=(not args.alns_no_adaptive),
+            verbose=args.alns_verbose,
+            alns_class=MinimalALNS,
+        )
+
+    def _plan_to_result(plan, *, num_tasks: int) -> Dict[str, Any]:
+        initial_cost = float(plan.initial_cost)
+        optimised_cost = float(plan.optimised_cost)
+        improvement = float(initial_cost - optimised_cost)
+        # Guard against non-finite outputs (e.g., inf from infeasible ALNS runs).
+        if not all(math.isfinite(value) for value in (initial_cost, optimised_cost, improvement)):
+            return {
+                "status": "ERROR",
+                "error": "non_finite_alns_cost",
+                "cost": optimised_cost,
+                "initial_cost": initial_cost,
+                "improvement": improvement,
+                "improvement_ratio": None,
+                "num_tasks": num_tasks,
+                "unassigned_tasks": len(plan.unassigned_tasks),
+            }
+
+        improvement_ratio = (improvement / initial_cost) if initial_cost > 0 else 0.0
+        if not math.isfinite(improvement_ratio):
+            return {
+                "status": "ERROR",
+                "error": "non_finite_alns_improvement_ratio",
+                "cost": optimised_cost,
+                "initial_cost": initial_cost,
+                "improvement": improvement,
+                "improvement_ratio": None,
+                "num_tasks": num_tasks,
+                "unassigned_tasks": len(plan.unassigned_tasks),
+            }
+
+        return {
+            "status": "OK",
+            "cost": optimised_cost,
+            "initial_cost": initial_cost,
+            "improvement": improvement,
+            "improvement_ratio": improvement_ratio,
+            "num_tasks": num_tasks,
+            "unassigned_tasks": len(plan.unassigned_tasks),
+        }
+
+    def _parse_charge_ratios(raw: str) -> List[float]:
+        ratios: List[float] = []
+        for token in str(raw).split(","):
+            value = token.strip()
+            if not value:
+                continue
+            try:
+                ratio = float(value)
+            except ValueError:
+                continue
+            if 0.0 < ratio <= 1.0:
+                ratios.append(ratio)
+        return ratios
+
     warehouse = generate_warehouse_instance(experiment.layout)
     scenario = _select_scenario(experiment, scenario_index)
     tasks = _materialize_tasks(warehouse.tasks, scenario)
-    pool = TaskPool()
-    pool.add_tasks(tasks)
-    vehicles = _build_fleet_from_experiment(experiment, warehouse.depot.coordinates, args)
-    planner = FleetPlanner(
-        distance_matrix=warehouse.distance_matrix,
-        depot=warehouse.depot,
-        vehicles=vehicles,
-        task_pool=pool,
-        energy_config=EnergyConfig(),
-        cost_params=CostParameters(),
-        charging_strategy=charge_strategy,
-        repair_mode=args.alns_repair_mode,
-        use_adaptive=(not args.alns_no_adaptive),
-        verbose=args.alns_verbose,
-        alns_class=MinimalALNS,
-    )
-    plan = planner.plan_routes(max_iterations=args.alns_iterations)
-    initial_cost = float(plan.initial_cost)
-    optimised_cost = float(plan.optimised_cost)
-    improvement = float(initial_cost - optimised_cost)
-    # Guard against non-finite outputs (e.g., inf from infeasible ALNS runs).
-    if not all(math.isfinite(value) for value in (initial_cost, optimised_cost, improvement)):
+
+    # For ALNS-PR, progressively raise charge ratio and finally fall back to FR
+    # when non-finite costs indicate infeasible partial-recharge schedules.
+    strategy_chain = [charge_strategy]
+    if isinstance(charge_strategy, PartialRechargeFixedStrategy) and not bool(
+        getattr(args, "alns_pr_disable_fallback", False)
+    ):
+        base_ratio = float(charge_strategy.charge_ratio)
+        parsed_ratios = _parse_charge_ratios(
+            getattr(args, "alns_pr_fallback_charge_ratios", "0.9,1.0")
+        )
+        seen_ratios = {round(base_ratio, 6)}
+        for ratio in parsed_ratios:
+            key = round(ratio, 6)
+            if key in seen_ratios:
+                continue
+            seen_ratios.add(key)
+            strategy_chain.append(PartialRechargeFixedStrategy(charge_ratio=ratio))
+        strategy_chain.append(FullRechargeStrategy())
+
+    attempted = []
+    last_result: Dict[str, Any] | None = None
+    for idx, strategy in enumerate(strategy_chain):
+        planner = _build_planner(tasks, strategy)
+        plan = planner.plan_routes(max_iterations=args.alns_iterations)
+        result = _plan_to_result(plan, num_tasks=len(tasks))
+        strategy_name = (
+            strategy.get_strategy_name() if hasattr(strategy, "get_strategy_name") else type(strategy).__name__
+        )
+        attempted.append(strategy_name)
+
+        if result.get("status") == "OK":
+            result["fallback_used"] = idx > 0
+            result["initial_strategy"] = (
+                charge_strategy.get_strategy_name()
+                if hasattr(charge_strategy, "get_strategy_name")
+                else type(charge_strategy).__name__
+            )
+            result["effective_strategy"] = strategy_name
+            if hasattr(strategy, "charge_ratio"):
+                result["effective_charge_ratio"] = float(strategy.charge_ratio)
+            result["fallback_attempts"] = idx
+            if idx > 0 and hasattr(charge_strategy, "charge_ratio"):
+                result["initial_charge_ratio"] = float(charge_strategy.charge_ratio)
+            return result
+        last_result = result
+
+    if last_result is None:  # pragma: no cover - defensive guard
         return {
             "status": "ERROR",
-            "error": "non_finite_alns_cost",
-            "cost": optimised_cost,
-            "initial_cost": initial_cost,
-            "improvement": improvement,
-            "improvement_ratio": None,
+            "error": "alns_internal_no_result",
             "num_tasks": len(tasks),
-            "unassigned_tasks": len(plan.unassigned_tasks),
+            "unassigned_tasks": None,
         }
-
-    improvement_ratio = (improvement / initial_cost) if initial_cost > 0 else 0.0
-    if not math.isfinite(improvement_ratio):
-        return {
-            "status": "ERROR",
-            "error": "non_finite_alns_improvement_ratio",
-            "cost": optimised_cost,
-            "initial_cost": initial_cost,
-            "improvement": improvement,
-            "improvement_ratio": None,
-            "num_tasks": len(tasks),
-            "unassigned_tasks": len(plan.unassigned_tasks),
-        }
-
-    return {
-        "status": "OK",
-        "cost": optimised_cost,
-        "initial_cost": initial_cost,
-        "improvement": improvement,
-        "improvement_ratio": improvement_ratio,
-        "num_tasks": len(tasks),
-        "unassigned_tasks": len(plan.unassigned_tasks),
-    }
+    last_result = dict(last_result)
+    last_result["fallback_used"] = len(strategy_chain) > 1
+    last_result["attempted_strategies"] = ";".join(attempted)
+    return last_result
 
 
 def _run_mip(
@@ -793,6 +868,17 @@ def main() -> int:
 
     parser.add_argument("--alns-iterations", type=int, default=40)
     parser.add_argument("--alns-pr-charge-ratio", type=float, default=0.8)
+    parser.add_argument(
+        "--alns-pr-fallback-charge-ratios",
+        type=str,
+        default="0.9,1.0",
+        help="Comma-separated ALNS-PR fallback charge ratios before FR fallback.",
+    )
+    parser.add_argument(
+        "--alns-pr-disable-fallback",
+        action="store_true",
+        help="Disable ALNS-PR feasibility fallback (higher charge ratio / FR).",
+    )
     parser.add_argument("--alns-repair-mode", type=str, default="mixed")
     parser.add_argument("--alns-no-adaptive", action="store_true")
     parser.add_argument("--alns-verbose", action="store_true")

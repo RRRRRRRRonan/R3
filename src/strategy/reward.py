@@ -19,6 +19,7 @@ class CostBreakdown:
     waiting: float
     conflict_wait: float
     rejection: float
+    infeasible: float
     standby: float
     total: float
 
@@ -48,10 +49,14 @@ def compute_delta_cost(
     delta_time = max(0.0, new.total_travel_time - prev.total_travel_time)
     delta_charging = max(0.0, new.total_charging - prev.total_charging)
     delta_delay = max(0.0, new.total_delay - prev.total_delay)
-    delta_waiting = max(0.0, new.total_waiting_weighted - prev.total_waiting_weighted)
+    weighted_waiting_delta = max(0.0, new.total_waiting_weighted - prev.total_waiting_weighted)
+    raw_waiting_delta = max(0.0, new.total_waiting - prev.total_waiting)
+    # Backward compatibility: older paths may only populate raw waiting metrics.
+    delta_waiting = weighted_waiting_delta if weighted_waiting_delta > 0.0 else raw_waiting_delta
     delta_conflict = max(0.0, new.total_conflict_waiting - prev.total_conflict_waiting)
     delta_standby = max(0.0, new.total_standby - prev.total_standby)
     delta_rejected = max(0, new.rejected_tasks - prev.rejected_tasks)
+    delta_infeasible = max(0, new.infeasible_actions - prev.infeasible_actions)
 
     travel_cost = cost_params.C_tr * delta_distance
     time_cost = cost_params.C_time * delta_time
@@ -61,6 +66,7 @@ def compute_delta_cost(
     conflict_cost = cost_params.C_conflict * delta_conflict
     standby_cost = cost_params.C_standby * delta_standby
     rejection_cost = cost_params.C_missing_task * delta_rejected
+    infeasible_cost = cost_params.C_infeasible * delta_infeasible
     total = (
         travel_cost
         + time_cost
@@ -70,6 +76,7 @@ def compute_delta_cost(
         + conflict_cost
         + standby_cost
         + rejection_cost
+        + infeasible_cost
     )
 
     return CostBreakdown(
@@ -80,6 +87,7 @@ def compute_delta_cost(
         waiting=waiting_cost,
         conflict_wait=conflict_cost,
         rejection=rejection_cost,
+        infeasible=infeasible_cost,
         standby=standby_cost,
         total=total,
     )
@@ -113,6 +121,7 @@ def to_info_dict(cost: CostBreakdown) -> Dict[str, float]:
         "waiting": cost.waiting,
         "conflict_wait": cost.conflict_wait,
         "rejection": cost.rejection,
+        "infeasible": cost.infeasible,
         "standby": cost.standby,
         "total": cost.total,
     }

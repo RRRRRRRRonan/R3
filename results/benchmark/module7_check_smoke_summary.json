@@ -1,0 +1,10 @@
+{
+  "total_rows": 1,
+  "algorithms": {
+    "greedy_pr": {
+      "count": 1,
+      "success_count": 1,
+      "avg_cost": 10802.055598566549
+    }
+  }
+}
