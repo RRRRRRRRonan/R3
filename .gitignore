@@ -47,3 +47,7 @@ htmlcov/
 
 # Logs
 *.log
+
+# Large RL run artifacts (can exceed GitHub file size limits)
+results/rl/**/robot_log_*.csv
+results/rl/**/robot_log_*.jsonl
