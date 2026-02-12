@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 from argparse import Namespace
+from dataclasses import dataclass
 from pathlib import Path
 
 from baselines.mip.scenario_io import ExperimentScenario
 from config.benchmark_manifest import BenchmarkManifestEntry
 from config.warehouse_layout import WarehouseLayoutConfig
+import scripts.evaluate_all as eval_mod
 from scripts.evaluate_all import (
     InstanceRun,
     _evaluate_algorithm,
     _parse_scale_set,
+    _run_alns,
     _resolve_mip_runtime_budget,
 )
 
@@ -92,3 +95,39 @@ def test_evaluate_algorithm_uses_medium_time_budget_for_m(monkeypatch):
     assert captured["time_limit_s"] == 30.0
     assert captured["decision_epochs"] == 3
 
+
+def test_run_alns_marks_non_finite_cost_as_error(monkeypatch):
+    @dataclass
+    class FakePlan:
+        initial_cost: float = float("inf")
+        optimised_cost: float = 10.0
+        unassigned_tasks: list = None
+
+        def __post_init__(self):
+            if self.unassigned_tasks is None:
+                self.unassigned_tasks = []
+
+    class FakePlanner:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def plan_routes(self, max_iterations: int):
+            return FakePlan()
+
+    args = _base_args()
+    args.alns_repair_mode = "mixed"
+    args.alns_no_adaptive = True
+    args.alns_verbose = False
+    args.alns_iterations = 1
+    args.alns_pr_charge_ratio = 0.8
+
+    inst = _instance("S")
+    monkeypatch.setattr(eval_mod, "FleetPlanner", FakePlanner)
+    result = _run_alns(
+        inst.experiment,
+        scenario_index=0,
+        args=args,
+        charge_strategy=None,
+    )
+    assert result["status"] == "ERROR"
+    assert result["error"] == "non_finite_alns_cost"

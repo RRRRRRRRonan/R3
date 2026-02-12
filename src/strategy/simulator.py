@@ -181,6 +181,16 @@ class EventDrivenSimulator:
             self._apply_event(event)
             if event.event_type in DECISION_EVENTS:
                 return event, self._snapshot(event)
+        # If the queue drains but work is still pending with idle robots, surface
+        # a synthetic idle decision epoch so the controller can recover.
+        if self._pending_task_ids and self._idle_vehicle_ids:
+            vehicle_id = min(self._idle_vehicle_ids)
+            synthetic_event = Event(
+                time=self.current_time,
+                event_type=EVENT_ROBOT_IDLE,
+                payload={"vehicle_id": vehicle_id},
+            )
+            return synthetic_event, self._snapshot(synthetic_event)
         return None, self._snapshot(None)
 
     def advance_until(self, time: float) -> None:

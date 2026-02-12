@@ -1,0 +1,2 @@
+{"time": 212.01562118716424, "task_id": 1, "prev_status": "pending", "status": "completed", "prev_assigned_vehicle_id": null, "assigned_vehicle_id": 1, "pickup_node_id": 1, "delivery_node_id": 16, "demand": 80.28075631694543, "priority": 0, "arrival_time": 182.31908539741715}
+{"time": 1262.394818406903, "task_id": 2, "prev_status": "pending", "status": "completed", "prev_assigned_vehicle_id": null, "assigned_vehicle_id": 1, "pickup_node_id": 2, "delivery_node_id": 17, "demand": 78.19368651904324, "priority": 0, "arrival_time": 1243.954403375923}

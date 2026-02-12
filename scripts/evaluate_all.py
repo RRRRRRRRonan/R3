@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib
 import json
+import math
 import os
 import sys
 import time
@@ -67,6 +69,8 @@ ALGORITHM_LABELS = {
     "greedy_pr": "Greedy-PR",
     "random_rule": "Random-Rule",
 }
+
+_RL_MODEL_CACHE: Dict[Tuple[str, int, int], Any] = {}
 
 
 @dataclass(frozen=True)
@@ -313,6 +317,12 @@ def _run_rule_env_policy(
                 obs.get("vehicles", []) + obs.get("tasks", []) + obs.get("chargers", []) + obs.get("meta", []),
                 dtype=np.float32,
             )
+            if isinstance(model, str):
+                model = _get_cached_rl_model(
+                    model,
+                    observation_dim=int(flat.shape[0]),
+                    action_dim=len(mask),
+                )
             action, _ = model.predict(
                 flat,
                 action_masks=np.asarray(mask, dtype=bool),
@@ -387,14 +397,41 @@ def _run_alns(
         alns_class=MinimalALNS,
     )
     plan = planner.plan_routes(max_iterations=args.alns_iterations)
+    initial_cost = float(plan.initial_cost)
+    optimised_cost = float(plan.optimised_cost)
+    improvement = float(initial_cost - optimised_cost)
+    # Guard against non-finite outputs (e.g., inf from infeasible ALNS runs).
+    if not all(math.isfinite(value) for value in (initial_cost, optimised_cost, improvement)):
+        return {
+            "status": "ERROR",
+            "error": "non_finite_alns_cost",
+            "cost": optimised_cost,
+            "initial_cost": initial_cost,
+            "improvement": improvement,
+            "improvement_ratio": None,
+            "num_tasks": len(tasks),
+            "unassigned_tasks": len(plan.unassigned_tasks),
+        }
+
+    improvement_ratio = (improvement / initial_cost) if initial_cost > 0 else 0.0
+    if not math.isfinite(improvement_ratio):
+        return {
+            "status": "ERROR",
+            "error": "non_finite_alns_improvement_ratio",
+            "cost": optimised_cost,
+            "initial_cost": initial_cost,
+            "improvement": improvement,
+            "improvement_ratio": None,
+            "num_tasks": len(tasks),
+            "unassigned_tasks": len(plan.unassigned_tasks),
+        }
+
     return {
         "status": "OK",
-        "cost": plan.optimised_cost,
-        "initial_cost": plan.initial_cost,
-        "improvement": plan.initial_cost - plan.optimised_cost,
-        "improvement_ratio": (plan.initial_cost - plan.optimised_cost) / plan.initial_cost
-        if plan.initial_cost > 0
-        else 0.0,
+        "cost": optimised_cost,
+        "initial_cost": initial_cost,
+        "improvement": improvement,
+        "improvement_ratio": improvement_ratio,
         "num_tasks": len(tasks),
         "unassigned_tasks": len(plan.unassigned_tasks),
     }
@@ -471,10 +508,110 @@ def _resolve_mip_runtime_budget(scale: str, args: argparse.Namespace) -> Dict[st
     }
 
 
-def _load_maskable_ppo_model(path: str):
-    from sb3_contrib import MaskablePPO
+def _install_numpy_pickle_compat_aliases() -> None:
+    """Install numpy module aliases for cross-version pickle compatibility.
 
-    return MaskablePPO.load(path)
+    Some models are pickled against ``numpy._core.*`` (newer layout) while
+    others expect ``numpy.core.*`` (older layout). We install both aliases when
+    possible so ``MaskablePPO.load`` can deserialize across environments.
+    """
+
+    pairs = [
+        ("numpy.core", "numpy._core"),
+        ("numpy._core", "numpy.core"),
+        ("numpy.core.numeric", "numpy._core.numeric"),
+        ("numpy._core.numeric", "numpy.core.numeric"),
+        ("numpy.core.multiarray", "numpy._core.multiarray"),
+        ("numpy._core.multiarray", "numpy.core.multiarray"),
+        ("numpy.core._multiarray_umath", "numpy._core._multiarray_umath"),
+        ("numpy._core._multiarray_umath", "numpy.core._multiarray_umath"),
+    ]
+    for source, alias in pairs:
+        if alias in sys.modules:
+            continue
+        try:
+            sys.modules[alias] = importlib.import_module(source)
+        except Exception:
+            continue
+
+
+def _install_numpy_random_pickle_ctor_compat() -> None:
+    """Patch numpy bit-generator ctor for cross-version pickle payloads."""
+
+    try:
+        np_pickle = importlib.import_module("numpy.random._pickle")
+    except Exception:
+        return
+
+    if getattr(np_pickle, "_codex_bitgen_ctor_patched", False):
+        return
+
+    original_ctor = getattr(np_pickle, "__bit_generator_ctor", None)
+    if original_ctor is None:
+        return
+
+    def _compat_ctor(bit_generator_name="MT19937"):
+        value = bit_generator_name
+        if isinstance(value, type):
+            cls_name = getattr(value, "__name__", None)
+            if cls_name:
+                value = cls_name
+        if not isinstance(value, str):
+            value = str(value)
+        if value.startswith("<class '") and value.endswith("'>"):
+            value = value[len("<class '") : -len("'>")]
+        if "." in value:
+            value = value.split(".")[-1]
+        return original_ctor(value)
+
+    setattr(np_pickle, "__bit_generator_ctor", _compat_ctor)
+    setattr(np_pickle, "_codex_bitgen_ctor_patched", True)
+
+
+def _load_maskable_ppo_model(
+    path: str,
+    *,
+    observation_dim: Optional[int] = None,
+    action_dim: Optional[int] = None,
+):
+    from sb3_contrib import MaskablePPO
+    custom_objects = None
+    if observation_dim is not None and action_dim is not None:
+        import gymnasium as gym
+        import numpy as np
+
+        custom_objects = {
+            "observation_space": gym.spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(int(observation_dim),),
+                dtype=np.float32,
+            ),
+            "action_space": gym.spaces.Discrete(int(action_dim)),
+        }
+
+    try:
+        return MaskablePPO.load(path, custom_objects=custom_objects)
+    except ModuleNotFoundError as exc:
+        # Windows/Linux env drift often shows up as numpy.core vs numpy._core.
+        if "numpy._core" not in str(exc) and "numpy.core" not in str(exc):
+            raise
+        _install_numpy_pickle_compat_aliases()
+        _install_numpy_random_pickle_ctor_compat()
+        return MaskablePPO.load(path, custom_objects=custom_objects)
+
+
+def _get_cached_rl_model(model_path: str, *, observation_dim: int, action_dim: int):
+    key = (str(model_path), int(observation_dim), int(action_dim))
+    model = _RL_MODEL_CACHE.get(key)
+    if model is None:
+        model = _load_maskable_ppo_model(
+            str(model_path),
+            observation_dim=int(observation_dim),
+            action_dim=int(action_dim),
+        )
+        _RL_MODEL_CACHE[key] = model
+    return model
 
 
 def _evaluate_algorithm(
@@ -691,11 +828,9 @@ def main() -> int:
 
     rl_model = None
     if "rl_apc" in algorithms and args.ppo_model_path:
-        try:
-            rl_model = _load_maskable_ppo_model(args.ppo_model_path)
-        except Exception as exc:
-            print(f"[warn] failed to load PPO model '{args.ppo_model_path}': {exc}")
-            rl_model = None
+        # Lazy-load with per-env observation/action dimensions for better
+        # cross-version compatibility of serialized spaces.
+        rl_model = str(args.ppo_model_path)
     elif "rl_apc" in algorithms:
         print("[warn] rl_apc selected but --ppo-model-path not set; RL rows will be marked SKIPPED.")
 
