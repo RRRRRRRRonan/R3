@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import ctypes
+import glob
+import os
 from dataclasses import dataclass, field
 from itertools import combinations
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -308,13 +311,21 @@ class ORToolsSolver(MIPBaselineSolver):
 
         rule_ids = list(range(1, max(1, instance.rule_count) + 1))
 
-        solver = pywraplp.Solver.CreateSolver("CBC_MIXED_INTEGER_PROGRAMMING")
+        backend_name, backend_kind = _resolve_ortools_backend(config.solver_name)
+        if backend_kind == "gurobi":
+            _preflight_gurobi_ortools_abi()
+        solver = pywraplp.Solver.CreateSolver(backend_name)
         if solver is None:
-            raise RuntimeError("Failed to create OR-Tools CBC solver.")
+            if backend_kind == "gurobi":
+                raise RuntimeError(
+                    "Failed to create OR-Tools Gurobi backend. Ensure Gurobi is installed and "
+                    "licensed, and OR-Tools is built with Gurobi support. "
+                    "Fallback: use solver_name='ortools'."
+                )
+            raise RuntimeError(f"Failed to create OR-Tools solver backend: {backend_name}.")
         if config.time_limit_s > 0:
             solver.SetTimeLimit(int(config.time_limit_s * 1000))
-        if config.mip_gap > 0:
-            solver.SetSolverSpecificParametersAsString(f"ratioGap={config.mip_gap}")
+        _set_backend_mip_gap(solver, backend_kind=backend_kind, mip_gap=config.mip_gap)
 
         arcs: List[Tuple[int, int]] = []
         for i in node_ids:
@@ -1777,14 +1788,65 @@ def _status_label(status_code: int, pywraplp_module) -> str:
     return "UNKNOWN"
 
 
+def _resolve_ortools_backend(solver_name: str) -> Tuple[str, str]:
+    name = str(solver_name).strip().lower()
+    if name in ("ortools", "or-tools", "or_tools", "cbc"):
+        return "CBC_MIXED_INTEGER_PROGRAMMING", "cbc"
+    if name in ("gurobi", "or-tools-gurobi", "or_tools_gurobi"):
+        return "GUROBI_MIXED_INTEGER_PROGRAMMING", "gurobi"
+    raise ValueError(f"Unsupported MIP baseline solver: {solver_name}")
+
+
+def _preflight_gurobi_ortools_abi() -> None:
+    """Fail fast with a clear message for known OR-Tools/Gurobi ABI mismatch."""
+    library = _find_gurobi_shared_library()
+    if not library:
+        return
+    try:
+        handle = ctypes.CDLL(library)
+    except OSError:
+        return
+    if not hasattr(handle, "GRBcopyparams"):
+        raise RuntimeError(
+            "Detected Gurobi shared library at "
+            f"'{library}', but it is not ABI-compatible with this OR-Tools Gurobi backend "
+            "(missing symbol 'GRBcopyparams'). This is typical when using Gurobi 13.x with an "
+            "OR-Tools build expecting Gurobi 12.x API. "
+            "Use solver_name='ortools' (CBC) or install an OR-Tools build compatible with your "
+            "Gurobi major version."
+        )
+
+
+def _find_gurobi_shared_library() -> Optional[str]:
+    home = os.environ.get("GUROBI_HOME", "").strip()
+    if home:
+        candidates = sorted(glob.glob(os.path.join(home, "lib", "libgurobi*.so*")), reverse=True)
+        non_light = [path for path in candidates if "_light" not in os.path.basename(path)]
+        if non_light:
+            return non_light[0]
+        if candidates:
+            return candidates[0]
+    return None
+
+
+def _set_backend_mip_gap(solver, *, backend_kind: str, mip_gap: float) -> None:
+    if mip_gap <= 0:
+        return
+    if backend_kind == "cbc":
+        solver.SetSolverSpecificParametersAsString(f"ratioGap={mip_gap}")
+        return
+    if backend_kind == "gurobi":
+        solver.SetSolverSpecificParametersAsString(f"MIPGap={mip_gap}")
+        return
+    raise ValueError(f"Unsupported OR-Tools backend kind: {backend_kind}")
+
+
 def get_default_solver(
     solver_config: Optional[MIPBaselineSolverConfig] = None,
 ) -> MIPBaselineSolver:
     config = solver_config or MIPBaselineSolverConfig()
-    name = config.solver_name.lower()
-    if name in ("ortools", "or-tools", "or_tools"):
-        return ORToolsSolver(config)
-    raise ValueError(f"Unsupported MIP baseline solver: {config.solver_name}")
+    _resolve_ortools_backend(config.solver_name)
+    return ORToolsSolver(config)
 
 
 def solve_minimal_instance(

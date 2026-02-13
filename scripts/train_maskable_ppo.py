@@ -61,7 +61,8 @@ def build_env(
         # Replay: keep the exact layout/scenarios stored on disk.
         layout = experiment.layout
         scenarios = experiment.scenarios
-        max_time_s = experiment.episode_length_s
+        # Keep 8h horizon as the default benchmark boundary unless explicitly overridden.
+        max_time_s = args.max_time_s if args.max_time_s is not None else experiment.episode_length_s
     instance = generate_warehouse_instance(layout)
 
     pool = TaskPool()
@@ -107,6 +108,8 @@ def build_env(
         execution_layer=executor,
         max_decision_steps=args.max_decision_steps,
         max_time_s=max_time_s,
+        max_no_progress_steps=args.max_no_progress_steps,
+        no_progress_time_epsilon=args.no_progress_time_epsilon,
         mip_solver_config=solver_config,
         scenarios=scenarios,
         heatmap_log_path=heatmap_log_path,
@@ -127,22 +130,54 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--total-timesteps", type=int, default=50_000)
+    parser.add_argument(
+        "--total-timesteps",
+        type=int,
+        default=500_000,
+        help="Total PPO training timesteps.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--log-dir", type=str, default="results/rl")
-    parser.add_argument("--eval-freq", type=int, default=2_000)
+    parser.add_argument(
+        "--eval-freq",
+        type=int,
+        default=50_000,
+        help="Run periodic evaluation every N environment steps.",
+    )
     parser.add_argument("--min-soc-threshold", type=float, default=None)
-    parser.add_argument("--eval-episodes", type=int, default=5)
+    parser.add_argument(
+        "--eval-episodes",
+        type=int,
+        default=3,
+        help="Number of episodes per periodic evaluation.",
+    )
     parser.add_argument("--num-tasks", type=int, default=8)
     parser.add_argument("--num-vehicles", type=int, default=2)
     parser.add_argument("--num-chargers", type=int, default=2)
-    parser.add_argument("--max-decision-steps", type=int, default=200)
+    parser.add_argument(
+        "--max-decision-steps",
+        type=int,
+        default=None,
+        help="Optional hard cap on decision steps; default is unset (time horizon controls episode end).",
+    )
     # Paper Section 5.1: 8h episode horizon.
     parser.add_argument(
         "--max-time-s",
         type=float,
         default=28_800.0,
         help="Episode horizon in seconds (paper Section 5.1: 8h).",
+    )
+    parser.add_argument(
+        "--max-no-progress-steps",
+        type=int,
+        default=512,
+        help="Truncate an episode after this many consecutive no-progress decision steps (<=0 disables).",
+    )
+    parser.add_argument(
+        "--no-progress-time-epsilon",
+        type=float,
+        default=1e-9,
+        help="Treat step as no-progress when next_state.t - prev_state.t <= epsilon.",
     )
     parser.add_argument(
         "--experiment-json",

@@ -53,6 +53,8 @@ class RuleSelectionEnv:
         execution_layer: Optional["ExecutionLayer"] = None,
         max_decision_steps: Optional[int] = None,
         max_time_s: Optional[float] = None,
+        max_no_progress_steps: Optional[int] = 512,
+        no_progress_time_epsilon: float = 1e-9,
         cost_params=None,
         mip_solver_config: Optional[MIPBaselineSolverConfig] = None,
         scenarios: Optional[Sequence[MIPBaselineScenario]] = None,
@@ -88,6 +90,12 @@ class RuleSelectionEnv:
             # Paper-aligned default episode horizon.
             max_time_s = mip_solver_config.scenario_synth_config.episode_length_s
         self.max_time_s = max_time_s
+        if max_no_progress_steps is None:
+            self.max_no_progress_steps = None
+        else:
+            parsed_limit = int(max_no_progress_steps)
+            self.max_no_progress_steps = parsed_limit if parsed_limit > 0 else None
+        self.no_progress_time_epsilon = max(0.0, float(no_progress_time_epsilon))
         self.scenarios = list(scenarios) if scenarios else []
         if mip_solver_config is not None:
             if synth_config is None:
@@ -144,6 +152,7 @@ class RuleSelectionEnv:
         self._current_event: Optional[Event] = None
         self._current_state: Optional[SimulatorState] = None
         self._decision_steps = 0
+        self._no_progress_steps = 0
         self._task_snapshot: Dict[int, Tuple[str, Optional[int]]] = {}
 
     def set_seed(self, seed: Optional[int]) -> None:
@@ -173,6 +182,7 @@ class RuleSelectionEnv:
         self._current_event = event
         self._current_state = self.simulator.build_state(event=event)
         self._decision_steps = 0
+        self._no_progress_steps = 0
         self._task_snapshot = self._snapshot_task_states()
         obs = env_get_obs(
             self._current_state,
@@ -279,6 +289,10 @@ class RuleSelectionEnv:
             top_k_chargers=self.top_k_chargers,
         )
         dt = self._current_state.t - prev_state.t
+        if dt <= self.no_progress_time_epsilon:
+            self._no_progress_steps += 1
+        else:
+            self._no_progress_steps = 0
         cost_breakdown = compute_delta_cost(
             prev_state,
             self._current_state,
@@ -333,6 +347,7 @@ class RuleSelectionEnv:
             "fallback_rule": fallback_rule_id,
             "event_type": event.event_type if event else None,
             "event_time": event.time if event else None,
+            "no_progress_steps": self._no_progress_steps,
         }
         if self._current_scenario is not None:
             info["scenario_id"] = self._current_scenario.scenario_id
@@ -381,6 +396,12 @@ class RuleSelectionEnv:
 
         if self.max_time_s is not None and self._current_state.t >= self.max_time_s:
             return False, True, "max_time"
+
+        if (
+            self.max_no_progress_steps is not None
+            and self._no_progress_steps >= self.max_no_progress_steps
+        ):
+            return False, True, "no_progress"
 
         if self._current_event is None:
             return True, False, "event_queue_empty"

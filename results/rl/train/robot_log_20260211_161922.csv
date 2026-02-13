@@ -1,3 +1,0 @@
-time,vehicle_id,status,x,y,soc,battery,battery_capacity,load,load_ratio,capacity,speed,idle,current_time
-0.0,1,idle,0.0,0.0,1.0,100.0,100.0,0.0,0.0,150.0,2.0,1,0.0
-0.0,2,idle,0.0,0.0,1.0,100.0,100.0,0.0,0.0,150.0,2.0,1,0.0

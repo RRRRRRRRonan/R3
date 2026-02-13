@@ -271,6 +271,8 @@ def _build_rule_env(
         ),
         max_decision_steps=args.max_decision_steps,
         max_time_s=args.max_time_s if args.max_time_s is not None else experiment.episode_length_s,
+        max_no_progress_steps=args.max_no_progress_steps,
+        no_progress_time_epsilon=args.no_progress_time_epsilon,
         mip_solver_config=solver_config,
         scenarios=scenarios,
         scenario_seed=seed,
@@ -861,6 +863,18 @@ def main() -> int:
         help="Optional hard cap on decision steps; default is unset (no step-based truncation).",
     )
     parser.add_argument("--max-time-s", type=float, default=None)
+    parser.add_argument(
+        "--max-no-progress-steps",
+        type=int,
+        default=512,
+        help="Truncate an episode after this many consecutive no-progress decision steps (<=0 disables).",
+    )
+    parser.add_argument(
+        "--no-progress-time-epsilon",
+        type=float,
+        default=1e-9,
+        help="Treat step as no-progress when next_state.t - prev_state.t <= epsilon.",
+    )
     parser.add_argument("--num-vehicles", type=int, default=2)
     parser.add_argument("--vehicle-capacity-kg", type=float, default=None)
     parser.add_argument("--battery-capacity-kwh", type=float, default=None)
@@ -896,7 +910,13 @@ def main() -> int:
         help="M-scale (30-40 tasks) MIP time limit in seconds.",
     )
     parser.add_argument("--mip-gap", type=float, default=0.0)
-    parser.add_argument("--mip-solver-name", type=str, default="ortools")
+    parser.add_argument(
+        "--mip-solver-name",
+        type=str,
+        default="ortools",
+        choices=("ortools", "gurobi"),
+        help="MIP backend: 'ortools' (CBC) or 'gurobi' via OR-Tools.",
+    )
     parser.add_argument("--mip-scenario-mode", type=str, default="minimal", choices=("minimal", "medium"))
     parser.add_argument("--mip-rule-count", type=int, default=13)
     parser.add_argument("--mip-decision-epochs", type=int, default=3)

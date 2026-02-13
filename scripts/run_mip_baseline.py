@@ -130,7 +130,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Solve MIP baseline instances.")
     parser.add_argument("--time-limit", type=float, default=30.0, help="Time limit (seconds).")
     parser.add_argument("--mip-gap", type=float, default=0.0, help="Relative MIP gap.")
-    parser.add_argument("--solver-name", type=str, default="ortools", help="Solver backend name.")
+    parser.add_argument(
+        "--solver-name",
+        type=str,
+        default="ortools",
+        choices=("ortools", "gurobi"),
+        help="MIP backend: 'ortools' (CBC) or 'gurobi' via OR-Tools.",
+    )
     parser.add_argument(
         "--scenario-mode",
         type=str,

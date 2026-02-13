@@ -105,6 +105,21 @@ def test_train_maskable_ppo_cli_default_max_time_is_28800s():
     assert "(default: 28800.0)" in output
 
 
+def test_train_maskable_ppo_cli_defaults_match_p0_training_policy():
+    output = _run_help("train_maskable_ppo.py")
+    assert "--total-timesteps TOTAL_TIMESTEPS" in output
+    assert "(default: 500000)" in output
+    assert "--eval-freq EVAL_FREQ" in output
+    assert "(default: 50000)" in output
+    assert "--eval-episodes EVAL_EPISODES" in output
+    assert "Number of episodes per periodic evaluation." in output
+    assert "--max-decision-steps MAX_DECISION_STEPS" in output
+    assert "(default: None)" in output
+    assert "--max-no-progress-steps MAX_NO_PROGRESS_STEPS" in output
+    assert "(default: 512)" in output
+    assert "--no-progress-time-epsilon NO_PROGRESS_TIME_EPSILON" in output
+
+
 def test_generate_benchmark_instances_cli_default_episode_length_is_28800s():
     output = _run_help("generate_benchmark_instances.py")
     assert "--episode-length-s EPISODE_LENGTH_S" in output
