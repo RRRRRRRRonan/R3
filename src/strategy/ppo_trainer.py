@@ -19,7 +19,7 @@ def _default_ppo_kwargs() -> dict[str, object]:
         "learning_rate": 3e-4,
         "batch_size": 256,
         "n_epochs": 4,
-        "ent_coef": 0.01,
+        "ent_coef": 0.03,
         "n_steps": 2048,
         "policy_kwargs": {"net_arch": [256, 128]},
     }

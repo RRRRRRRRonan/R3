@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 import random
 import sys
+from typing import List, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC_PATH = ROOT / "src"
@@ -25,6 +26,7 @@ except ImportError as exc:  # pragma: no cover
 
 from config.instance_generator import PPO_TRAINING, generate_warehouse_instance
 from config.benchmark_manifest import (
+    list_manifest_entries,
     load_manifest,
     resolve_entry_path,
     select_manifest_entry,
@@ -34,6 +36,7 @@ from baselines.mip.scenario_io import ExperimentScenario, load_experiment_json
 from coordinator.traffic_manager import TrafficManager
 from core.task import TaskPool
 from core.vehicle import create_vehicle
+from core.node import ChargingNode
 from strategy.execution_layer import ExecutionLayer
 from strategy.rule_env import RuleSelectionEnv
 from strategy.ppo_trainer import PPOTrainingConfig, make_masked_env, train_maskable_ppo
@@ -41,13 +44,57 @@ from strategy.scenario_synthesizer import synthesize_scenarios
 from strategy.simulator import EventDrivenSimulator
 
 
-def build_env(
+class EpisodeRotatingCoreEnv:
+    """Sample one training core-env at each reset for instance-level augmentation."""
+
+    def __init__(self, envs: Sequence[RuleSelectionEnv], *, seed: int | None = None) -> None:
+        if not envs:
+            raise ValueError("EpisodeRotatingCoreEnv requires at least one env")
+        self._envs = list(envs)
+        self._rng = random.Random(seed)
+        self._active_env = self._envs[0]
+        self.top_k_tasks = self._active_env.top_k_tasks
+        self.top_k_chargers = self._active_env.top_k_chargers
+        self.simulator = self._active_env.simulator
+        self._validate_compatibility()
+
+    def _validate_compatibility(self) -> None:
+        base_num_vehicles = len(self._active_env.simulator.vehicles)
+        for idx, env in enumerate(self._envs[1:], start=1):
+            if env.top_k_tasks != self.top_k_tasks or env.top_k_chargers != self.top_k_chargers:
+                raise ValueError(
+                    "Incompatible train env at index {}: top-k settings differ".format(idx)
+                )
+            if len(env.simulator.vehicles) != base_num_vehicles:
+                raise ValueError(
+                    "Incompatible train env at index {}: vehicle count differs ({} vs {})".format(
+                        idx,
+                        len(env.simulator.vehicles),
+                        base_num_vehicles,
+                    )
+                )
+
+    def reset(self, *, seed: int | None = None):
+        if seed is not None:
+            self._rng.seed(seed)
+        self._active_env = self._rng.choice(self._envs)
+        self.simulator = self._active_env.simulator
+        return self._active_env.reset(seed=seed)
+
+    def step(self, action_rule_id: int):
+        return self._active_env.step(action_rule_id)
+
+    def action_masks(self):
+        return self._active_env.action_masks()
+
+
+def _build_core_env(
     args,
     *,
     seed: int,
     log_dir: Path,
     experiment: ExperimentScenario | None = None,
-) -> RuleSelectionGymEnv:
+) -> RuleSelectionEnv:
     if experiment is None:
         layout = replace(
             PPO_TRAINING,
@@ -123,7 +170,41 @@ def build_env(
         robot_log_csv_path=str(log_dir / f"robot_log_{stamp}.csv"),
     )
 
-    return make_masked_env(core_env)
+    return core_env
+
+
+def build_env(
+    args,
+    *,
+    seed: int,
+    log_dir: Path,
+    experiment: ExperimentScenario | None = None,
+) -> RuleSelectionGymEnv:
+    return make_masked_env(_build_core_env(args, seed=seed, log_dir=log_dir, experiment=experiment))
+
+
+def build_train_env(
+    args,
+    *,
+    seed: int,
+    log_dir: Path,
+    experiments: Sequence[ExperimentScenario | None],
+) -> RuleSelectionGymEnv:
+    if not experiments:
+        return build_env(args, seed=seed, log_dir=log_dir, experiment=None)
+    if len(experiments) == 1:
+        return build_env(args, seed=seed, log_dir=log_dir, experiment=experiments[0])
+
+    core_envs = [
+        _build_core_env(
+            args,
+            seed=seed + idx,
+            log_dir=log_dir / f"entry_{idx:03d}",
+            experiment=experiment,
+        )
+        for idx, experiment in enumerate(experiments)
+    ]
+    return make_masked_env(EpisodeRotatingCoreEnv(core_envs, seed=seed))
 
 
 def main() -> None:
@@ -225,7 +306,18 @@ def main() -> None:
         "--entry-index",
         type=int,
         default=0,
-        help="Entry index among filtered train manifest entries.",
+        help="When --single-train-entry is set, pick this index among filtered train entries.",
+    )
+    parser.add_argument(
+        "--single-train-entry",
+        action="store_true",
+        help="Disable episode-level train instance rotation and use only one train entry.",
+    )
+    parser.add_argument(
+        "--max-train-instances",
+        type=int,
+        default=None,
+        help="Optional cap on matched train entries used for episode-level rotation.",
     )
     parser.add_argument(
         "--eval-entry-index",
@@ -252,22 +344,49 @@ def main() -> None:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-    train_experiment = None
+    train_experiments: List[ExperimentScenario | None] = [None]
     eval_experiment = None
     if args.experiment_json:
         train_experiment = load_experiment_json(args.experiment_json)
+        train_experiments = [train_experiment]
         eval_experiment = train_experiment
     elif args.manifest_json:
         manifest = load_manifest(args.manifest_json)
         instances_root = args.instances_root or str(Path(args.manifest_json).resolve().parent)
 
-        train_entry = select_manifest_entry(
+        train_entries = list_manifest_entries(
             manifest,
             split=args.split,
             scale=args.scale,
             seed=args.seed_id,
-            entry_index=args.entry_index,
         )
+        if not train_entries:
+            raise ValueError(
+                "No manifest entries matched train filters: split={!r}, scale={!r}, seed={!r}".format(
+                    args.split,
+                    args.scale,
+                    args.seed_id,
+                )
+            )
+        if args.single_train_entry:
+            idx = int(args.entry_index)
+            if idx < 0 or idx >= len(train_entries):
+                raise IndexError(
+                    f"entry-index {idx} out of range for {len(train_entries)} filtered train entries"
+                )
+            selected_train_entries = [train_entries[idx]]
+        else:
+            selected_train_entries = train_entries
+        if args.max_train_instances is not None:
+            selected_train_entries = selected_train_entries[: max(0, int(args.max_train_instances))]
+            if not selected_train_entries:
+                raise ValueError("No train entries selected after applying --max-train-instances.")
+
+        train_experiments = []
+        for entry in selected_train_entries:
+            train_path = resolve_entry_path(entry, instances_root=instances_root)
+            train_experiments.append(load_experiment_json(train_path))
+
         eval_entry = select_manifest_entry(
             manifest,
             split=args.eval_split,
@@ -275,12 +394,17 @@ def main() -> None:
             seed=args.seed_id,
             entry_index=args.eval_entry_index,
         )
-        train_path = resolve_entry_path(train_entry, instances_root=instances_root)
         eval_path = resolve_entry_path(eval_entry, instances_root=instances_root)
-        train_experiment = load_experiment_json(train_path)
         eval_experiment = load_experiment_json(eval_path)
+        if len(train_experiments) > 1:
+            print(f"[train] episode-level instance rotation enabled with {len(train_experiments)} entries.")
 
-    train_env = build_env(args, seed=args.seed, log_dir=log_dir / "train", experiment=train_experiment)
+    train_env = build_train_env(
+        args,
+        seed=args.seed,
+        log_dir=log_dir / "train",
+        experiments=train_experiments,
+    )
     eval_env = build_env(args, seed=args.seed + 1, log_dir=log_dir / "eval", experiment=eval_experiment)
 
     config = PPOTrainingConfig(

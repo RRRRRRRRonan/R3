@@ -120,6 +120,12 @@ def test_train_maskable_ppo_cli_defaults_match_p0_training_policy():
     assert "--no-progress-time-epsilon NO_PROGRESS_TIME_EPSILON" in output
 
 
+def test_train_maskable_ppo_cli_exposes_instance_rotation_options():
+    output = _run_help("train_maskable_ppo.py")
+    assert "--single-train-entry" in output
+    assert "--max-train-instances MAX_TRAIN_INSTANCES" in output
+
+
 def test_generate_benchmark_instances_cli_default_episode_length_is_28800s():
     output = _run_help("generate_benchmark_instances.py")
     assert "--episode-length-s EPISODE_LENGTH_S" in output
