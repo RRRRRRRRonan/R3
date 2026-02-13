@@ -29,12 +29,12 @@ def _default_ppo_kwargs() -> dict[str, object]:
 class PPOTrainingConfig:
     """Configuration for MaskablePPO training."""
 
-    total_timesteps: int = 50_000
+    total_timesteps: int = 500_000
     seed: int = 42
     policy: str = "MlpPolicy"
     log_dir: Optional[str] = None
-    eval_freq: int = 2_000
-    eval_episodes: int = 5
+    eval_freq: int = 50_000
+    eval_episodes: int = 3
     deterministic_eval: bool = True
     ppo_kwargs: dict[str, object] = field(default_factory=_default_ppo_kwargs)
 
