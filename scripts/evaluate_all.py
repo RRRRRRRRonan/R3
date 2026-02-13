@@ -854,7 +854,12 @@ def main() -> int:
 
     parser.add_argument("--headway-s", type=float, default=2.0)
     parser.add_argument("--min-soc-threshold", type=float, default=None)
-    parser.add_argument("--max-decision-steps", type=int, default=200)
+    parser.add_argument(
+        "--max-decision-steps",
+        type=int,
+        default=None,
+        help="Optional hard cap on decision steps; default is unset (no step-based truncation).",
+    )
     parser.add_argument("--max-time-s", type=float, default=None)
     parser.add_argument("--num-vehicles", type=int, default=2)
     parser.add_argument("--vehicle-capacity-kg", type=float, default=None)
