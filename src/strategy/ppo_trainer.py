@@ -20,7 +20,7 @@ def _default_ppo_kwargs() -> dict[str, object]:
         "batch_size": 256,
         "n_epochs": 4,
         "ent_coef": 0.03,
-        "n_steps": 2048,
+        "n_steps": 4096,
         "policy_kwargs": {"net_arch": [256, 128]},
     }
 
@@ -29,7 +29,7 @@ def _default_ppo_kwargs() -> dict[str, object]:
 class PPOTrainingConfig:
     """Configuration for MaskablePPO training."""
 
-    total_timesteps: int = 500_000
+    total_timesteps: int = 1_000_000
     seed: int = 42
     policy: str = "MlpPolicy"
     log_dir: Optional[str] = None

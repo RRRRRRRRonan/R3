@@ -214,7 +214,7 @@ def main() -> None:
     parser.add_argument(
         "--total-timesteps",
         type=int,
-        default=500_000,
+        default=1_000_000,
         help="Total PPO training timesteps.",
     )
     parser.add_argument("--seed", type=int, default=42)

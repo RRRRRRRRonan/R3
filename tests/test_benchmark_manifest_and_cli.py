@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from config.benchmark_manifest import list_manifest_entries, load_manifest, resolve_entry_path
+from strategy.ppo_trainer import PPOTrainingConfig
 
 
 def _write_manifest(path: Path) -> Path:
@@ -108,7 +109,7 @@ def test_train_maskable_ppo_cli_default_max_time_is_28800s():
 def test_train_maskable_ppo_cli_defaults_match_p0_training_policy():
     output = _run_help("train_maskable_ppo.py")
     assert "--total-timesteps TOTAL_TIMESTEPS" in output
-    assert "(default: 500000)" in output
+    assert "(default: 1000000)" in output
     assert "--eval-freq EVAL_FREQ" in output
     assert "(default: 50000)" in output
     assert "--eval-episodes EVAL_EPISODES" in output
@@ -124,6 +125,31 @@ def test_train_maskable_ppo_cli_exposes_instance_rotation_options():
     output = _run_help("train_maskable_ppo.py")
     assert "--single-train-entry" in output
     assert "--max-train-instances MAX_TRAIN_INSTANCES" in output
+
+
+def test_train_all_scales_wrapper_exposes_standardized_options():
+    root = Path(__file__).resolve().parents[1]
+    script_path = root / "scripts" / "train_all_scales.sh"
+    result = subprocess.run(
+        ["bash", str(script_path), "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    output = result.stdout
+    assert "--manifest-json PATH" in output
+    assert "--scales \"S M L XL\"" in output
+    assert "--total-timesteps INT" in output
+    assert "--dry-run" in output
+
+
+def test_ppo_training_config_defaults_match_table2():
+    config = PPOTrainingConfig()
+    assert config.total_timesteps == 1_000_000
+    assert config.eval_freq == 50_000
+    assert config.eval_episodes == 3
+    assert config.ppo_kwargs["n_steps"] == 4096
+    assert config.ppo_kwargs["ent_coef"] == 0.03
 
 
 def test_generate_benchmark_instances_cli_default_episode_length_is_28800s():
