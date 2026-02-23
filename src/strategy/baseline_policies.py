@@ -6,14 +6,14 @@ import random
 from dataclasses import dataclass
 from typing import Sequence
 
-from strategy.rule_gating import RULE_CHARGE_OPPORTUNITY, RULE_CHARGE_TARGET
+from strategy.rule_gating import RULE_CHARGE_OPPORTUNITY, RULE_CHARGE_TARGET_HIGH
 
 
 # Screenshot Section 4 baselines:
-# - Greedy-FR: lock to Rule 7
-# - Greedy-PR: lock to Rule 6
+# - Greedy-FR: lock to opportunity charging
+# - Greedy-PR: lock to HIGH target charge depth (80%)
 GREEDY_FR_RULE_ID = RULE_CHARGE_OPPORTUNITY
-GREEDY_PR_RULE_ID = RULE_CHARGE_TARGET
+GREEDY_PR_RULE_ID = RULE_CHARGE_TARGET_HIGH
 
 
 @dataclass(frozen=True)

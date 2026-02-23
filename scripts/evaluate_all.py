@@ -918,7 +918,7 @@ def main() -> int:
         help="MIP backend: 'ortools' (CBC) or 'gurobi' via OR-Tools.",
     )
     parser.add_argument("--mip-scenario-mode", type=str, default="minimal", choices=("minimal", "medium"))
-    parser.add_argument("--mip-rule-count", type=int, default=13)
+    parser.add_argument("--mip-rule-count", type=int, default=15)
     parser.add_argument("--mip-decision-epochs", type=int, default=3)
     parser.add_argument(
         "--mip-skip-scales",
