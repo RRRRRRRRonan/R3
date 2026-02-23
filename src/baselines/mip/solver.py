@@ -1011,7 +1011,14 @@ class ORToolsSolver(MIPBaselineSolver):
                                     )
                                     >= pi_active
                                 )
-                    if rule_id == RULE_CHARGE_TARGET and prefs.charge_level_ratios:
+                    if (
+                        rule_id in (
+                            RULE_CHARGE_TARGET_LOW,
+                            RULE_CHARGE_TARGET_MED,
+                            RULE_CHARGE_TARGET_HIGH,
+                        )
+                        and prefs.charge_level_ratios
+                    ):
                         for vehicle_id in vehicle_ids:
                             preferred = prefs.preferred_charging_stations.get(vehicle_id, [])
                             if preferred:
@@ -1027,7 +1034,7 @@ class ORToolsSolver(MIPBaselineSolver):
                                 levels = []
                                 for idx, ratio in enumerate(prefs.charge_level_ratios):
                                     level = solver.BoolVar(
-                                        f"rule6_level_{vehicle_id}_{node_id}_{scenario_id}_{idx}"
+                                        f"rule_level_{rule_id}_{vehicle_id}_{node_id}_{scenario_id}_{idx}"
                                     )
                                     levels.append((ratio, level))
                                 level_sum = solver.Sum(level for _, level in levels)
@@ -1707,9 +1714,18 @@ def _build_rule_preferences(
         if best_nodes:
             preferred_charging_rule6[vehicle.vehicle_id] = best_nodes
 
-    preferences[RULE_CHARGE_TARGET] = RulePreferences(
+    ratios = config.rule6_charge_level_ratios or (0.3, 0.5, 0.8)
+    preferences[RULE_CHARGE_TARGET_LOW] = RulePreferences(
         preferred_charging_stations=preferred_charging_rule6,
-        charge_level_ratios=config.rule6_charge_level_ratios,
+        charge_level_ratios=(ratios[0],) if len(ratios) > 0 else (0.3,)
+    )
+    preferences[RULE_CHARGE_TARGET_MED] = RulePreferences(
+        preferred_charging_stations=preferred_charging_rule6,
+        charge_level_ratios=(ratios[1],) if len(ratios) > 1 else (0.5,)
+    )
+    preferences[RULE_CHARGE_TARGET_HIGH] = RulePreferences(
+        preferred_charging_stations=preferred_charging_rule6,
+        charge_level_ratios=(ratios[2],) if len(ratios) > 2 else (0.8,)
     )
     preferences[RULE_CHARGE_OPPORTUNITY] = RulePreferences(
         min_charge_ratio=config.rule7_min_charge_ratio
