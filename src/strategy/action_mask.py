@@ -14,7 +14,9 @@ from strategy.rule_gating import (
     RULE_ACCEPT_FEASIBLE,
     RULE_ACCEPT_VALUE,
     RULE_CHARGE_OPPORTUNITY,
-    RULE_CHARGE_TARGET,
+    RULE_CHARGE_TARGET_HIGH,
+    RULE_CHARGE_TARGET_LOW,
+    RULE_CHARGE_TARGET_MED,
     RULE_CHARGE_URGENT,
     RULE_EDD,
     RULE_HPF,
@@ -42,7 +44,9 @@ ALL_RULES: List[int] = [
     RULE_MST,
     RULE_HPF,
     RULE_CHARGE_URGENT,
-    RULE_CHARGE_TARGET,
+    RULE_CHARGE_TARGET_LOW,
+    RULE_CHARGE_TARGET_MED,
+    RULE_CHARGE_TARGET_HIGH,
     RULE_CHARGE_OPPORTUNITY,
     RULE_STANDBY_LOW_COST,
     RULE_STANDBY_LAZY,
@@ -61,7 +65,7 @@ def action_masks(
     energy_config: Optional[EnergyConfig] = None,
     return_numpy: bool = False,
 ) -> Sequence[bool]:
-    """Return a rule-level action mask (length=13) after gating + feasibility."""
+    """Return a rule-level action mask (length=15) after gating + feasibility."""
 
     available = set(get_available_rules(event, state, soc_threshold=soc_threshold))
     mask: List[bool] = []
@@ -127,7 +131,7 @@ def rule_feasible(
                 and _can_reach_any_charger(vehicle, state, energy_config)
                 for vehicle in vehicles
             )
-        if rule_id == RULE_CHARGE_TARGET:
+        if rule_id in {RULE_CHARGE_TARGET_LOW, RULE_CHARGE_TARGET_MED, RULE_CHARGE_TARGET_HIGH}:
             return any(
                 vehicle.current_battery < vehicle.battery_capacity - 1e-6
                 and _can_reach_any_charger(vehicle, state, energy_config)

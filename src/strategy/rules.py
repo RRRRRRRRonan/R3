@@ -16,7 +16,9 @@ from strategy.rule_gating import (
     RULE_ACCEPT_FEASIBLE,
     RULE_ACCEPT_VALUE,
     RULE_CHARGE_OPPORTUNITY,
-    RULE_CHARGE_TARGET,
+    RULE_CHARGE_TARGET_HIGH,
+    RULE_CHARGE_TARGET_LOW,
+    RULE_CHARGE_TARGET_MED,
     RULE_CHARGE_URGENT,
     RULE_EDD,
     RULE_HPF,
@@ -186,12 +188,16 @@ def _apply_charge_rule(
     current_soc = _vehicle_soc(chosen_vehicle)
     ratios = sorted(charge_level_ratios)
     if not ratios:
-        ratios = [0.5]
+        ratios = [0.3, 0.5, 0.8]
 
     if rule_id == RULE_CHARGE_URGENT:
         soc_target = ratios[0]
-    elif rule_id == RULE_CHARGE_TARGET:
-        soc_target = _select_target_ratio(current_soc, ratios)
+    elif rule_id == RULE_CHARGE_TARGET_LOW:
+        soc_target = ratios[0] if len(ratios) > 0 else 0.3
+    elif rule_id == RULE_CHARGE_TARGET_MED:
+        soc_target = ratios[1] if len(ratios) > 1 else 0.5
+    elif rule_id == RULE_CHARGE_TARGET_HIGH:
+        soc_target = ratios[2] if len(ratios) > 2 else 0.8
     elif rule_id == RULE_CHARGE_OPPORTUNITY:
         if queue_time <= 0.0:
             soc_target = max(ratios)

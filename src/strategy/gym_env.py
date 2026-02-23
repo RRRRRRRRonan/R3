@@ -30,7 +30,7 @@ class RuleSelectionGymEnv(gym.Env):
         self.top_k_tasks = core_env.top_k_tasks
         self.top_k_chargers = core_env.top_k_chargers
 
-        self.action_space = spaces.Discrete(13)
+        self.action_space = spaces.Discrete(15)
         self.observation_space = spaces.Box(
             low=-np.inf,
             high=np.inf,
