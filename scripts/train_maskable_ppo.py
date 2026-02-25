@@ -392,6 +392,63 @@ def main() -> None:
     parser.add_argument("--heatmap-log-path", type=str, default=None)
     parser.add_argument("--auto-heatmap-from-synth", action="store_true", default=True)
     parser.add_argument(
+        "--vec-normalize",
+        dest="vec_normalize",
+        action="store_true",
+        default=True,
+        help="Enable VecNormalize for PPO training.",
+    )
+    parser.add_argument(
+        "--no-vec-normalize",
+        dest="vec_normalize",
+        action="store_false",
+        help="Disable VecNormalize for PPO training.",
+    )
+    parser.add_argument(
+        "--vec-norm-obs",
+        dest="vec_norm_obs",
+        action="store_true",
+        default=True,
+        help="Enable observation normalization in VecNormalize.",
+    )
+    parser.add_argument(
+        "--no-vec-norm-obs",
+        dest="vec_norm_obs",
+        action="store_false",
+        help="Disable observation normalization in VecNormalize.",
+    )
+    parser.add_argument(
+        "--vec-norm-reward",
+        dest="vec_norm_reward",
+        action="store_true",
+        default=True,
+        help="Enable reward normalization in VecNormalize.",
+    )
+    parser.add_argument(
+        "--no-vec-norm-reward",
+        dest="vec_norm_reward",
+        action="store_false",
+        help="Disable reward normalization in VecNormalize.",
+    )
+    parser.add_argument(
+        "--vec-clip-obs",
+        type=float,
+        default=10.0,
+        help="Observation clip value for VecNormalize.",
+    )
+    parser.add_argument(
+        "--vec-clip-reward",
+        type=float,
+        default=10.0,
+        help="Reward clip value for VecNormalize.",
+    )
+    parser.add_argument(
+        "--vec-norm-epsilon",
+        type=float,
+        default=1e-8,
+        help="Epsilon for VecNormalize running statistics.",
+    )
+    parser.add_argument(
         "--auto-highlight-anomalies",
         dest="auto_highlight_anomalies",
         action="store_true",
@@ -520,6 +577,12 @@ def main() -> None:
         eval_freq=args.eval_freq,
         eval_episodes=args.eval_episodes,
         deterministic_eval=True,
+        use_vec_normalize=bool(args.vec_normalize),
+        vec_norm_obs=bool(args.vec_norm_obs),
+        vec_norm_reward=bool(args.vec_norm_reward),
+        vec_clip_obs=float(args.vec_clip_obs),
+        vec_clip_reward=float(args.vec_clip_reward),
+        vec_norm_epsilon=float(args.vec_norm_epsilon),
     )
     train_maskable_ppo(train_env, eval_env, config=config)
     if args.auto_highlight_anomalies:

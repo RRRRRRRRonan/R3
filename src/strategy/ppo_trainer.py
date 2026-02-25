@@ -36,6 +36,12 @@ class PPOTrainingConfig:
     eval_freq: int = 50_000
     eval_episodes: int = 3
     deterministic_eval: bool = True
+    use_vec_normalize: bool = True
+    vec_norm_obs: bool = True
+    vec_norm_reward: bool = True
+    vec_clip_obs: float = 10.0
+    vec_clip_reward: float = 10.0
+    vec_norm_epsilon: float = 1e-8
     ppo_kwargs: dict[str, object] = field(default_factory=_default_ppo_kwargs)
 
 
@@ -66,9 +72,15 @@ def train_maskable_ppo(
         save_dir = Path(config.log_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
 
-    if eval_env is not None and config.eval_freq > 0:
+    train_vec_env, eval_vec_env, vec_normalize_env = _prepare_vec_envs(
+        train_env=train_env,
+        eval_env=eval_env,
+        config=config,
+    )
+
+    if eval_vec_env is not None and config.eval_freq > 0:
         callback = MaskableEvalCallback(
-            eval_env,
+            eval_vec_env,
             best_model_save_path=str(save_dir / "best_model") if save_dir else None,
             log_path=str(save_dir / "eval_logs") if save_dir else None,
             eval_freq=config.eval_freq,
@@ -78,7 +90,7 @@ def train_maskable_ppo(
 
     model = MaskablePPO(
         config.policy,
-        train_env,
+        train_vec_env,
         verbose=1,
         seed=config.seed,
         **config.ppo_kwargs,
@@ -86,7 +98,57 @@ def train_maskable_ppo(
     model.learn(total_timesteps=config.total_timesteps, callback=callback)
     if save_dir:
         model.save(str(save_dir / "final_model"))
+        if vec_normalize_env is not None:
+            vec_normalize_env.save(str(save_dir / "vecnormalize.pkl"))
     return model
+
+
+def _prepare_vec_envs(
+    *,
+    train_env,
+    eval_env,
+    config: PPOTrainingConfig,
+):
+    from stable_baselines3.common.vec_env import VecNormalize
+
+    train_vec_env = _ensure_vec_env(train_env)
+    eval_vec_env = _ensure_vec_env(eval_env) if eval_env is not None else None
+
+    if not config.use_vec_normalize:
+        return train_vec_env, eval_vec_env, None
+
+    gamma = float(config.ppo_kwargs.get("gamma", 0.99))
+    train_vec_env = VecNormalize(
+        train_vec_env,
+        training=True,
+        norm_obs=config.vec_norm_obs,
+        norm_reward=config.vec_norm_reward,
+        clip_obs=float(config.vec_clip_obs),
+        clip_reward=float(config.vec_clip_reward),
+        gamma=gamma,
+        epsilon=float(config.vec_norm_epsilon),
+    )
+    if eval_vec_env is not None:
+        eval_vec_env = VecNormalize(
+            eval_vec_env,
+            training=False,
+            norm_obs=config.vec_norm_obs,
+            norm_reward=False,
+            clip_obs=float(config.vec_clip_obs),
+            clip_reward=float(config.vec_clip_reward),
+            gamma=gamma,
+            epsilon=float(config.vec_norm_epsilon),
+        )
+        eval_vec_env.obs_rms = train_vec_env.obs_rms
+    return train_vec_env, eval_vec_env, train_vec_env
+
+
+def _ensure_vec_env(env):
+    from stable_baselines3.common.vec_env import DummyVecEnv, VecEnv
+
+    if isinstance(env, VecEnv):
+        return env
+    return DummyVecEnv([lambda: env])
 
 
 def _require_maskable_ppo():
