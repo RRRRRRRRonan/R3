@@ -74,6 +74,7 @@ def apply(
             rule_id,
             event,
             state,
+            energy_config=energy_config,
         )
 
     if rule_id in CHARGE_RULES:
@@ -126,6 +127,8 @@ def _apply_dispatch_rule(
     rule_id: int,
     event: Optional[Event],
     state: SimulatorState,
+    *,
+    energy_config: Optional[EnergyConfig],
 ) -> AtomicAction:
     vehicles = _candidate_vehicles(event, state)
     tasks = _candidate_tasks(event, state)
@@ -133,25 +136,54 @@ def _apply_dispatch_rule(
     if not vehicles or not tasks:
         return AtomicAction(kind="DWELL", payload=_fallback_dwell_payload(state, event))
 
+    feasible_pairs = [
+        (vehicle, task)
+        for task in tasks
+        for vehicle in vehicles
+        if _vehicle_can_serve_task(vehicle, task, state, energy_config)
+    ]
+    if not feasible_pairs:
+        return AtomicAction(kind="DWELL", payload=_fallback_dwell_payload(state, event))
+
+    task_by_id: Dict[int, object] = {}
+    vehicles_by_task: Dict[int, List[object]] = {}
+    for vehicle, task in feasible_pairs:
+        task_by_id[task.task_id] = task
+        vehicles_by_task.setdefault(task.task_id, []).append(vehicle)
+    feasible_tasks = list(task_by_id.values())
+
     if rule_id == RULE_STTF:
-        vehicle, task = _select_pair_min_travel(vehicles, tasks)
+        vehicle, task = min(
+            feasible_pairs,
+            key=lambda pair: _euclidean(pair[0].current_location, pair[1].pickup_coordinates),
+        )
         mode = "uncommitted"
     elif rule_id == RULE_EDD:
-        task = _select_task_earliest_due(tasks)
-        vehicle = _nearest_vehicle(task, vehicles)
+        task = _select_task_earliest_due(feasible_tasks)
+        if task is None:
+            return AtomicAction(kind="DWELL", payload=_fallback_dwell_payload(state, event))
+        vehicle = _nearest_vehicle(task, vehicles_by_task.get(task.task_id, vehicles))
         mode = "dispatch"
     elif rule_id == RULE_MST:
-        task, vehicle = _select_task_min_slack(tasks, vehicles, state)
+        vehicle, task = min(
+            feasible_pairs,
+            key=lambda pair: _task_slack(pair[1], pair[0], state),
+        )
         mode = "dispatch"
     elif rule_id == RULE_HPF:
-        task = _select_task_highest_priority(tasks)
-        vehicle = _nearest_vehicle(task, vehicles)
+        task = _select_task_highest_priority(feasible_tasks)
+        if task is None:
+            return AtomicAction(kind="DWELL", payload=_fallback_dwell_payload(state, event))
+        vehicle = _nearest_vehicle(task, vehicles_by_task.get(task.task_id, vehicles))
         mode = "dispatch"
     elif rule_id == RULE_INSERT_MIN_COST:
-        vehicle, task = _select_pair_min_incremental_cost(vehicles, tasks)
+        vehicle, task = min(feasible_pairs, key=lambda pair: _estimate_incremental_cost(pair[0], pair[1]))
         mode = "insert"
     else:
-        vehicle, task = _select_pair_min_travel(vehicles, tasks)
+        vehicle, task = min(
+            feasible_pairs,
+            key=lambda pair: _euclidean(pair[0].current_location, pair[1].pickup_coordinates),
+        )
         mode = "dispatch"
 
     return AtomicAction(
@@ -229,9 +261,13 @@ def _apply_standby_rule(
 
     if rule_id == RULE_STANDBY_HEATMAP:
         node_id = _select_heatmap_node(state, vehicle, heatmap_scores)
+        if node_id in state.chargers:
+            node_id = -1
         return AtomicAction(kind="DWELL", payload={"robot_id": vehicle.vehicle_id, "node_id": node_id})
 
     node_id = _select_low_cost_node(state, vehicle, standby_beta)
+    if node_id in state.chargers:
+        node_id = -1
     return AtomicAction(kind="DWELL", payload={"robot_id": vehicle.vehicle_id, "node_id": node_id})
 
 
@@ -443,6 +479,7 @@ def _select_charger_and_vehicle(
             candidate_vehicles = low_soc
     candidate_vehicles.sort(key=_vehicle_soc)
 
+    config = energy_config or EnergyConfig()
     best = None
     for vehicle in candidate_vehicles:
         for charger in state.chargers.values():
@@ -450,16 +487,16 @@ def _select_charger_and_vehicle(
                 continue
             travel = _travel_time(vehicle.current_location, charger.coordinates, vehicle.speed)
             queue = charger.estimated_wait_s
-            if energy_config is not None:
-                required = calculate_energy_consumption(
-                    distance=_euclidean(vehicle.current_location, charger.coordinates),
-                    load=vehicle.current_load,
-                    config=energy_config,
-                    vehicle_speed=vehicle.speed,
-                    vehicle_capacity=vehicle.capacity,
-                )
-                if required > vehicle.current_battery + 1e-6:
-                    continue
+            required = calculate_energy_consumption(
+                distance=_euclidean(vehicle.current_location, charger.coordinates),
+                load=vehicle.current_load,
+                config=config,
+                vehicle_speed=vehicle.speed,
+                vehicle_capacity=vehicle.capacity,
+            )
+            min_battery = max(0.0, config.safety_threshold) * vehicle.battery_capacity
+            if vehicle.current_battery - required < min_battery - 1e-6:
+                continue
             score = travel + queue
             if best is None or score < best[0]:
                 best = (score, charger.node_id, vehicle, travel, queue)
