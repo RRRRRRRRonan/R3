@@ -11,7 +11,7 @@ import heapq
 import itertools
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from core.task import Task, TaskPool
+from core.task import Task, TaskPool, TaskStatus
 from core.vehicle import Vehicle
 from core.node import ChargingNode
 
@@ -145,6 +145,17 @@ class EventDrivenSimulator:
         self._arrived_task_ids.clear()
         self._soc_low_vehicles.clear()
         self._last_deadlock_time = None
+
+        # Deep-reset task trackers to prevent cross-episode state leakage.
+        for tracker in self.task_pool.trackers.values():
+            tracker.status = TaskStatus.PENDING
+            tracker.assigned_vehicle_id = None
+            tracker.pickup_time = None
+            tracker.delivery_time = None
+
+        # Deep-reset vehicle physical/execution state for a clean episode start.
+        for vehicle in self.vehicles:
+            vehicle.reset_to_initial_state()
 
         for task in self.task_pool.get_all_tasks():
             availability = self._scenario_task_availability.get(task.task_id, 1)

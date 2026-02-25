@@ -66,10 +66,9 @@ def get_available_rules(
     has_tasks = bool(state.open_tasks)
     has_energy_risk = _has_energy_risk(state, soc_threshold)
 
-    if event_type == EVENT_TASK_ARRIVAL:
-        # Accept/reject is only meaningful at arrival epochs.
-        if has_tasks:
-            available.extend(ACCEPT_RULES)
+    if event_type in {EVENT_TASK_ARRIVAL, "EVENT_TASK_ARRIVAL"}:
+        # Highest priority at arrival epochs: always expose accept/reject.
+        available.extend(ACCEPT_RULES)
         # On arrival, prioritize dispatch; allow charging if energy risk is present.
         available.extend(DISPATCH_RULES)
         if has_energy_risk:
