@@ -1,2 +1,0 @@
-algorithm,algorithm_id,status,runtime_s,scale,seed,split,instance_path,num_tasks_manifest,num_vehicles_manifest,num_charging_manifest,cost,initial_cost,improvement,improvement_ratio,num_tasks,unassigned_tasks,fallback_used,initial_strategy,effective_strategy,effective_charge_ratio,fallback_attempts,initial_charge_ratio
-ALNS-PR,alns_pr,OK,42.72036147599283,XL,4006,test,XL/XL_seed4006.json,96,12,6,206029.11332402515,258635.14543881651,52606.032114791364,0.20339862173617854,96,0,True,Partial Recharge Fixed (PR-Fixed 80%),Partial Recharge Fixed (PR-Fixed 100%),1.0,2,0.8
