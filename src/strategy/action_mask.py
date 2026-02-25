@@ -70,6 +70,7 @@ def action_masks(
     """Return a rule-level action mask (length=15) after gating + feasibility."""
 
     available = set(get_available_rules(event, state, soc_threshold=soc_threshold))
+    rule_to_idx = {rule_id: idx for idx, rule_id in enumerate(ALL_RULES)}
     mask: List[bool] = []
     for rule_id in ALL_RULES:
         allowed = rule_id in available
@@ -85,6 +86,19 @@ def action_masks(
             )
         mask.append(allowed)
 
+    # If dispatch is feasible now, suppress standby rules to avoid policy
+    # degeneration into repeated idle actions.
+    has_feasible_dispatch = any(
+        mask[rule_to_idx[rule_id]]
+        for rule_id in DISPATCH_RULES
+        if rule_id in rule_to_idx
+    )
+    if has_feasible_dispatch:
+        for rule_id in STANDBY_RULES:
+            idx = rule_to_idx.get(rule_id)
+            if idx is not None:
+                mask[idx] = False
+
     fallback_used = False
     if not any(mask):
         fallback_used = True
@@ -99,10 +113,10 @@ def action_masks(
             if vehicles
             else False
         )
-        if soc_is_low and RULE_CHARGE_URGENT in ALL_RULES:
-            mask[ALL_RULES.index(RULE_CHARGE_URGENT)] = True
-        elif RULE_STANDBY_LAZY in ALL_RULES:
-            mask[ALL_RULES.index(RULE_STANDBY_LAZY)] = True
+        if soc_is_low and RULE_CHARGE_URGENT in rule_to_idx:
+            mask[rule_to_idx[RULE_CHARGE_URGENT]] = True
+        elif RULE_STANDBY_LAZY in rule_to_idx:
+            mask[rule_to_idx[RULE_STANDBY_LAZY]] = True
         else:
             mask[0] = True
 

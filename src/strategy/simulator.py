@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import heapq
 import itertools
+import logging
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from core.task import Task, TaskPool, TaskStatus
@@ -33,6 +34,10 @@ DECISION_EVENTS = {
     EVENT_SOC_LOW,
     EVENT_DEADLOCK_RISK,
 }
+
+_SAME_TIME_MONITOR_EPS = 1e-9
+_SAME_TIME_MONITOR_WARN_THRESHOLD = 5000
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(order=True)
@@ -145,6 +150,8 @@ class EventDrivenSimulator:
         self._arrived_task_ids.clear()
         self._soc_low_vehicles.clear()
         self._last_deadlock_time = None
+        self._last_monitored_time: Optional[float] = None
+        self._same_time_count = 0
 
         # Deep-reset task trackers to prevent cross-episode state leakage.
         for tracker in self.task_pool.trackers.values():
@@ -188,6 +195,23 @@ class EventDrivenSimulator:
             event = self.event_queue.pop()
             if event is None:
                 break
+            # Read-only monitor: detect extreme same-timestamp event storms.
+            # Never modifies event time or scheduling semantics.
+            if (
+                self._last_monitored_time is not None
+                and abs(event.time - self._last_monitored_time) <= _SAME_TIME_MONITOR_EPS
+            ):
+                self._same_time_count += 1
+                if self._same_time_count > _SAME_TIME_MONITOR_WARN_THRESHOLD:
+                    _LOGGER.warning(
+                        "Extreme same-time event storm at t=%.9f (count>%d). Potential livelock.",
+                        event.time,
+                        _SAME_TIME_MONITOR_WARN_THRESHOLD,
+                    )
+                    self._same_time_count = 0
+            else:
+                self._last_monitored_time = event.time
+                self._same_time_count = 0
             self.current_time = event.time
             self._apply_event(event)
             if event.event_type in DECISION_EVENTS:
