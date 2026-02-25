@@ -679,11 +679,11 @@ def _empty_cost_breakdown() -> Dict[str, float]:
 
 
 def _normalize_action(action_rule_id: int) -> Tuple[int, Optional[int]]:
-    if action_rule_id in ALL_RULES:
-        return action_rule_id, _action_index(action_rule_id)
     if 0 <= action_rule_id < len(ALL_RULES):
         rule_id = ALL_RULES[action_rule_id]
         return rule_id, action_rule_id
+    if action_rule_id in ALL_RULES:
+        return action_rule_id, _action_index(action_rule_id)
     return ALL_RULES[0], None
 
 

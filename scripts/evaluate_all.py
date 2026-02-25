@@ -47,6 +47,7 @@ from strategy.baseline_policies import (
     GREEDY_PR_RULE_ID,
     RandomMaskedRulePolicy,
 )
+from strategy.action_mask import ALL_RULES
 from strategy.rule_env import RuleSelectionEnv
 from strategy.simulator import EventDrivenSimulator
 
@@ -335,6 +336,8 @@ def _run_rule_env_policy(
             if fixed_policy is None:
                 raise ValueError("fixed_rule_id is required for fixed policy")
             action_rule_or_index = fixed_policy.select_action(mask)
+            if action_rule_or_index in ALL_RULES:
+                action_rule_or_index = ALL_RULES.index(int(action_rule_or_index))
         elif policy_kind == "random":
             action_rule_or_index = random_policy.select_action(mask)
         else:  # pragma: no cover - defensive guard

@@ -1,1 +1,0 @@
-{"time": 0.0, "task_id": 1, "prev_status": "pending", "status": "completed", "prev_assigned_vehicle_id": null, "assigned_vehicle_id": 1, "pickup_node_id": 1, "delivery_node_id": 9, "demand": 10.0, "priority": 0, "arrival_time": 0.0}

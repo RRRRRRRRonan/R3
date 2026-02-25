@@ -7,6 +7,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 import random
+import subprocess
 import sys
 from typing import List, Sequence
 
@@ -207,6 +208,68 @@ def build_train_env(
     return make_masked_env(EpisodeRotatingCoreEnv(core_envs, seed=seed))
 
 
+def _collect_decision_logs(root: Path) -> List[Path]:
+    if not root.exists():
+        return []
+    selected: dict[Path, Path] = {}
+    for path in sorted(root.rglob("decision_log_*")):
+        if path.name.endswith("_anomaly_report.csv"):
+            continue
+        suffix = path.suffix.lower()
+        if suffix not in {".jsonl", ".csv"}:
+            continue
+        key = path.with_suffix("").resolve()
+        existing = selected.get(key)
+        if existing is None:
+            selected[key] = path.resolve()
+            continue
+        if existing.suffix.lower() == ".csv" and suffix == ".jsonl":
+            selected[key] = path.resolve()
+    return sorted(selected.values())
+
+
+def _run_anomaly_highlight(
+    args,
+    *,
+    log_dir: Path,
+    previous_logs: Sequence[Path],
+) -> None:
+    scanner = ROOT / "scripts" / "highlight_log_anomalies.py"
+    if not scanner.exists():
+        print(f"[anomaly] skip: scanner not found at {scanner}")
+        return
+
+    previous_set = {path.resolve() for path in previous_logs}
+    current_logs = [path.resolve() for path in _collect_decision_logs(log_dir)]
+    targets = [path for path in current_logs if path not in previous_set]
+    if not targets:
+        targets = current_logs
+    if not targets:
+        print(f"[anomaly] skip: no decision log found under {log_dir}")
+        return
+
+    print(f"[anomaly] scanning {len(targets)} decision log(s) for suspicious segments...", flush=True)
+    for target in targets:
+        cmd = [
+            sys.executable,
+            str(scanner),
+            str(target),
+            "--same-time-threshold",
+            str(max(1, int(args.anomaly_same_time_threshold))),
+            "--charge-done-threshold",
+            str(max(1, int(args.anomaly_charge_done_threshold))),
+            "--time-epsilon",
+            str(max(0.0, float(args.anomaly_time_epsilon))),
+            "--cost-spike-threshold",
+            str(max(0.0, float(args.anomaly_cost_spike_threshold))),
+        ]
+        if args.anomaly_no_color:
+            cmd.append("--no-color")
+        completed = subprocess.run(cmd, check=False)
+        if completed.returncode != 0:
+            print(f"[anomaly] scanner failed for {target} (exit={completed.returncode})")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -328,10 +391,53 @@ def main() -> None:
     parser.add_argument("--headway-s", type=float, default=2.0)
     parser.add_argument("--heatmap-log-path", type=str, default=None)
     parser.add_argument("--auto-heatmap-from-synth", action="store_true", default=True)
+    parser.add_argument(
+        "--auto-highlight-anomalies",
+        dest="auto_highlight_anomalies",
+        action="store_true",
+        default=True,
+        help="After training, auto-scan generated decision logs and highlight suspicious segments.",
+    )
+    parser.add_argument(
+        "--no-auto-highlight-anomalies",
+        dest="auto_highlight_anomalies",
+        action="store_false",
+        help="Disable post-training anomaly highlighting.",
+    )
+    parser.add_argument(
+        "--anomaly-same-time-threshold",
+        type=int,
+        default=20,
+        help="Same-time streak threshold for anomaly scan.",
+    )
+    parser.add_argument(
+        "--anomaly-charge-done-threshold",
+        type=int,
+        default=10,
+        help="CHARGE_DONE streak threshold for anomaly scan.",
+    )
+    parser.add_argument(
+        "--anomaly-time-epsilon",
+        type=float,
+        default=1e-9,
+        help="Time epsilon for same-time anomaly scan.",
+    )
+    parser.add_argument(
+        "--anomaly-cost-spike-threshold",
+        type=float,
+        default=5000.0,
+        help="Single-step total-cost spike threshold for anomaly scan.",
+    )
+    parser.add_argument(
+        "--anomaly-no-color",
+        action="store_true",
+        help="Disable color in anomaly scan output.",
+    )
     args = parser.parse_args()
 
     log_dir = Path(args.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
+    previous_decision_logs = _collect_decision_logs(log_dir)
 
     np.random.seed(args.seed)
     random.seed(args.seed)
@@ -416,6 +522,12 @@ def main() -> None:
         deterministic_eval=True,
     )
     train_maskable_ppo(train_env, eval_env, config=config)
+    if args.auto_highlight_anomalies:
+        _run_anomaly_highlight(
+            args,
+            log_dir=log_dir,
+            previous_logs=previous_decision_logs,
+        )
 
 
 def _resolve_heatmap_log_path(
