@@ -69,6 +69,8 @@ class RuleSelectionEnv:
         heatmap_priority_weight: float = 0.1,
         heatmap_bucket_size_s: float = 3600.0,
         heatmap_lookback_buckets: int = 3,
+        charge_level_ratios: Optional[Sequence[float]] = None,
+        rule7_min_charge_ratio: Optional[float] = None,
         cost_log_path: Optional[str] = None,
         cost_log_csv_path: Optional[str] = None,
         decision_log_path: Optional[str] = None,
@@ -130,6 +132,19 @@ class RuleSelectionEnv:
         if cost_params is None and mip_solver_config is not None:
             cost_params = mip_solver_config.cost_params
         self.cost_params = cost_params or DEFAULT_COST_PARAMETERS
+        if charge_level_ratios is None:
+            if mip_solver_config is not None:
+                charge_level_ratios = mip_solver_config.rule6_charge_level_ratios
+            else:
+                charge_level_ratios = (0.3, 0.5, 0.8)
+        parsed_ratios = sorted(float(ratio) for ratio in charge_level_ratios if float(ratio) > 0.0)
+        self.charge_level_ratios: Tuple[float, ...] = tuple(parsed_ratios) if parsed_ratios else (0.3, 0.5, 0.8)
+        if rule7_min_charge_ratio is None:
+            if mip_solver_config is not None:
+                rule7_min_charge_ratio = mip_solver_config.rule7_min_charge_ratio
+            else:
+                rule7_min_charge_ratio = 0.8
+        self.rule7_min_charge_ratio = float(rule7_min_charge_ratio)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         base_dir = Path("results") / "logs"
         default_decision_log = base_dir / f"decision_log_{stamp}.jsonl"
@@ -200,6 +215,8 @@ class RuleSelectionEnv:
             self._current_state,
             soc_threshold=self.soc_threshold,
             energy_config=self.energy_config,
+            charge_level_ratios=self.charge_level_ratios,
+            rule7_min_charge_ratio=self.rule7_min_charge_ratio,
             return_numpy=False,
         )
         info = self._build_info(
@@ -224,6 +241,8 @@ class RuleSelectionEnv:
             self._current_state,
             soc_threshold=self.soc_threshold,
             energy_config=self.energy_config,
+            charge_level_ratios=self.charge_level_ratios,
+            rule7_min_charge_ratio=self.rule7_min_charge_ratio,
             return_numpy=False,
         )
 
@@ -247,6 +266,8 @@ class RuleSelectionEnv:
             current_state,
             soc_threshold=self.soc_threshold,
             energy_config=self.energy_config,
+            charge_level_ratios=self.charge_level_ratios,
+            rule7_min_charge_ratio=self.rule7_min_charge_ratio,
             return_numpy=False,
         )
 
@@ -273,6 +294,10 @@ class RuleSelectionEnv:
             selected_rule_id,
             current_event,
             current_state,
+            soc_threshold=self.soc_threshold,
+            energy_config=self.energy_config,
+            charge_level_ratios=self.charge_level_ratios,
+            rule7_min_charge_ratio=self.rule7_min_charge_ratio,
             heatmap_scores=heatmap_scores,
         )
         if self.execution_layer is not None:

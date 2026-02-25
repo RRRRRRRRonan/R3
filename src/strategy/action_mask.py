@@ -63,6 +63,8 @@ def action_masks(
     *,
     soc_threshold: float = 0.2,
     energy_config: Optional[EnergyConfig] = None,
+    charge_level_ratios: Sequence[float] = (0.3, 0.5, 0.8),
+    rule7_min_charge_ratio: float = 0.8,
     return_numpy: bool = False,
 ) -> Sequence[bool]:
     """Return a rule-level action mask (length=15) after gating + feasibility."""
@@ -78,16 +80,31 @@ def action_masks(
                 state,
                 soc_threshold=soc_threshold,
                 energy_config=energy_config,
+                charge_level_ratios=charge_level_ratios,
+                rule7_min_charge_ratio=rule7_min_charge_ratio,
             )
         mask.append(allowed)
 
     fallback_used = False
     if not any(mask):
         fallback_used = True
-        if available:
-            mask = [rule_id in available for rule_id in ALL_RULES]
+        mask = [False] * len(ALL_RULES)
+        vehicles = _candidate_vehicles(event, state)
+        soc_is_low = (
+            any(
+                _vehicle_soc(vehicle) <= soc_threshold
+                and _can_reach_any_charger(vehicle, state, energy_config)
+                for vehicle in vehicles
+            )
+            if vehicles
+            else False
+        )
+        if soc_is_low and RULE_CHARGE_URGENT in ALL_RULES:
+            mask[ALL_RULES.index(RULE_CHARGE_URGENT)] = True
+        elif RULE_STANDBY_LAZY in ALL_RULES:
+            mask[ALL_RULES.index(RULE_STANDBY_LAZY)] = True
         else:
-            mask = [True] * len(ALL_RULES)
+            mask[0] = True
 
     _update_mask_metrics(state, available, mask, fallback_used)
 
@@ -108,6 +125,8 @@ def rule_feasible(
     *,
     soc_threshold: float = 0.2,
     energy_config: Optional[EnergyConfig] = None,
+    charge_level_ratios: Sequence[float] = (0.3, 0.5, 0.8),
+    rule7_min_charge_ratio: float = 0.8,
 ) -> bool:
     """Quick feasibility screen for a given rule (permissive shield)."""
 
@@ -125,6 +144,13 @@ def rule_feasible(
     if rule_id in CHARGE_RULES:
         if not state.chargers or not vehicles:
             return False
+        ratios = sorted(float(ratio) for ratio in charge_level_ratios if float(ratio) > 0.0)
+        if not ratios:
+            ratios = [0.3, 0.5, 0.8]
+        target_low = ratios[0] if len(ratios) > 0 else 0.3
+        target_med = ratios[1] if len(ratios) > 1 else 0.5
+        target_high = ratios[2] if len(ratios) > 2 else 0.8
+
         if rule_id == RULE_CHARGE_URGENT:
             return any(
                 _vehicle_soc(vehicle) <= soc_threshold
@@ -132,13 +158,23 @@ def rule_feasible(
                 for vehicle in vehicles
             )
         if rule_id in {RULE_CHARGE_TARGET_LOW, RULE_CHARGE_TARGET_MED, RULE_CHARGE_TARGET_HIGH}:
+            targets = {
+                RULE_CHARGE_TARGET_LOW: target_low,
+                RULE_CHARGE_TARGET_MED: target_med,
+                RULE_CHARGE_TARGET_HIGH: target_high,
+            }
             return any(
-                vehicle.current_battery < vehicle.battery_capacity - 1e-6
+                _vehicle_soc(vehicle) < targets[rule_id] - 1e-3
                 and _can_reach_any_charger(vehicle, state, energy_config)
                 for vehicle in vehicles
             )
         if rule_id == RULE_CHARGE_OPPORTUNITY:
-            return any(_can_reach_any_charger(vehicle, state, energy_config) for vehicle in vehicles)
+            opportunity_target = max(float(rule7_min_charge_ratio), target_high)
+            return any(
+                _vehicle_soc(vehicle) < opportunity_target - 1e-3
+                and _can_reach_any_charger(vehicle, state, energy_config)
+                for vehicle in vehicles
+            )
         return False
 
     if rule_id in STANDBY_RULES:
@@ -326,7 +362,6 @@ def _update_mask_metrics(
     state.metrics.mask_blocked += blocked
     if fallback_used:
         state.metrics.mask_fallbacks += 1
-        state.metrics.infeasible_actions += 1
 
 
 def _euclidean(a: Sequence[float], b: Sequence[float]) -> float:

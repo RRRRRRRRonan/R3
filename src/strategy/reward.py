@@ -56,7 +56,6 @@ def compute_delta_cost(
     delta_conflict = max(0.0, new.total_conflict_waiting - prev.total_conflict_waiting)
     delta_standby = max(0.0, new.total_standby - prev.total_standby)
     delta_rejected = max(0, new.rejected_tasks - prev.rejected_tasks)
-    delta_infeasible = max(0, new.infeasible_actions - prev.infeasible_actions)
 
     travel_cost = cost_params.C_tr * delta_distance
     time_cost = cost_params.C_time * delta_time
@@ -66,7 +65,8 @@ def compute_delta_cost(
     conflict_cost = cost_params.C_conflict * delta_conflict
     standby_cost = cost_params.C_standby * delta_standby
     rejection_cost = cost_params.C_missing_task * delta_rejected
-    infeasible_cost = cost_params.C_infeasible * delta_infeasible
+    # Hard constraints are handled by masking/shielding, not by reward penalties.
+    infeasible_cost = 0.0
     total = (
         travel_cost
         + time_cost
