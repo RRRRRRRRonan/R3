@@ -1,0 +1,22 @@
+log_path,anomaly_type,severity,start_row,end_row,length,start_step,end_step,start_time,end_time,message
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,63,63,1,63,63,9943.024724762468,9943.024724762468,total_cost >= 5000.00，连续 1 条，段内最大值 12847.78
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,70,71,2,70,71,25666.309539696485,25829.49633419411,total_cost >= 5000.00，连续 2 条，段内最大值 77892.44
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,73,74,2,73,74,25844.45527194608,26029.869578638518,total_cost >= 5000.00，连续 2 条，段内最大值 72856.04
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,77,77,1,77,77,26366.384280178663,26366.384280178663,total_cost >= 5000.00，连续 1 条，段内最大值 64804.38
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,79,79,1,79,79,26558.281997555958,26558.281997555958,total_cost >= 5000.00，连续 1 条，段内最大值 57140.07
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,84,84,1,84,84,26893.447921440238,26893.447921440238,total_cost >= 5000.00，连续 1 条，段内最大值 42564.81
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,149,149,1,63,63,9943.024724762468,9943.024724762468,total_cost >= 5000.00，连续 1 条，段内最大值 12847.78
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,156,157,2,70,71,25666.309539696485,25829.49633419411,total_cost >= 5000.00，连续 2 条，段内最大值 77892.44
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,159,160,2,73,74,25844.45527194608,26029.869578638518,total_cost >= 5000.00，连续 2 条，段内最大值 72856.04
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,163,163,1,77,77,26366.384280178663,26366.384280178663,total_cost >= 5000.00，连续 1 条，段内最大值 64804.38
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,165,165,1,79,79,26558.281997555958,26558.281997555958,total_cost >= 5000.00，连续 1 条，段内最大值 57140.07
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,170,170,1,84,84,26893.447921440238,26893.447921440238,total_cost >= 5000.00，连续 1 条，段内最大值 42564.81
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,235,235,1,63,63,9943.024724762468,9943.024724762468,total_cost >= 5000.00，连续 1 条，段内最大值 12847.78
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,242,243,2,70,71,25666.309539696485,25829.49633419411,total_cost >= 5000.00，连续 2 条，段内最大值 77892.44
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,245,246,2,73,74,25844.45527194608,26029.869578638518,total_cost >= 5000.00，连续 2 条，段内最大值 72856.04
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,249,249,1,77,77,26366.384280178663,26366.384280178663,total_cost >= 5000.00，连续 1 条，段内最大值 64804.38
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,251,251,1,79,79,26558.281997555958,26558.281997555958,total_cost >= 5000.00，连续 1 条，段内最大值 57140.07
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,256,256,1,84,84,26893.447921440238,26893.447921440238,total_cost >= 5000.00，连续 1 条，段内最大值 42564.81
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,31259,31259,1,1709,1709,26742.70903906129,26742.70903906129,total_cost >= 5000.00，连续 1 条，段内最大值 10000.00
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,33038,33038,1,1709,1709,26742.70903906129,26742.70903906129,total_cost >= 5000.00，连续 1 条，段内最大值 10000.00
+results/rl/train_S/eval/decision_log_20260226_015218.jsonl,cost_spike,critical,34817,34817,1,1709,1709,26742.70903906129,26742.70903906129,total_cost >= 5000.00，连续 1 条，段内最大值 10000.00
