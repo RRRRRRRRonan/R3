@@ -13,13 +13,13 @@ def _default_ppo_kwargs() -> dict[str, object]:
     # Tuned defaults for MaskablePPO. Returned via a factory to avoid sharing
     # mutable nested objects (e.g., policy network architecture).
     return {
-        "gamma": 1.0,
+        "gamma": 0.99,
         "gae_lambda": 0.95,
         "clip_range": 0.2,
         "learning_rate": 3e-4,
         "batch_size": 256,
         "n_epochs": 4,
-        "ent_coef": 0.03,
+        "ent_coef": 0.05,
         "n_steps": 4096,
         "policy_kwargs": {"net_arch": [256, 128]},
     }
@@ -35,7 +35,7 @@ class PPOTrainingConfig:
     log_dir: Optional[str] = None
     eval_freq: int = 50_000
     eval_episodes: int = 3
-    deterministic_eval: bool = True
+    deterministic_eval: bool = False
     use_vec_normalize: bool = True
     vec_norm_obs: bool = True
     vec_norm_reward: bool = True
