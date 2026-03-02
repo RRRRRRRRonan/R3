@@ -18,6 +18,8 @@ from strategy.rules import AtomicAction
 from strategy.simulator import Event, EventDrivenSimulator
 from strategy.state import SimulatorState
 
+_NO_TASK_STANDBY_DWELL_S = 60.0
+
 
 @dataclass
 class ExecutionResult:
@@ -102,18 +104,18 @@ class ExecutionLayer:
         vehicle = _get_vehicle(state, robot_id)
 
         if task is None or vehicle is None:
-            return ExecutionResult(end_time=state.t)
+            return self._defer_idle_after_failed_action(state, robot_id)
         if task.demand > vehicle.capacity + 1e-6:
             state.metrics.infeasible_actions += 1
-            return ExecutionResult(end_time=state.t)
+            return self._defer_idle_after_failed_action(state, robot_id)
 
         tracker = self.task_pool.get_tracker(task_id)
         if tracker and tracker.status in (TaskStatus.REJECTED, TaskStatus.COMPLETED):
             state.metrics.infeasible_actions += 1
-            return ExecutionResult(end_time=state.t)
+            return self._defer_idle_after_failed_action(state, robot_id)
         if not _dispatch_energy_feasible(vehicle, task, self.energy_config, self.min_soc_threshold):
             state.metrics.infeasible_actions += 1
-            return ExecutionResult(end_time=state.t)
+            return self._defer_idle_after_failed_action(state, robot_id)
         if mode == "insert" and vehicle.route is not None:
             selection = _select_best_insert_route(
                 vehicle,
@@ -127,7 +129,7 @@ class ExecutionLayer:
             )
             if selection is None:
                 state.metrics.infeasible_actions += 1
-                return ExecutionResult(end_time=state.t)
+                return self._defer_idle_after_failed_action(state, robot_id)
             route, distance_matrix = selection
         if tracker and tracker.status == TaskStatus.PENDING:
             self.task_pool.assign_task(task_id, robot_id)
@@ -444,7 +446,7 @@ class ExecutionLayer:
         vehicle = _get_vehicle(state, robot_id)
         charger = state.chargers.get(charger_id)
         if vehicle is None or charger is None:
-            return ExecutionResult(end_time=state.t)
+            return self._defer_idle_after_failed_action(state, robot_id)
         if not _travel_energy_feasible(
             vehicle,
             charger.coordinates,
@@ -453,7 +455,7 @@ class ExecutionLayer:
             self.min_soc_threshold,
         ):
             state.metrics.infeasible_actions += 1
-            return ExecutionResult(end_time=state.t)
+            return self._defer_idle_after_failed_action(state, robot_id)
 
         vehicle.status = VehicleStatus.CHARGING
         self.simulator.mark_vehicle_busy(robot_id)
@@ -556,10 +558,11 @@ class ExecutionLayer:
         vehicle.status = VehicleStatus.MOVING
         self.simulator.mark_vehicle_busy(robot_id)
         current_time = max(state.t, vehicle.current_time)
+        default_dwell = float(self.time_config.default_service_time)
+        dwell_time = _NO_TASK_STANDBY_DWELL_S if not state.open_tasks else default_dwell
 
         if node_id < 0:
             dwell_start = current_time
-            dwell_time = self.time_config.default_service_time
             dwell_end = dwell_start + dwell_time
             vehicle.current_time = dwell_end
             state.metrics.total_standby += dwell_time
@@ -608,7 +611,6 @@ class ExecutionLayer:
             state.metrics.infeasible_actions += 1
             return ExecutionResult(end_time=state.t)
 
-        dwell_time = self.time_config.default_service_time
         dwell_start, dwell_end, node_wait, _ = self.traffic_manager.reserve_node_with_window(
             robot_id,
             node_id,
@@ -652,6 +654,22 @@ class ExecutionLayer:
             return self._route_executor
         self._route_executor.distance = distance_matrix
         return self._route_executor
+
+    def _defer_idle_after_failed_action(self, state: SimulatorState, robot_id: int) -> ExecutionResult:
+        """Convert failed zero-duration actions into a finite standby deferment."""
+        vehicle = _get_vehicle(state, robot_id)
+        if vehicle is None:
+            return ExecutionResult(end_time=state.t)
+        current_time = max(state.t, vehicle.current_time)
+        defer_s = max(1.0, float(self.time_config.default_service_time))
+        end_time = current_time + defer_s
+        vehicle.status = VehicleStatus.MOVING
+        vehicle.current_time = end_time
+        self.simulator.mark_vehicle_busy(robot_id)
+        state.metrics.total_standby += defer_s
+        self.simulator.update_soc_status(robot_id, time=end_time)
+        self.simulator.mark_vehicle_idle(robot_id, time=end_time)
+        return ExecutionResult(end_time=end_time, standby=defer_s)
 
     def _waiting_weight(self, state: SimulatorState, node_id: int) -> float:
         if node_id in state.chargers:

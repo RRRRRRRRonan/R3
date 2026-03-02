@@ -53,7 +53,7 @@ class RuleSelectionEnv:
         execution_layer: Optional["ExecutionLayer"] = None,
         max_decision_steps: Optional[int] = None,
         max_time_s: Optional[float] = None,
-        max_no_progress_steps: Optional[int] = 512,
+        max_no_progress_steps: Optional[int] = 256,
         no_progress_time_epsilon: float = 1e-9,
         cost_params=None,
         mip_solver_config: Optional[MIPBaselineSolverConfig] = None,
@@ -341,7 +341,16 @@ class RuleSelectionEnv:
         terminated, truncated, reason = self._check_termination()
         if reason is not None:
             info["terminated_reason"] = reason
-        reward = -cost_breakdown.total
+
+        # P0-A: terminal penalty for unfinished tasks at episode end.
+        terminal_penalty = 0.0
+        if terminated or truncated:
+            unfinished = self._count_unfinished_tasks()
+            terminal_penalty = unfinished * self.cost_params.C_terminal_unfinished
+            info["terminal_penalty"] = terminal_penalty
+            info["unfinished_tasks"] = unfinished
+
+        reward = -(cost_breakdown.total + terminal_penalty)
         self._log_decision_event(
             info,
             cost_breakdown=cost_breakdown,
@@ -435,6 +444,14 @@ class RuleSelectionEnv:
             return True, False, "all_tasks_finished"
 
         return False, False, None
+
+    def _count_unfinished_tasks(self) -> int:
+        """Count tasks still in PENDING/ASSIGNED/IN_PROGRESS at episode end."""
+        count = 0
+        for tracker in self.simulator.task_pool.trackers.values():
+            if tracker.status in (TaskStatus.PENDING, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS):
+                count += 1
+        return count
 
     def _has_pending_work(self) -> bool:
         pool = self.simulator.task_pool

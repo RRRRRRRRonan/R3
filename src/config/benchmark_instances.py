@@ -72,7 +72,7 @@ BENCHMARK_SCALES: Dict[str, BenchmarkScaleConfig] = {
         num_charging_stations=2,
         warehouse_size_m=(100.0, 80.0),
         task_count_range=(15, 20),
-        seed_range=(1001, 1010),
+        seed_range=(1001, 1035),
         arrival_rates_per_s=(0.003, 0.001, 0.0005),
     ),
     "M": BenchmarkScaleConfig(
@@ -81,7 +81,7 @@ BENCHMARK_SCALES: Dict[str, BenchmarkScaleConfig] = {
         num_charging_stations=3,
         warehouse_size_m=(150.0, 120.0),
         task_count_range=(30, 40),
-        seed_range=(2001, 2010),
+        seed_range=(2001, 2035),
         arrival_rates_per_s=(0.0045, 0.0015, 0.00075),
     ),
     "L": BenchmarkScaleConfig(
@@ -90,7 +90,7 @@ BENCHMARK_SCALES: Dict[str, BenchmarkScaleConfig] = {
         num_charging_stations=4,
         warehouse_size_m=(200.0, 160.0),
         task_count_range=(50, 60),
-        seed_range=(3001, 3010),
+        seed_range=(3001, 3035),
         arrival_rates_per_s=(0.006, 0.002, 0.001),
     ),
     "XL": BenchmarkScaleConfig(
@@ -99,7 +99,7 @@ BENCHMARK_SCALES: Dict[str, BenchmarkScaleConfig] = {
         num_charging_stations=6,
         warehouse_size_m=(250.0, 200.0),
         task_count_range=(80, 100),
-        seed_range=(4001, 4010),
+        seed_range=(4001, 4035),
         arrival_rates_per_s=(0.009, 0.003, 0.0015),
     ),
 }

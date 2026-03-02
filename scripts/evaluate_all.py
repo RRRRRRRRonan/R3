@@ -72,6 +72,7 @@ ALGORITHM_LABELS = {
 }
 
 _RL_MODEL_CACHE: Dict[Tuple[str, int, int], Any] = {}
+_VEC_NORMALIZE_STATS: Optional[Any] = None  # Loaded obs_rms for VecNormalize
 
 
 @dataclass(frozen=True)
@@ -262,6 +263,7 @@ def _build_rule_env(
     solver_config = MIPBaselineSolverConfig(min_soc_threshold=args.min_soc_threshold)
     selected_scenario = _select_scenario(experiment, scenario_index)
     scenarios = [selected_scenario] if selected_scenario is not None else None
+    cost_params = getattr(args, "_cost_params_override", None)
     env = RuleSelectionEnv(
         simulator=simulator,
         execution_layer=ExecutionLayer(
@@ -274,6 +276,7 @@ def _build_rule_env(
         max_time_s=args.max_time_s if args.max_time_s is not None else experiment.episode_length_s,
         max_no_progress_steps=args.max_no_progress_steps,
         no_progress_time_epsilon=args.no_progress_time_epsilon,
+        cost_params=cost_params,
         mip_solver_config=solver_config,
         scenarios=scenarios,
         scenario_seed=seed,
@@ -326,6 +329,13 @@ def _run_rule_env_policy(
                     observation_dim=int(flat.shape[0]),
                     action_dim=len(mask),
                 )
+            # Apply VecNormalize observation normalization if loaded.
+            global _VEC_NORMALIZE_STATS
+            if _VEC_NORMALIZE_STATS is not None:
+                obs_rms = _VEC_NORMALIZE_STATS
+                normalized = (flat - obs_rms.mean) / np.sqrt(obs_rms.var + 1e-8)
+                normalized = np.clip(normalized, -10.0, 10.0)
+                flat = normalized.astype(np.float32)
             action, _ = model.predict(
                 flat,
                 action_masks=np.asarray(mask, dtype=bool),
@@ -929,6 +939,18 @@ def main() -> int:
         default="L,XL",
         help="Comma-separated scales to skip for MIP-Hind due to runtime budget.",
     )
+    parser.add_argument(
+        "--terminal-penalty",
+        type=float,
+        default=None,
+        help="Override C_terminal_unfinished to match training cost params.",
+    )
+    parser.add_argument(
+        "--tardiness-scale",
+        type=float,
+        default=None,
+        help="Override C_tardiness_shaping_scale to match training cost params.",
+    )
 
     args = parser.parse_args()
     if args.rl_stochastic:
@@ -937,6 +959,18 @@ def main() -> int:
         # Deterministic by default for benchmark repeatability.
         args.rl_deterministic = True
 
+    # Build cost_params override to match training reward shaping.
+    cost_params_override = None
+    if args.terminal_penalty is not None or args.tardiness_scale is not None:
+        from dataclasses import replace as dc_replace
+        overrides = {}
+        if args.terminal_penalty is not None:
+            overrides["C_terminal_unfinished"] = args.terminal_penalty
+        if args.tardiness_scale is not None:
+            overrides["C_tardiness_shaping_scale"] = args.tardiness_scale
+        cost_params_override = dc_replace(CostParameters(), **overrides)
+    args._cost_params_override = cost_params_override
+
     algorithms = _parse_algorithms(args.algorithms)
     instances = _resolve_instances(args)
 
@@ -944,7 +978,37 @@ def main() -> int:
     if "rl_apc" in algorithms and args.ppo_model_path:
         # Lazy-load with per-env observation/action dimensions for better
         # cross-version compatibility of serialized spaces.
-        rl_model = str(args.ppo_model_path)
+        ppo_path = Path(args.ppo_model_path)
+        model_dir = ppo_path if ppo_path.is_dir() else ppo_path.parent
+        if ppo_path.is_dir():
+            # Resolve directory to best_model.zip (drop extension for SB3 load).
+            zip_file = ppo_path / "best_model.zip"
+            if zip_file.exists():
+                ppo_path = ppo_path / "best_model"
+            else:
+                # Try any .zip in the directory.
+                zips = sorted(ppo_path.glob("*.zip"))
+                if zips:
+                    ppo_path = zips[0].with_suffix("")
+                # else: pass directory as-is, let SB3 try.
+        rl_model = str(ppo_path)
+
+        # Load VecNormalize observation statistics if available.
+        global _VEC_NORMALIZE_STATS
+        vec_norm_candidates = [
+            model_dir / "vecnormalize.pkl",
+            model_dir.parent / "vecnormalize.pkl",
+        ]
+        for vn_path in vec_norm_candidates:
+            if vn_path.exists():
+                import pickle
+                with vn_path.open("rb") as vn_f:
+                    vec_norm = pickle.load(vn_f)
+                _VEC_NORMALIZE_STATS = vec_norm.obs_rms
+                print(f"[info] loaded VecNormalize obs_rms from {vn_path}")
+                break
+        if _VEC_NORMALIZE_STATS is None:
+            print("[warn] VecNormalize stats not found; RL observations will not be normalized.")
     elif "rl_apc" in algorithms:
         print("[warn] rl_apc selected but --ppo-model-path not set; RL rows will be marked SKIPPED.")
 

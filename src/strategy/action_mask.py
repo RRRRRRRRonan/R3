@@ -104,7 +104,9 @@ def action_masks(
         fallback_used = True
         mask = [False] * len(ALL_RULES)
         vehicles = _candidate_vehicles(event, state)
-        soc_is_low = (
+
+        # Check SOC status with strict (available-only) and relaxed (allow-queued) charger reach.
+        soc_is_low_strict = (
             any(
                 _vehicle_soc(vehicle) <= soc_threshold
                 and _can_reach_any_charger(vehicle, state, energy_config)
@@ -113,8 +115,34 @@ def action_masks(
             if vehicles
             else False
         )
-        if soc_is_low and RULE_CHARGE_URGENT in rule_to_idx:
+        # Fix-2: also consider occupied chargers so robots can queue rather than stand by.
+        soc_is_low_queued = (
+            any(
+                _vehicle_soc(vehicle) <= soc_threshold
+                and _can_reach_any_charger(vehicle, state, energy_config, include_queued=True)
+                for vehicle in vehicles
+            )
+            if vehicles
+            else False
+        )
+        # Whether energy risk was detected by the gating layer (charge rules were available).
+        has_charge_in_gating = bool(set(CHARGE_RULES) & available)
+
+        if soc_is_low_strict and RULE_CHARGE_URGENT in rule_to_idx:
+            # Can reach an available charger right now — send urgently.
             mask[rule_to_idx[RULE_CHARGE_URGENT]] = True
+        elif (soc_is_low_queued or has_charge_in_gating) and state.chargers:
+            # Chargers exist but are all occupied; queue at nearest one via opportunity rule.
+            if RULE_CHARGE_OPPORTUNITY in rule_to_idx:
+                mask[rule_to_idx[RULE_CHARGE_OPPORTUNITY]] = True
+            elif RULE_CHARGE_TARGET_LOW in rule_to_idx:
+                mask[rule_to_idx[RULE_CHARGE_TARGET_LOW]] = True
+            elif RULE_CHARGE_URGENT in rule_to_idx:
+                mask[rule_to_idx[RULE_CHARGE_URGENT]] = True
+            elif RULE_STANDBY_LAZY in rule_to_idx:
+                mask[rule_to_idx[RULE_STANDBY_LAZY]] = True
+            else:
+                mask[0] = True
         elif RULE_STANDBY_LAZY in rule_to_idx:
             mask[rule_to_idx[RULE_STANDBY_LAZY]] = True
         else:
@@ -166,9 +194,10 @@ def rule_feasible(
         target_high = ratios[2] if len(ratios) > 2 else 0.8
 
         if rule_id == RULE_CHARGE_URGENT:
+            # Fix-2: allow queuing at occupied chargers so low-SOC robots are never locked in standby.
             return any(
                 _vehicle_soc(vehicle) <= soc_threshold
-                and _can_reach_any_charger(vehicle, state, energy_config)
+                and _can_reach_any_charger(vehicle, state, energy_config, include_queued=True)
                 for vehicle in vehicles
             )
         if rule_id in {RULE_CHARGE_TARGET_LOW, RULE_CHARGE_TARGET_MED, RULE_CHARGE_TARGET_HIGH}:
@@ -179,20 +208,29 @@ def rule_feasible(
             }
             return any(
                 _vehicle_soc(vehicle) < targets[rule_id] - 1e-3
-                and _can_reach_any_charger(vehicle, state, energy_config)
+                and _can_reach_any_charger(vehicle, state, energy_config, include_queued=True)
                 for vehicle in vehicles
             )
         if rule_id == RULE_CHARGE_OPPORTUNITY:
             opportunity_target = max(float(rule7_min_charge_ratio), target_high)
             return any(
                 _vehicle_soc(vehicle) < opportunity_target - 1e-3
-                and _can_reach_any_charger(vehicle, state, energy_config)
+                and _can_reach_any_charger(vehicle, state, energy_config, include_queued=True)
                 for vehicle in vehicles
             )
         return False
 
     if rule_id in STANDBY_RULES:
-        return bool(vehicles)
+        if not vehicles:
+            return False
+        if state.chargers:
+            for vehicle in vehicles:
+                if (
+                    _vehicle_soc(vehicle) <= soc_threshold
+                    and _can_reach_any_charger(vehicle, state, energy_config)
+                ):
+                    return False
+        return True
 
     return True
 
@@ -213,6 +251,9 @@ def _candidate_vehicles(event: Optional[Event], state: SimulatorState) -> List[o
         EVENT_DEADLOCK_RISK,
     }:
         vehicle_id = int(event.payload.get("vehicle_id", -1))
+        idle_vehicles = [vehicle for vehicle in state.robots.values() if _vehicle_is_idle(vehicle)]
+        if idle_vehicles:
+            return idle_vehicles
         if vehicle_id in state.robots:
             return [state.robots[vehicle_id]]
     return list(state.robots.values())
@@ -328,14 +369,22 @@ def _can_reach_any_charger(
     vehicle: object,
     state: SimulatorState,
     energy_config: Optional[EnergyConfig],
+    *,
+    include_queued: bool = False,
 ) -> bool:
+    """Return True if the vehicle can reach any charger with enough energy.
+
+    include_queued=True allows routing to occupied chargers (for queue-and-wait),
+    which prevents the action-mask fallback from locking robots in STANDBY when
+    all chargers are temporarily busy.
+    """
     if not state.chargers:
         return False
     config = energy_config or EnergyConfig()
     min_battery = max(0.0, config.safety_threshold) * vehicle.battery_capacity
     min_required = None
     for charger in state.chargers.values():
-        if not charger.is_available:
+        if not include_queued and not charger.is_available:
             continue
         distance = _euclidean(vehicle.current_location, charger.coordinates)
         required = calculate_energy_consumption(
@@ -356,6 +405,20 @@ def _vehicle_soc(vehicle: object) -> float:
     if vehicle.battery_capacity <= 0:
         return 0.0
     return vehicle.current_battery / vehicle.battery_capacity
+
+
+def _vehicle_is_idle(vehicle: object) -> bool:
+    checker = getattr(vehicle, "is_idle", None)
+    if callable(checker):
+        try:
+            return bool(checker())
+        except Exception:
+            pass
+    status = getattr(vehicle, "status", None)
+    if status is None:
+        return False
+    status_value = getattr(status, "value", status)
+    return str(status_value).lower() == "idle"
 
 
 def _update_mask_metrics(

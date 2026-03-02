@@ -3,11 +3,61 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from typing import Dict, Optional
 
 from config import DEFAULT_COST_PARAMETERS
 from strategy.rules import AtomicAction
 from strategy.state import EpisodeMetrics, SimulatorState
+
+_LOW_SOC_IDLE_THRESHOLD = 0.2
+_REWARD_SHAPING_ENABLED = os.getenv("RL_ENABLE_REWARD_SHAPING", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+}
+
+
+def _task_earliest_due(task) -> float:
+    """Return the earliest (most urgent) due time across all soft time windows."""
+    due_candidates = []
+    for node_attr in ("pickup_node", "delivery_node"):
+        node = getattr(task, node_attr, None)
+        if node is None:
+            continue
+        tw = getattr(node, "time_window", None)
+        if tw is None:
+            continue
+        # Only charge continuous tardiness for SOFT windows (hard windows block dispatch)
+        tw_type = getattr(tw, "window_type", None)
+        type_name = str(getattr(tw_type, "value", tw_type)).upper()
+        if "HARD" in type_name:
+            continue
+        latest = getattr(tw, "latest", None)
+        if latest is not None:
+            due_candidates.append(float(latest))
+    return min(due_candidates) if due_candidates else float("inf")
+
+
+def _continuous_tardiness_cost(prev_state, dt: float, cost_params) -> float:
+    """Per-step tardiness for tasks whose soft due-date has already passed.
+
+    This distributes the delay penalty continuously (instead of as a lump sum
+    at dispatch time), which dramatically shortens the credit-assignment chain.
+    A scaling factor of 0.5 is applied so the per-step shaping complements rather
+    than overwhelms the existing dispatch-time delta_delay signal.
+    """
+    if prev_state is None or dt <= 0.0 or not prev_state.open_tasks:
+        return 0.0
+    t = prev_state.t
+    scale = getattr(cost_params, "C_tardiness_shaping_scale", 0.5)
+    coeff = getattr(cost_params, "C_delay", 2.0) * scale
+    total = 0.0
+    for task in prev_state.open_tasks.values():
+        due = _task_earliest_due(task)
+        if due < float("inf") and t > due:
+            total += coeff * dt
+    return total
 
 
 @dataclass(frozen=True)
@@ -65,6 +115,44 @@ def compute_delta_cost(
     conflict_cost = cost_params.C_conflict * delta_conflict
     standby_cost = cost_params.C_standby * delta_standby
     rejection_cost = cost_params.C_missing_task * delta_rejected
+
+    # Fix-1: continuous tardiness for tasks already past their soft due-date.
+    # This reshapes credit assignment: the agent feels tardiness as it accumulates,
+    # not as a lump-sum spike when the overdue task is finally dispatched.
+    if _REWARD_SHAPING_ENABLED and prev_state is not None and dt > 0.0:
+        tardiness_cost += _continuous_tardiness_cost(prev_state, dt, cost_params)
+
+    # Round-2 shaping:
+    # 1) penalize standby when backlog exists / SOC is low;
+    # 2) penalize zero-progress operational actions under backlog.
+    if _REWARD_SHAPING_ENABLED and prev_state is not None and action is not None:
+        if action.kind == "DWELL" and dt > 0.0:
+            backlog = len(prev_state.open_tasks)
+            if backlog > 0:
+                standby_cost += getattr(cost_params, "C_idle_backlog", 0.0) * dt * backlog
+            low_soc_exists = any(
+                vehicle.battery_capacity > 0
+                and (vehicle.current_battery / vehicle.battery_capacity) <= _LOW_SOC_IDLE_THRESHOLD
+                for vehicle in prev_state.robots.values()
+            )
+            if low_soc_exists:
+                standby_cost += getattr(cost_params, "C_low_soc_idle", 0.0) * dt
+        if (
+            dt <= 1e-9
+            and prev_state.open_tasks
+            and action.kind in {"DISPATCH", "CHARGE", "DWELL"}
+        ):
+            waiting_cost += getattr(cost_params, "C_no_progress", 0.0)
+
+    # P2-A: small obligation cost on ACCEPT to break "accept=free" symmetry.
+    if (
+        _REWARD_SHAPING_ENABLED
+        and action is not None
+        and action.kind == "ACCEPT"
+        and int(action.payload.get("accept", 0)) == 1
+    ):
+        waiting_cost += getattr(cost_params, "C_accept_obligation", 0.0)
+
     # Hard constraints are handled by masking/shielding, not by reward penalties.
     infeasible_cost = 0.0
     total = (

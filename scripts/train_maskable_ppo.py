@@ -32,7 +32,7 @@ from config.benchmark_manifest import (
     resolve_entry_path,
     select_manifest_entry,
 )
-from baselines.mip.config import MIPBaselineSolverConfig
+from baselines.mip.config import MIPBaselineSolverConfig, ScenarioSynthConfig
 from baselines.mip.scenario_io import ExperimentScenario, load_experiment_json
 from coordinator.traffic_manager import TrafficManager
 from core.task import TaskPool
@@ -95,6 +95,8 @@ def _build_core_env(
     seed: int,
     log_dir: Path,
     experiment: ExperimentScenario | None = None,
+    synth_config_override: ScenarioSynthConfig | None = None,
+    cost_params_override=None,
 ) -> RuleSelectionEnv:
     if experiment is None:
         layout = replace(
@@ -134,7 +136,13 @@ def _build_core_env(
 
     traffic = TrafficManager(headway_s=args.headway_s)
     simulator = EventDrivenSimulator(task_pool=pool, vehicles=vehicles, chargers=chargers, traffic_manager=traffic)
-    solver_config = MIPBaselineSolverConfig(min_soc_threshold=args.min_soc_threshold)
+    if synth_config_override is not None:
+        solver_config = MIPBaselineSolverConfig(
+            min_soc_threshold=args.min_soc_threshold,
+            scenario_synth_config=synth_config_override,
+        )
+    else:
+        solver_config = MIPBaselineSolverConfig(min_soc_threshold=args.min_soc_threshold)
     executor = ExecutionLayer(
         task_pool=pool,
         simulator=simulator,
@@ -158,6 +166,7 @@ def _build_core_env(
         max_time_s=max_time_s,
         max_no_progress_steps=args.max_no_progress_steps,
         no_progress_time_epsilon=args.no_progress_time_epsilon,
+        cost_params=cost_params_override,
         mip_solver_config=solver_config,
         scenarios=scenarios,
         heatmap_log_path=heatmap_log_path,
@@ -180,8 +189,19 @@ def build_env(
     seed: int,
     log_dir: Path,
     experiment: ExperimentScenario | None = None,
+    synth_config_override: ScenarioSynthConfig | None = None,
+    cost_params_override=None,
 ) -> RuleSelectionGymEnv:
-    return make_masked_env(_build_core_env(args, seed=seed, log_dir=log_dir, experiment=experiment))
+    return make_masked_env(
+        _build_core_env(
+            args,
+            seed=seed,
+            log_dir=log_dir,
+            experiment=experiment,
+            synth_config_override=synth_config_override,
+            cost_params_override=cost_params_override,
+        )
+    )
 
 
 def build_train_env(
@@ -190,11 +210,12 @@ def build_train_env(
     seed: int,
     log_dir: Path,
     experiments: Sequence[ExperimentScenario | None],
+    cost_params_override=None,
 ) -> RuleSelectionGymEnv:
     if not experiments:
-        return build_env(args, seed=seed, log_dir=log_dir, experiment=None)
+        return build_env(args, seed=seed, log_dir=log_dir, experiment=None, cost_params_override=cost_params_override)
     if len(experiments) == 1:
-        return build_env(args, seed=seed, log_dir=log_dir, experiment=experiments[0])
+        return build_env(args, seed=seed, log_dir=log_dir, experiment=experiments[0], cost_params_override=cost_params_override)
 
     core_envs = [
         _build_core_env(
@@ -202,6 +223,7 @@ def build_train_env(
             seed=seed + idx,
             log_dir=log_dir / f"entry_{idx:03d}",
             experiment=experiment,
+            cost_params_override=cost_params_override,
         )
         for idx, experiment in enumerate(experiments)
     ]
@@ -314,7 +336,7 @@ def main() -> None:
     parser.add_argument(
         "--max-no-progress-steps",
         type=int,
-        default=512,
+        default=256,
         help="Truncate an episode after this many consecutive no-progress decision steps (<=0 disables).",
     )
     parser.add_argument(
@@ -387,6 +409,24 @@ def main() -> None:
         type=int,
         default=0,
         help="Entry index among filtered eval manifest entries.",
+    )
+    parser.add_argument(
+        "--eval-num-scenarios",
+        type=int,
+        default=10,
+        help="Number of synthetic scenarios for the eval env (more = greater diversity).",
+    )
+    parser.add_argument(
+        "--eval-release-jitter-s",
+        type=float,
+        default=300.0,
+        help="Release-time jitter (seconds) added to eval scenarios for diversity.",
+    )
+    parser.add_argument(
+        "--eval-demand-noise-ratio",
+        type=float,
+        default=0.1,
+        help="Demand noise ratio applied to eval scenarios for diversity (0=none).",
     )
     parser.add_argument("--headway-s", type=float, default=2.0)
     parser.add_argument("--heatmap-log-path", type=str, default=None)
@@ -490,6 +530,30 @@ def main() -> None:
         action="store_true",
         help="Disable color in anomaly scan output.",
     )
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=None,
+        help="Override PPO gamma (discount factor). Default uses ppo_trainer value.",
+    )
+    parser.add_argument(
+        "--ent-coef",
+        type=float,
+        default=None,
+        help="Override PPO entropy coefficient. Default uses ppo_trainer value (0.05).",
+    )
+    parser.add_argument(
+        "--terminal-penalty",
+        type=float,
+        default=None,
+        help="Override C_terminal_unfinished (per-task episode-end penalty).",
+    )
+    parser.add_argument(
+        "--tardiness-scale",
+        type=float,
+        default=None,
+        help="Override C_tardiness_shaping_scale for continuous tardiness shaping.",
+    )
     args = parser.parse_args()
 
     log_dir = Path(args.log_dir)
@@ -562,13 +626,45 @@ def main() -> None:
         if len(train_experiments) > 1:
             print(f"[train] episode-level instance rotation enabled with {len(train_experiments)} entries.")
 
+    # Build scale-specific cost_params if CLI overrides are given.
+    cost_params_override = None
+    if args.terminal_penalty is not None or args.tardiness_scale is not None:
+        from config import DEFAULT_COST_PARAMETERS
+        overrides = {}
+        if args.terminal_penalty is not None:
+            overrides["C_terminal_unfinished"] = args.terminal_penalty
+        if args.tardiness_scale is not None:
+            overrides["C_tardiness_shaping_scale"] = args.tardiness_scale
+        cost_params_override = replace(DEFAULT_COST_PARAMETERS, **overrides)
+
     train_env = build_train_env(
         args,
         seed=args.seed,
         log_dir=log_dir / "train",
         experiments=train_experiments,
+        cost_params_override=cost_params_override,
     )
-    eval_env = build_env(args, seed=args.seed + 1, log_dir=log_dir / "eval", experiment=eval_experiment)
+    # Fix-3: use a richer synth config for eval so episodes see distinct scenarios.
+    # (Only applies when eval_experiment has no pre-built scenarios, i.e. dynamic synthesis.)
+    eval_synth_config = ScenarioSynthConfig(
+        num_scenarios=args.eval_num_scenarios,
+        release_jitter_s=args.eval_release_jitter_s,
+        demand_noise_ratio=args.eval_demand_noise_ratio,
+    )
+    eval_env = build_env(
+        args,
+        seed=args.seed + 1,
+        log_dir=log_dir / "eval",
+        experiment=eval_experiment,
+        synth_config_override=eval_synth_config,
+        cost_params_override=cost_params_override,
+    )
+
+    ppo_kwargs_override = {}
+    if args.gamma is not None:
+        ppo_kwargs_override["gamma"] = args.gamma
+    if args.ent_coef is not None:
+        ppo_kwargs_override["ent_coef"] = args.ent_coef
 
     config = PPOTrainingConfig(
         total_timesteps=args.total_timesteps,
@@ -576,7 +672,7 @@ def main() -> None:
         log_dir=str(log_dir),
         eval_freq=args.eval_freq,
         eval_episodes=args.eval_episodes,
-        deterministic_eval=True,
+        deterministic_eval=False,
         use_vec_normalize=bool(args.vec_normalize),
         vec_norm_obs=bool(args.vec_norm_obs),
         vec_norm_reward=bool(args.vec_norm_reward),
@@ -584,6 +680,8 @@ def main() -> None:
         vec_clip_reward=float(args.vec_clip_reward),
         vec_norm_epsilon=float(args.vec_norm_epsilon),
     )
+    if ppo_kwargs_override:
+        config = replace(config, ppo_kwargs={**config.ppo_kwargs, **ppo_kwargs_override})
     train_maskable_ppo(train_env, eval_env, config=config)
     if args.auto_highlight_anomalies:
         _run_anomaly_highlight(

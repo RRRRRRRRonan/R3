@@ -18,7 +18,7 @@ Options:
   --eval-freq INT                Evaluation frequency in steps (default: 50000)
   --eval-episodes INT            Evaluation episodes per checkpoint (default: 3)
   --max-time-s FLOAT             Episode horizon in seconds (default: 28800)
-  --max-no-progress-steps INT    No-progress guard (default: 512)
+  --max-no-progress-steps INT    No-progress guard (default: 256)
   --no-progress-time-epsilon F   No-progress epsilon (default: 1e-9)
   --dry-run                      Print commands without executing
   -h, --help                     Show this help and exit
@@ -40,7 +40,7 @@ TOTAL_TIMESTEPS="${TOTAL_TIMESTEPS:-1000000}"
 EVAL_FREQ="${EVAL_FREQ:-50000}"
 EVAL_EPISODES="${EVAL_EPISODES:-3}"
 MAX_TIME_S="${MAX_TIME_S:-28800}"
-MAX_NO_PROGRESS_STEPS="${MAX_NO_PROGRESS_STEPS:-512}"
+MAX_NO_PROGRESS_STEPS="${MAX_NO_PROGRESS_STEPS:-256}"
 NO_PROGRESS_TIME_EPSILON="${NO_PROGRESS_TIME_EPSILON:-1e-9}"
 SCALES=(S M L XL)
 DRY_RUN=0
@@ -131,8 +131,48 @@ fi
 
 mkdir -p "${OUTPUT_ROOT}"
 
+# Scale-specific overrides to prevent idle-period costs from drowning
+# convergence signals.  Parameters are calibrated per-scale based on
+# task density diagnostics (tasks/vehicle/hour):
+#   S  (0.73) – very sparse, needs aggressive horizon cut + strong penalty
+#   M  (0.86) – moderate, ROBOT_IDLE 94%, STANDBY_LAZY 75%
+#   L  (0.88) – moderate, ROBOT_IDLE 86%, negative trend without tuning
+#   XL (0.96) – dense, accepts more tasks after v1 tuning but can't finish
+#              them in 28800s → tardiness cost exceeds old rejection cost.
+#              v2: shorter horizon + weaker tardiness like S.
+_scale_max_time_s() {
+  case "$1" in
+    S)  echo 20000 ;;
+    M)  echo 24000 ;;
+    L)  echo 26000 ;;
+    XL) echo 25000 ;;
+    *)  echo "${MAX_TIME_S}" ;;
+  esac
+}
+_scale_terminal_penalty() {
+  case "$1" in
+    S)  echo 3000 ;;
+    M)  echo 2500 ;;
+    L)  echo 2000 ;;
+    XL) echo 1500 ;;
+    *)  echo "" ;;  # use default
+  esac
+}
+_scale_tardiness_scale() {
+  case "$1" in
+    S)  echo 0.2 ;;
+    M)  echo 0.25 ;;
+    L)  echo 0.3 ;;
+    XL) echo 0.2 ;;
+    *)  echo "" ;;  # use default (0.5)
+  esac
+}
+
 for scale in "${SCALES[@]}"; do
   log_dir="${OUTPUT_ROOT}/train_${scale}"
+  scale_max_time="$(_scale_max_time_s "${scale}")"
+  scale_tp="$(_scale_terminal_penalty "${scale}")"
+  scale_ts="$(_scale_tardiness_scale "${scale}")"
   cmd=(
     "${PYTHON_BIN}" "${ROOT_DIR}/scripts/train_maskable_ppo.py"
     --manifest-json "${MANIFEST_JSON}"
@@ -141,16 +181,22 @@ for scale in "${SCALES[@]}"; do
     --total-timesteps "${TOTAL_TIMESTEPS}"
     --eval-freq "${EVAL_FREQ}"
     --eval-episodes "${EVAL_EPISODES}"
-    --max-time-s "${MAX_TIME_S}"
+    --max-time-s "${scale_max_time}"
     --max-no-progress-steps "${MAX_NO_PROGRESS_STEPS}"
     --no-progress-time-epsilon "${NO_PROGRESS_TIME_EPSILON}"
     --log-dir "${log_dir}"
   )
+  if [[ -n "${scale_tp}" ]]; then
+    cmd+=(--terminal-penalty "${scale_tp}")
+  fi
+  if [[ -n "${scale_ts}" ]]; then
+    cmd+=(--tardiness-scale "${scale_ts}")
+  fi
   if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
     cmd+=("${EXTRA_ARGS[@]}")
   fi
 
-  echo "[train_all_scales] scale=${scale} log_dir=${log_dir}"
+  echo "[train_all_scales] scale=${scale} log_dir=${log_dir} max_time=${scale_max_time} terminal_penalty=${scale_tp:-default} tardiness_scale=${scale_ts:-default}"
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     printf '  %q' "${cmd[@]}"
     printf '\n'

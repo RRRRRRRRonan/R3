@@ -295,6 +295,9 @@ def _candidate_vehicles(event: Optional[Event], state: SimulatorState):
         EVENT_DEADLOCK_RISK,
     }:
         vehicle_id = int(event.payload.get("vehicle_id", -1))
+        idle_vehicles = [vehicle for vehicle in state.robots.values() if _vehicle_is_idle(vehicle)]
+        if idle_vehicles:
+            return idle_vehicles
         if vehicle_id in state.robots:
             return [state.robots[vehicle_id]]
     return list(state.robots.values())
@@ -307,6 +310,20 @@ def _select_vehicle_for_event(event: Optional[Event], state: SimulatorState):
     if state.robots:
         return list(state.robots.values())[0]
     return None
+
+
+def _vehicle_is_idle(vehicle: object) -> bool:
+    checker = getattr(vehicle, "is_idle", None)
+    if callable(checker):
+        try:
+            return bool(checker())
+        except Exception:
+            pass
+    status = getattr(vehicle, "status", None)
+    if status is None:
+        return False
+    status_value = getattr(status, "value", status)
+    return str(status_value).lower() == "idle"
 
 
 def _any_vehicle_feasible(task, state: SimulatorState, energy_config: Optional[EnergyConfig]) -> bool:
@@ -410,7 +427,27 @@ def _vehicle_can_serve_task(
 ) -> bool:
     if task.demand > vehicle.capacity:
         return False
-    if not _energy_to_pickup_feasible(vehicle, task, energy_config):
+    config = energy_config or EnergyConfig()
+    if not _energy_to_pickup_feasible(vehicle, task, config):
+        return False
+    min_battery = max(0.0, config.safety_threshold) * vehicle.battery_capacity
+    distance_to_pickup = _euclidean(vehicle.current_location, task.pickup_coordinates)
+    distance_to_delivery = _euclidean(task.pickup_coordinates, task.delivery_coordinates)
+    required_pickup = calculate_energy_consumption(
+        distance=distance_to_pickup,
+        load=vehicle.current_load,
+        config=config,
+        vehicle_speed=vehicle.speed,
+        vehicle_capacity=vehicle.capacity,
+    )
+    required_delivery = calculate_energy_consumption(
+        distance=distance_to_delivery,
+        load=vehicle.current_load + task.demand,
+        config=config,
+        vehicle_speed=vehicle.speed,
+        vehicle_capacity=vehicle.capacity,
+    )
+    if vehicle.current_battery - required_pickup - required_delivery < min_battery - 1e-6:
         return False
     if not _hard_time_windows_feasible(vehicle, task, state):
         return False
@@ -427,7 +464,8 @@ def _energy_to_pickup_feasible(vehicle, task, energy_config: Optional[EnergyConf
         vehicle_speed=vehicle.speed,
         vehicle_capacity=vehicle.capacity,
     )
-    return required <= vehicle.current_battery + 1e-6
+    min_battery = max(0.0, config.safety_threshold) * vehicle.battery_capacity
+    return vehicle.current_battery - required >= min_battery - 1e-6
 
 
 def _hard_time_windows_feasible(vehicle, task, state: SimulatorState) -> bool:
@@ -500,6 +538,27 @@ def _select_charger_and_vehicle(
             score = travel + queue
             if best is None or score < best[0]:
                 best = (score, charger.node_id, vehicle, travel, queue)
+
+    # Fix-2: if no available charger found, fall back to nearest reachable charger
+    # (including occupied ones) so the robot queues rather than standing by.
+    if best is None:
+        for vehicle in candidate_vehicles:
+            for charger in state.chargers.values():
+                travel = _travel_time(vehicle.current_location, charger.coordinates, vehicle.speed)
+                queue = charger.estimated_wait_s
+                required = calculate_energy_consumption(
+                    distance=_euclidean(vehicle.current_location, charger.coordinates),
+                    load=vehicle.current_load,
+                    config=config,
+                    vehicle_speed=vehicle.speed,
+                    vehicle_capacity=vehicle.capacity,
+                )
+                min_battery = max(0.0, config.safety_threshold) * vehicle.battery_capacity
+                if vehicle.current_battery - required < min_battery - 1e-6:
+                    continue
+                score = travel + queue
+                if best is None or score < best[0]:
+                    best = (score, charger.node_id, vehicle, travel, queue)
 
     if best is None:
         return None, None, 0.0, 0.0

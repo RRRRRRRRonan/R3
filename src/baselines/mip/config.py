@@ -62,7 +62,7 @@ class MIPBaselineScale:
     max_tasks: int = 100
     max_vehicles: int = 12
     max_charging_stations: int = 6
-    max_rules: int = 13
+    max_rules: int = 15
     max_decision_epochs: int = 128
     max_scenarios: int = 16
 

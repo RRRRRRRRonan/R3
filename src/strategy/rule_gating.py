@@ -64,7 +64,25 @@ def get_available_rules(
 
     available: List[int] = []
     has_tasks = bool(state.open_tasks)
-    has_energy_risk = _has_energy_risk(state, soc_threshold)
+    event_vehicle_id: Optional[int] = None
+    if event is not None and event_type in {
+        EVENT_ROBOT_IDLE,
+        EVENT_CHARGE_DONE,
+        EVENT_SOC_LOW,
+        EVENT_DEADLOCK_RISK,
+    }:
+        try:
+            event_vehicle_id = int(event.payload.get("vehicle_id", -1))
+        except Exception:
+            event_vehicle_id = None
+        if event_vehicle_id is not None and event_vehicle_id < 0:
+            event_vehicle_id = None
+    has_energy_risk = _has_energy_risk(
+        state,
+        soc_threshold,
+        event_vehicle_id=event_vehicle_id,
+        fallback_to_global=event_vehicle_id is None,
+    )
 
     if event_type in {EVENT_TASK_ARRIVAL, "EVENT_TASK_ARRIVAL"}:
         # Highest priority at arrival epochs: always expose accept/reject.
@@ -92,7 +110,21 @@ def get_available_rules(
     return list(dict.fromkeys(available))
 
 
-def _has_energy_risk(state: SimulatorState, soc_threshold: float) -> bool:
+def _has_energy_risk(
+    state: SimulatorState,
+    soc_threshold: float,
+    *,
+    event_vehicle_id: Optional[int] = None,
+    fallback_to_global: bool = True,
+) -> bool:
+    if event_vehicle_id is not None and event_vehicle_id in state.robots:
+        vehicle = state.robots[event_vehicle_id]
+        if vehicle.battery_capacity > 0:
+            soc = vehicle.current_battery / vehicle.battery_capacity
+            return soc <= soc_threshold
+        return False
+    if not fallback_to_global:
+        return False
     for vehicle in state.robots.values():
         if vehicle.battery_capacity <= 0:
             continue

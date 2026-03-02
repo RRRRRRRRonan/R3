@@ -100,9 +100,20 @@ class CostParameters:
     C_wait: float = 0.05
     C_conflict: float = 0.05
     C_standby: float = 0.05
+    # RL stabilization terms for policy degeneration control.
+    C_idle_backlog: float = 0.5
+    C_low_soc_idle: float = 1.0
+    C_no_progress: float = 1.0
 
     C_missing_task: float = 10000.0
     C_infeasible: float = 10000.0
+    # Terminal penalty per unfinished task at episode end (P0-A).
+    C_terminal_unfinished: float = 1000.0
+    # Small obligation cost charged on ACCEPT to break "accept=free" symmetry (P2-A).
+    C_accept_obligation: float = 0.5
+    # Scale factor for continuous tardiness shaping (default 0.5).
+    # Lower values reduce idle-period tardiness accumulation for task-sparse scenarios.
+    C_tardiness_shaping_scale: float = 0.5
 
     def get_total_cost(
         self,
@@ -113,6 +124,9 @@ class CostParameters:
         waiting: float = 0.0,
         conflict_waiting: float = 0.0,
         standby: float = 0.0,
+        idle_backlog: float = 0.0,
+        low_soc_idle: float = 0.0,
+        no_progress: float = 0.0,
         rejected: int = 0,
         infeasible: int = 0,
     ) -> float:
@@ -127,6 +141,9 @@ class CostParameters:
             + self.C_wait * waiting
             + self.C_conflict * effective_conflict_waiting
             + self.C_standby * standby
+            + self.C_idle_backlog * idle_backlog
+            + self.C_low_soc_idle * low_soc_idle
+            + self.C_no_progress * no_progress
             + self.C_missing_task * rejected
             + self.C_infeasible * infeasible
         )
