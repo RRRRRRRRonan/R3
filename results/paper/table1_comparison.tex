@@ -1,0 +1,15 @@
+\begin{table}[htbp]
+\centering
+\caption{Algorithm comparison: average total cost across scales (30 test instances each).}
+\label{tab:comparison}
+\begin{tabular}{lrrrrrrr}
+\toprule
+Scale & RL-APC & Greedy-FR & Greedy-PR & Random & ALNS-FR & ALNS-PR & MIP-Hind \\
+\midrule
+S & 39,846 & 94,772 & 94,772 & 110,832 & 12,345 & \textbf{5,282} & — \\
+M & 286,665 & 281,349 & 281,349 & 396,505 & 53,791 & \textbf{53,600} & — \\
+L & 662,267 & \textbf{336,386} & 336,386 & 474,032 & — & — & — \\
+XL & 814,344 & 809,830 & 809,830 & 1,011,351 & 175,546 & \textbf{170,514} & — \\
+\bottomrule
+\end{tabular}
+\end{table}

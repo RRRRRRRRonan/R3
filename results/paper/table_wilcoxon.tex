@@ -1,0 +1,22 @@
+\begin{table}[htbp]
+\centering
+\caption{Wilcoxon signed-rank tests: RL-APC vs baselines (30 instances per scale).}
+\label{tab:wilcoxon}
+\begin{tabular}{llrrrrcr}
+\toprule
+Scale & Baseline & RL Mean & BL Mean & Diff \% & $p$-value & Sig. & W/T/L \\
+\midrule
+S & Greedy-FR & 39,846 & 94,772 & -58.0\% & 3.86e-07 & *** & 27/0/3 \\
+S & Random & 39,846 & 110,832 & -64.0\% & 2.61e-08 & *** & 29/0/1 \\
+S & ALNS-FR & 39,846 & 12,345 & +222.8\% & 4.42e-06 & *** & 2/0/28 \\
+M & Greedy-FR & 286,665 & 281,349 & +1.9\% & 2.71e-01 & ns & 9/0/21 \\
+M & Random & 286,665 & 396,505 & -27.7\% & 1.42e-06 & *** & 26/0/4 \\
+M & ALNS-FR & 286,665 & 53,791 & +432.9\% & 1.30e-08 & *** & 2/0/28 \\
+L & Greedy-FR & 662,267 & 336,386 & +96.9\% & 9.31e-09 & *** & 2/0/28 \\
+L & Random & 662,267 & 474,032 & +39.7\% & 1.86e-08 & *** & 1/0/29 \\
+XL & Greedy-FR & 814,344 & 809,830 & +0.6\% & 6.55e-01 & ns & 19/0/11 \\
+XL & Random & 814,344 & 1,011,351 & -19.5\% & 1.37e-02 & * & 17/0/13 \\
+XL & ALNS-FR & 814,344 & 175,546 & +363.9\% & 1.86e-09 & *** & 0/0/30 \\
+\bottomrule
+\end{tabular}
+\end{table}

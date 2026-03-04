@@ -554,6 +554,12 @@ def main() -> None:
         default=None,
         help="Override C_tardiness_shaping_scale for continuous tardiness shaping.",
     )
+    parser.add_argument(
+        "--net-arch",
+        type=str,
+        default=None,
+        help="Override policy network architecture. Format: comma-separated ints, e.g. '512,256' for two layers.",
+    )
     args = parser.parse_args()
 
     log_dir = Path(args.log_dir)
@@ -665,6 +671,9 @@ def main() -> None:
         ppo_kwargs_override["gamma"] = args.gamma
     if args.ent_coef is not None:
         ppo_kwargs_override["ent_coef"] = args.ent_coef
+    if args.net_arch is not None:
+        net_arch = [int(x.strip()) for x in args.net_arch.split(",")]
+        ppo_kwargs_override["policy_kwargs"] = {"net_arch": net_arch}
 
     config = PPOTrainingConfig(
         total_timesteps=args.total_timesteps,

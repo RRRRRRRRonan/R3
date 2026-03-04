@@ -1,0 +1,256 @@
+% EJOR Paper Tables — Auto-generated 2026-03-03 21:49
+% Data sources: S=evaluate_S_30.csv (v1), M=evaluate_M_synced_30.csv (synced), L=evaluate_L_v3_30.csv (v3), XL=evaluate_XL_synced_30.csv (synced)
+% Individual rules: L=individual_rules_L_30.csv, M=individual_rules_M_30.csv, S=individual_rules_S_30.csv, XL=individual_rules_XL_30.csv
+
+% ======================================================================
+% Table 1: Problem Instances
+% ======================================================================
+\begin{table}[htbp]
+\centering
+\caption{Benchmark instance characteristics.}
+\label{tab:instances}
+\begin{tabular}{lcccc}
+\toprule
+Scale & Tasks & Vehicles & Chargers & Test Instances \\
+\midrule
+S & 15--20 & 3 & 2 & 30 \\
+M & 30--40 & 5 & 3 & 30 \\
+L & 50--60 & 8 & 4 & 30 \\
+XL & 80--100 & 12 & 6 & 30 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ======================================================================
+% Table 2: RL-APC Training Configuration
+% ======================================================================
+\begin{table}[htbp]
+\centering
+\caption{RL-APC training hyperparameters per scale. All models use MaskablePPO with learning rate $3 \times 10^{-4}$ and 10 training instances.}
+\label{tab:training}
+\begin{tabular}{lcccccc}
+\toprule
+Scale & Steps & Network & $\gamma$ & $H_\text{ent}$ & $C_\text{terminal}$ & $\alpha_\text{tard}$ \\
+\midrule
+S & 500K & [256, 128] & 0.995 & 0.05 & 3,000 & 0.2 \\
+M & 1M & [256, 128] & 0.995 & 0.05 & 2,500 & 0.25 \\
+L & 500K & [512, 256] & 0.998 & 0.05 & 2,000 & 0.3 \\
+XL & 500K & [512, 256] & 0.998 & 0.08 & 1,500 & 0.2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ======================================================================
+% Table 3: Individual Rule Performance
+% ======================================================================
+\begin{table}[htbp]
+\centering
+\caption{Average total cost and service quality of individual dispatch rules and RL-APC (30 test instances). Best single-rule cost per scale is underlined; RL-APC in bold when it outperforms all single rules. Rej = average number of rejected tasks.}
+\label{tab:rules}
+\small
+\begin{tabular}{llrrrrrrrr}
+\toprule
+ & & \multicolumn{2}{c}{S} & \multicolumn{2}{c}{M} & \multicolumn{2}{c}{L} & \multicolumn{2}{c}{XL} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}
+Rule & Category & Cost & Rej & Cost & Rej & Cost & Rej & Cost & Rej \\
+\midrule
+STTF & Dispatch & 110,551 & 7.9 & 294,978 & \textcolor{red}{26.5} & 491,192 & \textcolor{red}{45.8} & 764,969 & \textcolor{red}{74.0} \\
+EDD & Dispatch & 110,551 & 7.9 & 294,978 & \textcolor{red}{26.5} & 491,192 & \textcolor{red}{45.8} & 764,969 & \textcolor{red}{74.0} \\
+MST & Dispatch & 108,707 & 7.5 & 294,407 & \textcolor{red}{26.2} & 490,298 & \textcolor{red}{45.8} & 768,743 & \textcolor{red}{74.3} \\
+HPF & Dispatch & 110,551 & 7.9 & 294,978 & \textcolor{red}{26.5} & 491,192 & \textcolor{red}{45.8} & 764,969 & \textcolor{red}{74.0} \\
+Charge-Urgent & Charge & 118,337 & 8.2 & 301,809 & \textcolor{red}{26.2} & 498,087 & \textcolor{red}{45.5} & 841,829 & \textcolor{red}{66.8} \\
+Charge-Low & Charge & 118,135 & 8.2 & 335,128 & \textcolor{red}{21.7} & 737,186 & \textcolor{red}{14.7} & 1,141,406 & \textcolor{red}{34.0} \\
+Charge-Med & Charge & 112,644 & 7.5 & 299,669 & \textcolor{red}{25.9} & 490,829 & \textcolor{red}{43.1} & 915,014 & \textcolor{red}{57.3} \\
+Charge-High & Charge & 83,962 & 1.4 & 266,218 & \textcolor{red}{20.8} & \underline{336,386} & \textcolor{red}{16.8} & 790,373 & \textcolor{red}{55.0} \\
+Charge-Opp & Charge & 83,962 & 1.4 & 266,218 & \textcolor{red}{20.8} & 336,386 & \textcolor{red}{16.8} & 790,373 & \textcolor{red}{55.0} \\
+Standby-LC & Standby & 126,546 & 9.2 & 301,201 & \textcolor{red}{26.3} & 497,103 & \textcolor{red}{45.3} & 762,554 & \textcolor{red}{74.3} \\
+Standby-Lazy & Standby & \underline{60,731} & 3.8 & \underline{224,316} & \textcolor{red}{19.2} & 418,299 & \textcolor{red}{37.9} & \underline{696,148} & \textcolor{red}{64.6} \\
+Standby-HM & Standby & 126,546 & 9.2 & 301,201 & \textcolor{red}{26.3} & 497,103 & \textcolor{red}{45.3} & 762,554 & \textcolor{red}{74.3} \\
+Accept-Feas & Accept & 118,405 & 8.5 & 300,925 & \textcolor{red}{26.3} & 497,360 & \textcolor{red}{45.5} & 780,760 & \textcolor{red}{74.0} \\
+Accept-Val & Accept & 157,360 & 0.0 & 490,642 & 0.0 & 831,429 & 0.0 & 1,360,537 & 0.0 \\
+Insert-MC & Dispatch & 103,048 & 2.7 & 351,911 & \textcolor{red}{16.0} & 447,292 & \textcolor{red}{36.4} & 747,761 & \textcolor{red}{46.1} \\
+\midrule
+\textbf{RL-APC} & \textbf{Adaptive} & \textbf{39,846} & \textbf{0.0} & 286,665 & \textbf{0.0} & 662,267 & \textbf{0.0} & 814,344 & \textbf{1.5} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ======================================================================
+% Table 4: RL-APC vs Best Fixed Rule (multi-dimensional)
+% ======================================================================
+\begin{table*}[htbp]
+\centering
+\caption{Multidimensional comparison of RL-APC against the best-performing fixed rule (by cost) for each scale. Wilcoxon signed-rank tests on 30 paired instances. Cost/task = average cost per completed task. While the best fixed rule achieves lower total cost in M/L/XL, it does so by rejecting a large fraction of incoming tasks (see Rej column).}
+\label{tab:rl_vs_best}
+\small
+\begin{tabular}{llrrrrrrrc}
+\toprule
+ & & \multicolumn{3}{c}{Best Fixed Rule} & \multicolumn{3}{c}{RL-APC} & & \\
+\cmidrule(lr){3-5}\cmidrule(lr){6-8}
+Scale & Best Rule & Cost & Compl & Rej & Cost & Compl & Rej & $\Delta_\text{cost}$ (\%) & $p$ \\
+\midrule
+S & Standby-Lazy & 60,731 & 12.4 & 3.8 & \textbf{39,846} & 14.5 & \textbf{0.0} & $-34.4$** & $5.38e-03$ \\
+M & Standby-Lazy & \textbf{224,316} & 13.8 & \textcolor{red}{19.2} & 286,665 & 18.1 & \textbf{0.0} & $+27.8$** & $2.77e-03$ \\
+L & Charge-High & \textbf{336,386} & 30.4 & \textcolor{red}{16.8} & 662,267 & 17.5 & \textbf{0.0} & $+96.9$*** & $9.31e-09$ \\
+XL & Standby-Lazy & \textbf{696,148} & 18.8 & \textcolor{red}{64.6} & 814,344 & 22.2 & \textbf{1.5} & $+17.0$ & $0.058$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+% ======================================================================
+% Table 5: Statistical Tests — Enhanced with Bonferroni Correction
+% ======================================================================
+\begin{table}[htbp]
+\centering
+\caption{Wilcoxon signed-rank tests: RL-APC versus baselines (30 paired instances). $p$-values adjusted via Bonferroni correction for multiple comparisons within each scale.}
+\label{tab:wilcoxon}
+\begin{tabular}{llrrrcr}
+\toprule
+Scale & Baseline & RL Mean & BL Mean & $\Delta$ (\%) & $p_\text{adj}$ & W/L \\
+\midrule
+S & Greedy-FR & 39,846 & 94,772 & $-58.0$*** & $2.31e-06$ & 27/3 \\
+ & Greedy-PR & 39,846 & 94,772 & $-58.0$*** & $2.31e-06$ & 27/3 \\
+ & Random & 39,846 & 110,832 & $-64.0$*** & $1.56e-07$ & 29/1 \\
+ & Standby-Lazy & 39,846 & 60,731 & $-34.4$** & $4.00e-03$ & 23/7 \\
+ & Charge-High & 39,846 & 83,962 & $-52.5$*** & $7.15e-06$ & 25/5 \\
+ & Charge-Opp & 39,846 & 83,962 & $-52.5$*** & $7.15e-06$ & 25/5 \\
+\addlinespace
+M & Greedy-FR & 286,665 & 281,349 & $+1.9$ & $1.000$ & 9/21 \\
+ & Greedy-PR & 286,665 & 281,349 & $+1.9$ & $1.000$ & 9/21 \\
+ & Random & 286,665 & 396,505 & $-27.7$*** & $8.52e-06$ & 26/4 \\
+ & Standby-Lazy & 286,665 & 224,316 & $+27.8$* & $0.022$ & 7/23 \\
+ & Charge-High & 286,665 & 266,218 & $+7.7$ & $0.948$ & 10/20 \\
+ & Charge-Opp & 286,665 & 266,218 & $+7.7$ & $0.948$ & 10/20 \\
+\addlinespace
+L & Greedy-FR & 662,267 & 336,386 & $+96.9$*** & $5.59e-08$ & 2/28 \\
+ & Greedy-PR & 662,267 & 336,386 & $+96.9$*** & $5.59e-08$ & 2/28 \\
+ & Random & 662,267 & 474,032 & $+39.7$*** & $1.12e-07$ & 1/29 \\
+ & Charge-High & 662,267 & 336,386 & $+96.9$*** & $2.79e-07$ & 2/28 \\
+ & Charge-Opp & 662,267 & 336,386 & $+96.9$*** & $2.79e-07$ & 2/28 \\
+ & Standby-Lazy & 662,267 & 418,299 & $+58.3$*** & $1.23e-06$ & 4/26 \\
+\addlinespace
+XL & Greedy-FR & 814,344 & 809,830 & $+0.6$ & $1.000$ & 19/11 \\
+ & Greedy-PR & 814,344 & 809,830 & $+0.6$ & $1.000$ & 19/11 \\
+ & Random & 814,344 & 1,011,351 & $-19.5$ & $0.082$ & 17/13 \\
+ & Standby-Lazy & 814,344 & 696,148 & $+17.0$ & $0.776$ & 15/15 \\
+ & Insert-MC & 814,344 & 747,761 & $+8.9$ & $1.000$ & 16/14 \\
+ & Standby-LC & 814,344 & 762,554 & $+6.8$ & $1.000$ & 16/14 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ======================================================================
+% Table 6: Service Quality — Three-Way Comparison
+% ======================================================================
+\begin{table*}[htbp]
+\centering
+\caption{Service quality comparison: RL-APC, Greedy-FR, and the best fixed rule (by cost) per scale. Cost/task = total cost $\div$ completed tasks, measuring operational efficiency independent of workload volume. Best values per scale in \textbf{bold}; rejected $\geq 10$ in \textcolor{red}{red}. RL-APC is the only method achieving near-zero rejection across all scales.}
+\label{tab:service}
+\small
+\begin{tabular}{llrrrrrr}
+\toprule
+Scale & Method & Cost & Completed & Rejected & Delay & Cost/Task \\
+\midrule
+S & RL-APC & \textbf{39,846} & 14.5 & \textbf{0.0} & 137 & \textbf{2,748} \\
+ & Greedy-FR & 94,772 & \textbf{15.3} & 1.5 & 17,137 & 6,194 \\
+ & Standby-Lazy & 60,731 & 12.4 & 3.8 & \textbf{0} & 4,911 \\
+\addlinespace
+M & RL-APC & 286,665 & \textbf{18.1} & \textbf{0.0} & 22 & \textbf{15,867} \\
+ & Greedy-FR & 281,349 & 11.5 & \textcolor{red}{21.8} & 605 & 24,536 \\
+ & Standby-Lazy & \textbf{224,316} & 13.8 & \textcolor{red}{19.2} & \textbf{0} & 16,294 \\
+\addlinespace
+L & RL-APC & 662,267 & 17.5 & \textbf{0.0} & \textbf{5,743} & 37,916 \\
+ & Greedy-FR (=Charge-High) & \textbf{336,386} & \textbf{30.4} & \textcolor{red}{16.8} & 8,456 & \textbf{11,065} \\
+\addlinespace
+XL & RL-APC & 814,344 & \textbf{22.2} & \textbf{1.5} & 3,365 & \textbf{36,737} \\
+ & Greedy-FR & 809,830 & 20.0 & \textcolor{red}{57.7} & 177 & 40,491 \\
+ & Standby-Lazy & \textbf{696,148} & 18.8 & \textcolor{red}{64.6} & \textbf{0} & 37,029 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+% ======================================================================
+% Table 7: Online vs Offline — Gap Analysis
+% ======================================================================
+\begin{table}[htbp]
+\centering
+\caption{Online--offline performance gap. The gap reflects the inherent cost of real-time decision-making without future task knowledge, not algorithm deficiency.}
+\label{tab:offline}
+\begin{tabular}{lrrrrr}
+\toprule
+Scale & RL-APC & Greedy-FR & Best Offline & Gap$_\text{RL}$ (\%) & Gap$_\text{Greedy}$ (\%) \\
+\midrule
+S & 39,846 & 94,772 & 5,282 & $+654.4$ & $+1694.3$ \\
+M & 286,665 & 281,349 & 53,600 & $+434.8$ & $+424.9$ \\
+L & 662,267 & 336,386 & — & — & — \\
+XL & 814,344 & 809,830 & 170,514 & $+377.6$ & $+374.9$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ======================================================================
+% Table 8: Cost Decomposition — Weighted Cost Contributions
+% ======================================================================
+\begin{table*}[htbp]
+\centering
+\caption{Cost decomposition into weighted components (averages over 30 instances). Travel = $C_\text{tr} \times d + C_\text{time} \times t$; Charging = $C_\text{ch} \times t_\text{ch}$; Tardiness = $C_\text{delay} \times \tau$; Idle = $C_\text{wait} \times t_w + C_\text{cf} \times (t_w + t_\text{cf}) + C_\text{sb} \times t_\text{sb}$; Rejection = $10{,}000 \times n_\text{rej}$; Other = terminal penalties and reward shaping. Rejection cost (in \textcolor{red}{red} when $\geq 30\%$ of total) dominates baselines; RL-APC shifts cost to idle (conservative waiting).}
+\label{tab:cost_decomp}
+\small
+\begin{tabular}{llrrrrrrrr}
+\toprule
+Scale & Method & Travel & Charg. & Tard. & Idle & Reject. & Other & Total & \% Rej. \\
+\midrule
+S & RL-APC & 1,487 & 78 & 273 & 3,323 & 0 & 34,684 & 39,846 & 0\% \\
+ & Greedy-FR & 8,729 & 1,110 & 34,274 & 4,279 & 15,333 & 31,047 & 94,772 & 16\% \\
+ & Standby-Lazy & 1,053 & 9 & 0 & 2,982 & \textcolor{red}{38,000} & 18,688 & 60,731 & 63\% \\
+\addlinespace
+M & RL-APC & 3,123 & 199 & 44 & 3,629 & 0 & 279,671 & 286,665 & 0\% \\
+ & Greedy-FR & 4,087 & 336 & 1,210 & 6,182 & \textcolor{red}{218,000} & 51,535 & 281,349 & 77\% \\
+ & Standby-Lazy & 1,686 & 6 & 0 & 4,440 & \textcolor{red}{192,333} & 25,851 & 224,316 & 86\% \\
+\addlinespace
+L & RL-APC & 4,598 & 276 & 11,487 & 7,322 & 0 & 638,584 & 662,267 & 0\% \\
+ & Greedy-FR (=Charge-High) & 12,329 & 1,341 & 16,913 & 6,064 & \textcolor{red}{168,000} & 131,740 & 336,386 & 50\% \\
+\addlinespace
+XL & RL-APC & 7,035 & 392 & 6,731 & 2,052 & 14,667 & 783,468 & 814,344 & 2\% \\
+ & Greedy-FR & 7,889 & 509 & 354 & 2,545 & \textcolor{red}{577,333} & 221,200 & 809,830 & 71\% \\
+ & Standby-Lazy & 3,672 & 4 & 0 & 8,462 & \textcolor{red}{646,333} & 37,677 & 696,148 & 93\% \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+% ======================================================================
+% Table 9: Computational Efficiency
+% ======================================================================
+\begin{table}[htbp]
+\centering
+\caption{Average runtime per instance (seconds).}
+\label{tab:runtime}
+\begin{tabular}{lrrrrrr}
+\toprule
+Scale & RL-APC & Greedy-FR & Greedy-PR & Random & ALNS-FR & ALNS-PR \\
+\midrule
+S & 3.30 & 0.29 & 0.29 & 0.49 & 0.80 & 0.98 \\
+M & 5.23 & 0.58 & 0.58 & 1.44 & 2.16 & 7.87 \\
+L & 11.54 & 1.59 & 1.56 & 1.25 & — & — \\
+XL & 4.24 & 1.03 & 1.02 & 2.58 & 9.42 & 45.93 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ======================================================================
+% Table 10: L-Scale Sensitivity Analysis
+% ======================================================================
+\begin{table}[htbp]
+\centering
+\caption{L-scale training sensitivity. Different hyperparameter configurations show progressive improvement in RL-APC performance.}
+\label{tab:sensitivity}
+\begin{tabular}{lrrrrr}
+\toprule
+Version & Net Arch & $C_\text{terminal}$ & RL Cost & Greedy Cost & $\Delta$ (\%) \\
+\midrule
+v1 & [256, 128] & 3000 & 972,882 & 377,493 & $+157.7$ \\
+v2 & [512, 256] & 2000 & 1,013,433 & 377,493 & $+168.5$ \\
+v3 & [512, 256] & 2000 & 662,267 & 336,386 & $+96.9$ \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 from strategy.rule_env import RuleSelectionEnv
 
 
@@ -54,6 +56,50 @@ def make_masked_env(core_env: RuleSelectionEnv):
     gym_env = RuleSelectionGymEnv(core_env)
     return ActionMasker(gym_env, lambda env: env.action_masks())
 
+def _make_vecnorm_saving_callback(
+    base_callback_cls,
+    vec_normalize_env,
+    best_model_save_path: str | None,
+):
+    """Create a callback subclass that saves VecNormalize stats alongside best_model.
+
+    This fixes a critical bug where best_model.zip was saved mid-training but
+    vecnormalize.pkl was only saved at the END of training, causing observation
+    distribution mismatch during evaluation.
+    """
+    if vec_normalize_env is None or best_model_save_path is None:
+        return base_callback_cls
+
+    class _VecNormSavingEvalCallback(base_callback_cls):
+        """MaskableEvalCallback that also persists VecNormalize running stats."""
+
+        def __init__(self, *args, _vec_normalize_env=None, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._vec_normalize_env = _vec_normalize_env
+            self._best_model_dir = kwargs.get("best_model_save_path") or (
+                args[1] if len(args) > 1 else None
+            )
+
+        def _on_step(self) -> bool:
+            result = super()._on_step()
+            # After parent's _on_step, check if a new best model was saved.
+            # MaskableEvalCallback sets self.best_mean_reward when saving.
+            if (
+                self._vec_normalize_env is not None
+                and self._best_model_dir is not None
+            ):
+                best_model_path = Path(self._best_model_dir) / "best_model.zip"
+                vecnorm_path = Path(self._best_model_dir) / "vecnormalize.pkl"
+                # Save vecnorm if best_model is newer than vecnorm (or vecnorm doesn't exist)
+                if best_model_path.exists():
+                    save_needed = not vecnorm_path.exists() or (
+                        best_model_path.stat().st_mtime > vecnorm_path.stat().st_mtime
+                    )
+                    if save_needed:
+                        self._vec_normalize_env.save(str(vecnorm_path))
+            return result
+
+    return _VecNormSavingEvalCallback
 
 def train_maskable_ppo(
     train_env,
@@ -79,13 +125,18 @@ def train_maskable_ppo(
     )
 
     if eval_vec_env is not None and config.eval_freq > 0:
-        callback = MaskableEvalCallback(
+        best_model_path = str(save_dir / "best_model") if save_dir else None
+        CallbackCls = _make_vecnorm_saving_callback(
+            MaskableEvalCallback, vec_normalize_env, best_model_path,
+        )
+        callback = CallbackCls(
             eval_vec_env,
-            best_model_save_path=str(save_dir / "best_model") if save_dir else None,
+            best_model_save_path=best_model_path,
             log_path=str(save_dir / "eval_logs") if save_dir else None,
             eval_freq=config.eval_freq,
             n_eval_episodes=config.eval_episodes,
             deterministic=config.deterministic_eval,
+            _vec_normalize_env=vec_normalize_env,
         )
 
     model = MaskablePPO(
