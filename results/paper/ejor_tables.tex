@@ -43,37 +43,62 @@ XL & 500K & [512, 256] & 0.998 & 0.08 & 1,500 & 0.2 \\
 % ======================================================================
 % Table 3: Individual Rule Performance
 % ======================================================================
-\begin{table}[htbp]
+% Key messages:
+%   (1) No universal rule: best shifts from Standby-Lazy (S/M/XL) to Charge-High (L)
+%   (2) Large inter-rule gap: 2.0x--2.6x between best and worst per scale
+%   (3) Equivalent rules: †STTF=EDD=HPF, ‡Charge-High=Charge-Opp, §Standby-LC=Standby-HM
+%   (4) Low-cost rules reject heavily: Rej>=10 in red; RL-APC Rej in bold (near-zero)
+%   (5) RL-APC beats all rules only in S: bold cost only for S-scale
+\begin{table*}[htbp]
 \centering
-\caption{Average total cost and service quality of individual dispatch rules and RL-APC (30 test instances). Best single-rule cost per scale is underlined; RL-APC in bold when it outperforms all single rules. Rej = average number of rejected tasks.}
+\caption{Individual rule performance across four problem scales (30 test instances each).
+For each rule--scale combination, we report average total cost and number of rejected tasks (Rej).
+Rules are grouped by category; identical superscripts denote equivalent rules
+($^\dagger$\,STTF\,=\,EDD\,=\,HPF;
+ $^\ddagger$\,Charge-High\,=\,Charge-Opp;
+ $^\S$\,Standby-LC\,=\,Standby-HM),
+reducing 15 rules to 11 effectively independent strategies.
+\underline{Underlined}: best single-rule cost per scale.
+\textbf{Bold} RL-APC cost: lower than all single rules.
+Rej in \textcolor{red}{red}: $\geq 10$ rejected tasks.
+The best rule shifts from Standby-Lazy (S, M, XL) to Charge-High (L),
+and the cost ratio between worst and best single rule ranges from
+$2.0\times$ (XL) to $2.6\times$ (S).}
 \label{tab:rules}
 \small
-\begin{tabular}{llrrrrrrrr}
+\begin{tabular}{ll rr rr rr rr}
 \toprule
  & & \multicolumn{2}{c}{S} & \multicolumn{2}{c}{M} & \multicolumn{2}{c}{L} & \multicolumn{2}{c}{XL} \\
 \cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}
 Rule & Category & Cost & Rej & Cost & Rej & Cost & Rej & Cost & Rej \\
 \midrule
-STTF & Dispatch & 110,551 & 7.9 & 294,978 & \textcolor{red}{26.5} & 491,192 & \textcolor{red}{45.8} & 764,969 & \textcolor{red}{74.0} \\
-EDD & Dispatch & 110,551 & 7.9 & 294,978 & \textcolor{red}{26.5} & 491,192 & \textcolor{red}{45.8} & 764,969 & \textcolor{red}{74.0} \\
+% --- Dispatch rules ---
+STTF$^\dagger$ & Dispatch & 110,551 & 7.9 & 294,978 & \textcolor{red}{26.5} & 491,192 & \textcolor{red}{45.8} & 764,969 & \textcolor{red}{74.0} \\
+EDD$^\dagger$ & Dispatch & 110,551 & 7.9 & 294,978 & \textcolor{red}{26.5} & 491,192 & \textcolor{red}{45.8} & 764,969 & \textcolor{red}{74.0} \\
 MST & Dispatch & 108,707 & 7.5 & 294,407 & \textcolor{red}{26.2} & 490,298 & \textcolor{red}{45.8} & 768,743 & \textcolor{red}{74.3} \\
-HPF & Dispatch & 110,551 & 7.9 & 294,978 & \textcolor{red}{26.5} & 491,192 & \textcolor{red}{45.8} & 764,969 & \textcolor{red}{74.0} \\
+HPF$^\dagger$ & Dispatch & 110,551 & 7.9 & 294,978 & \textcolor{red}{26.5} & 491,192 & \textcolor{red}{45.8} & 764,969 & \textcolor{red}{74.0} \\
+Insert-MC & Dispatch & 103,048 & 2.7 & 351,911 & \textcolor{red}{16.0} & 447,292 & \textcolor{red}{36.4} & 747,761 & \textcolor{red}{46.1} \\
+\addlinespace
+% --- Charge rules ---
 Charge-Urgent & Charge & 118,337 & 8.2 & 301,809 & \textcolor{red}{26.2} & 498,087 & \textcolor{red}{45.5} & 841,829 & \textcolor{red}{66.8} \\
 Charge-Low & Charge & 118,135 & 8.2 & 335,128 & \textcolor{red}{21.7} & 737,186 & \textcolor{red}{14.7} & 1,141,406 & \textcolor{red}{34.0} \\
 Charge-Med & Charge & 112,644 & 7.5 & 299,669 & \textcolor{red}{25.9} & 490,829 & \textcolor{red}{43.1} & 915,014 & \textcolor{red}{57.3} \\
-Charge-High & Charge & 83,962 & 1.4 & 266,218 & \textcolor{red}{20.8} & \underline{336,386} & \textcolor{red}{16.8} & 790,373 & \textcolor{red}{55.0} \\
-Charge-Opp & Charge & 83,962 & 1.4 & 266,218 & \textcolor{red}{20.8} & 336,386 & \textcolor{red}{16.8} & 790,373 & \textcolor{red}{55.0} \\
-Standby-LC & Standby & 126,546 & 9.2 & 301,201 & \textcolor{red}{26.3} & 497,103 & \textcolor{red}{45.3} & 762,554 & \textcolor{red}{74.3} \\
+Charge-High$^\ddagger$ & Charge & 83,962 & 1.4 & 266,218 & \textcolor{red}{20.8} & \underline{336,386} & \textcolor{red}{16.8} & 790,373 & \textcolor{red}{55.0} \\
+Charge-Opp$^\ddagger$ & Charge & 83,962 & 1.4 & 266,218 & \textcolor{red}{20.8} & 336,386 & \textcolor{red}{16.8} & 790,373 & \textcolor{red}{55.0} \\
+\addlinespace
+% --- Standby rules ---
+Standby-LC$^\S$ & Standby & 126,546 & 9.2 & 301,201 & \textcolor{red}{26.3} & 497,103 & \textcolor{red}{45.3} & 762,554 & \textcolor{red}{74.3} \\
 Standby-Lazy & Standby & \underline{60,731} & 3.8 & \underline{224,316} & \textcolor{red}{19.2} & 418,299 & \textcolor{red}{37.9} & \underline{696,148} & \textcolor{red}{64.6} \\
-Standby-HM & Standby & 126,546 & 9.2 & 301,201 & \textcolor{red}{26.3} & 497,103 & \textcolor{red}{45.3} & 762,554 & \textcolor{red}{74.3} \\
+Standby-HM$^\S$ & Standby & 126,546 & 9.2 & 301,201 & \textcolor{red}{26.3} & 497,103 & \textcolor{red}{45.3} & 762,554 & \textcolor{red}{74.3} \\
+\addlinespace
+% --- Accept rules ---
 Accept-Feas & Accept & 118,405 & 8.5 & 300,925 & \textcolor{red}{26.3} & 497,360 & \textcolor{red}{45.5} & 780,760 & \textcolor{red}{74.0} \\
 Accept-Val & Accept & 157,360 & 0.0 & 490,642 & 0.0 & 831,429 & 0.0 & 1,360,537 & 0.0 \\
-Insert-MC & Dispatch & 103,048 & 2.7 & 351,911 & \textcolor{red}{16.0} & 447,292 & \textcolor{red}{36.4} & 747,761 & \textcolor{red}{46.1} \\
 \midrule
 \textbf{RL-APC} & \textbf{Adaptive} & \textbf{39,846} & \textbf{0.0} & 286,665 & \textbf{0.0} & 662,267 & \textbf{0.0} & 814,344 & \textbf{1.5} \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
 % ======================================================================
 % Table 4: RL-APC vs Best Fixed Rule (multi-dimensional)
