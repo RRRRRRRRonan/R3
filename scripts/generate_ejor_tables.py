@@ -41,29 +41,34 @@ TASK_COUNTS = {"S": "15--20", "M": "30--40", "L": "50--60", "XL": "80--100"}
 VEHICLE_COUNTS = {"S": 3, "M": 5, "L": 8, "XL": 12}
 CHARGER_COUNTS = {"S": 2, "M": 3, "L": 4, "XL": 6}
 
-# ── Training parameters (from MEMORY + training scripts) ──────────────────
+# ── Training parameters ──────────────────────────────────────────────────
+# Shared PPO defaults come from ppo_trainer._default_ppo_kwargs():
+#   gamma=0.99, ent_coef=0.05, net_arch=[256, 128]
+# Only terminal_penalty, tardiness_scale, and max_time_s have per-scale
+# overrides (set by train_all_scales.sh).  total_timesteps and n_seeds
+# vary per training run.
+_PPO_DEFAULTS = {
+    "gamma": 0.99, "ent_coef": 0.05, "net_arch": "[256, 128]",
+}
+
 TRAINING_CONFIG = {
     "S": {
-        "total_timesteps": "500K", "net_arch": "[256, 128]",
-        "gamma": 0.995, "ent_coef": 0.05,
+        "total_timesteps": "500K", **_PPO_DEFAULTS,
         "terminal_penalty": 3000, "tardiness_scale": 0.2,
         "max_time_s": 20000, "n_seeds": 3,
     },
     "M": {
-        "total_timesteps": "1M", "net_arch": "[256, 128]",
-        "gamma": 0.995, "ent_coef": 0.05,
+        "total_timesteps": "1M", **_PPO_DEFAULTS,
         "terminal_penalty": 2500, "tardiness_scale": 0.25,
         "max_time_s": 24000, "n_seeds": 1,
     },
     "L": {
-        "total_timesteps": "500K", "net_arch": "[512, 256]",
-        "gamma": 0.998, "ent_coef": 0.05,
+        "total_timesteps": "500K", **_PPO_DEFAULTS,
         "terminal_penalty": 2000, "tardiness_scale": 0.3,
         "max_time_s": 26000, "n_seeds": 1,
     },
     "XL": {
-        "total_timesteps": "500K", "net_arch": "[512, 256]",
-        "gamma": 0.998, "ent_coef": 0.08,
+        "total_timesteps": "500K", **_PPO_DEFAULTS,
         "terminal_penalty": 1500, "tardiness_scale": 0.2,
         "max_time_s": 25000, "n_seeds": 1,
     },
