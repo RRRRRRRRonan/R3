@@ -99,7 +99,8 @@ C_DELAY = 2.0       # tardiness
 C_WAIT = 0.05       # waiting time
 C_CONFLICT = 0.05   # conflict waiting (includes waiting)
 C_STANDBY = 0.05    # standby time
-C_TERMINAL = 1000.0 # per unfinished task at episode end
+# Per-scale terminal penalty (must match evaluation runs in auto_complete_pipeline.sh)
+C_TERMINAL_PER_SCALE = {"S": 3000, "M": 2500, "L": 2000, "XL": 1500}
 
 
 def _pick_best_csv(scale: str) -> Tuple[Optional[str], str]:
@@ -138,6 +139,7 @@ def _group(rows):
             "conflict_waiting": float(r.get("metrics_total_conflict_waiting", 0) or 0),
             "runtime": float(r.get("runtime_s", 0) or 0),
             "num_tasks": float(r.get("num_tasks_manifest", 0) or 0),
+            "seed": r.get("seed", ""),
         }
         by.setdefault(aid, []).append(d)
     return by
@@ -291,6 +293,7 @@ def main():
         rule_standby: Dict[str, Dict[int, float]] = {}
         rule_waiting: Dict[str, Dict[int, float]] = {}
         rule_conflict: Dict[str, Dict[int, float]] = {}
+        rule_num_tasks: Dict[str, Dict[int, float]] = {}
         for scale in SCALES:
             rule_avgs[scale] = {}
             rule_completed[scale] = {}
@@ -302,6 +305,7 @@ def main():
             rule_standby[scale] = {}
             rule_waiting[scale] = {}
             rule_conflict[scale] = {}
+            rule_num_tasks[scale] = {}
             if scale in ir_data:
                 for rid in range(1, 16):
                     ok_rows = [r for r in ir_data[scale]
@@ -327,6 +331,8 @@ def main():
                             [float(r.get("metrics_total_waiting", 0) or 0) for r in ok_rows])
                         rule_conflict[scale][rid] = np.mean(
                             [float(r.get("metrics_total_conflict_waiting", 0) or 0) for r in ok_rows])
+                        rule_num_tasks[scale][rid] = np.mean(
+                            [float(r.get("num_tasks_manifest", 0) or 0) for r in ok_rows])
 
         # Find best single rule per scale
         best_rule_per_scale = {}
@@ -561,17 +567,23 @@ def main():
             bl_arr = np.array([d["cost"] for d in by[bl]])
             comparisons.append((ALGO_DISPLAY[bl], rl, bl_arr))
 
-        # Add top-3 individual rules for this scale
+        # Add top-3 individual rules for this scale.
+        # Pair by seed to match instance-level pairing required by Wilcoxon.
         if scale in ir_data:
             avgs = rule_avgs.get(scale, {})
             if avgs:
                 top3_rids = sorted(avgs, key=avgs.get)[:3]
+                # Get RL seeds in order for pairing
+                rl_seeds = [d.get("seed") for d in by["rl_apc"]] if "rl_apc" in by else []
                 for rid in top3_rids:
                     name = RULE_NAMES.get(rid, f"Rule{rid}")
-                    ir_costs = sorted(
-                        [float(r["cost"]) for r in ir_data[scale]
-                         if int(r["rule_id"]) == rid and r.get("status") == "OK"]
-                    )
+                    ir_by_seed = {
+                        r.get("seed", r.get("seed_id", "")): float(r["cost"])
+                        for r in ir_data[scale]
+                        if int(r["rule_id"]) == rid and r.get("status") == "OK"
+                    }
+                    # Pair with RL in same seed order
+                    ir_costs = [ir_by_seed[s] for s in rl_seeds if s in ir_by_seed]
                     if len(ir_costs) == len(rl):
                         comparisons.append((name, rl, np.array(ir_costs)))
 
@@ -835,28 +847,31 @@ def main():
         r"Idle = $C_\text{wait} \times t_w + C_\text{cf} \times (t_w + t_\text{cf}) "
         r"+ C_\text{sb} \times t_\text{sb}$; "
         r"Rejection = $10{,}000 \times n_\text{rej}$; "
-        r"Other = terminal penalties and reward shaping. "
-        r"Rejection cost (in \textcolor{red}{red} when $\geq 30\%$ of total) "
-        r"dominates baselines; RL-APC shifts cost to idle (conservative waiting).}")
+        r"Terminal = $C_\text{term} \times n_\text{unfin}$ (scale-specific); "
+        r"Shaping = continuous tardiness and backlog penalties (residual). "
+        r"Rejection cost in \textcolor{red}{red} when $\geq 30\%$ of total.}")
     tex(r"\label{tab:cost_decomp}")
     tex(r"\small")
-    tex(r"\begin{tabular}{llrrrrrrrr}")
+    tex(r"\begin{tabular}{llrrrrrrrrr}")
     tex(r"\toprule")
-    tex(r"Scale & Method & Travel & Charg. & Tard. & Idle & Reject. & Other & Total & \% Rej. \\")
+    tex(r"Scale & Method & Travel & Charg. & Tard. & Idle & Reject. & Terminal & Shaping & Total & \% Rej. \\")
     tex(r"\midrule")
 
     def _weighted_costs(travel, travel_time, charging, delay, waiting,
-                        conflict, standby, rejected, total_cost):
-        """Compute weighted cost contributions and residual."""
+                        conflict, standby, rejected, num_tasks, completed,
+                        total_cost, scale):
+        """Compute weighted cost contributions, terminal penalty, and shaping residual."""
         w_travel = C_TR * travel + C_TIME * travel_time
         w_charging = C_CH * charging
         w_tardiness = C_DELAY * delay
         w_idle = C_WAIT * waiting + C_CONFLICT * (conflict + waiting) + C_STANDBY * standby
         w_rejection = REJECTION_PENALTY * rejected
-        w_known = w_travel + w_charging + w_tardiness + w_idle + w_rejection
-        w_other = total_cost - w_known  # terminal penalties + reward shaping
+        unfinished = max(0, num_tasks - completed - rejected)
+        w_terminal = C_TERMINAL_PER_SCALE.get(scale, 1000) * unfinished
+        w_known = w_travel + w_charging + w_tardiness + w_idle + w_rejection + w_terminal
+        w_shaping = total_cost - w_known  # continuous tardiness + backlog shaping
         rej_pct = (w_rejection / total_cost * 100) if total_cost > 0 else 0
-        return w_travel, w_charging, w_tardiness, w_idle, w_rejection, w_other, rej_pct
+        return w_travel, w_charging, w_tardiness, w_idle, w_rejection, w_terminal, w_shaping, rej_pct
 
     csv_rows_cd = []
     for scale in SCALES:
@@ -864,7 +879,8 @@ def main():
         first = True
 
         # Build method list with all raw metrics
-        # tuple: (name, travel, travel_time, charging, delay, waiting, conflict, standby, rejected, cost)
+        # tuple: (name, travel, travel_time, charging, delay, waiting,
+        #         conflict, standby, rejected, num_tasks, completed, cost)
         method_rows = []
         for a in ["rl_apc", "greedy_fr"]:
             if a not in by:
@@ -880,6 +896,8 @@ def main():
                 np.mean([d["conflict_waiting"] for d in vals]),
                 np.mean([d["standby"] for d in vals]),
                 np.mean([d["rejected"] for d in vals]),
+                np.mean([d["num_tasks"] for d in vals]),
+                np.mean([d["completed"] for d in vals]),
                 np.mean([d["cost"] for d in vals]),
             ))
 
@@ -907,36 +925,36 @@ def main():
                     rule_conflict.get(scale, {}).get(best_rid, 0),
                     rule_standby.get(scale, {}).get(best_rid, 0),
                     rule_rejected.get(scale, {}).get(best_rid, 0),
+                    rule_num_tasks.get(scale, {}).get(best_rid, 0),
+                    rule_completed.get(scale, {}).get(best_rid, 0),
                     br_cost,
                 ))
 
         for (mname, travel, travel_time, charging, delay, waiting,
-             conflict, standby, rejected, cost) in method_rows:
+             conflict, standby, rejected, num_tasks, completed, cost) in method_rows:
             scale_col = scale if first else ""
             first = False
 
-            w_tr, w_ch, w_td, w_idle, w_rej, w_other, rej_pct = _weighted_costs(
+            w_tr, w_ch, w_td, w_idle, w_rej, w_term, w_shp, rej_pct = _weighted_costs(
                 travel, travel_time, charging, delay, waiting,
-                conflict, standby, rejected, cost)
+                conflict, standby, rejected, num_tasks, completed, cost, scale)
 
             # Highlight rejection when ≥ 30% of total
             rej_str = f"{w_rej:,.0f}"
             if rej_pct >= 30:
                 rej_str = r"\textcolor{red}{" + rej_str + "}"
 
-            # Other can be negative if reward shaping credits exist
-            other_str = f"{w_other:,.0f}"
-
             tex(f"{scale_col} & {mname} & {w_tr:,.0f} & {w_ch:,.0f} & "
                 f"{w_td:,.0f} & {w_idle:,.0f} & {rej_str} & "
-                f"{other_str} & {cost:,.0f} & {rej_pct:.0f}\\% \\\\")
+                f"{w_term:,.0f} & {w_shp:,.0f} & {cost:,.0f} & {rej_pct:.0f}\\% \\\\")
 
             csv_rows_cd.append({
                 "Scale": scale, "Method": mname,
                 "Travel": f"{w_tr:.0f}", "Charging": f"{w_ch:.0f}",
                 "Tardiness": f"{w_td:.0f}", "Idle": f"{w_idle:.0f}",
                 "Rejection": f"{w_rej:.0f}",
-                "Other": f"{w_other:.0f}",
+                "Terminal": f"{w_term:.0f}",
+                "Shaping": f"{w_shp:.0f}",
                 "Total": f"{cost:.0f}",
                 "Rej %": f"{rej_pct:.0f}",
             })
@@ -950,7 +968,7 @@ def main():
 
     _write_csv(PAPER / "ejor_table8_decomposition.csv",
                ["Scale", "Method", "Travel", "Charging", "Tardiness",
-                "Idle", "Rejection", "Other", "Total", "Rej %"],
+                "Idle", "Rejection", "Terminal", "Shaping", "Total", "Rej %"],
                csv_rows_cd)
 
     # ================================================================
