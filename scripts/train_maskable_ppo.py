@@ -560,6 +560,24 @@ def main() -> None:
         default=None,
         help="Override policy network architecture. Format: comma-separated ints, e.g. '512,256' for two layers.",
     )
+    parser.add_argument(
+        "--load-model",
+        type=str,
+        default=None,
+        help="Path to a pretrained model .zip to fine-tune from (e.g. best_model/best_model.zip).",
+    )
+    parser.add_argument(
+        "--load-vecnormalize",
+        type=str,
+        default=None,
+        help="Path to a VecNormalize .pkl to restore observation/reward stats from.",
+    )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=None,
+        help="Override PPO learning rate. Default uses ppo_trainer value (3e-4).",
+    )
     args = parser.parse_args()
 
     log_dir = Path(args.log_dir)
@@ -671,6 +689,8 @@ def main() -> None:
         ppo_kwargs_override["gamma"] = args.gamma
     if args.ent_coef is not None:
         ppo_kwargs_override["ent_coef"] = args.ent_coef
+    if args.learning_rate is not None:
+        ppo_kwargs_override["learning_rate"] = args.learning_rate
     if args.net_arch is not None:
         net_arch = [int(x.strip()) for x in args.net_arch.split(",")]
         ppo_kwargs_override["policy_kwargs"] = {"net_arch": net_arch}
@@ -688,6 +708,8 @@ def main() -> None:
         vec_clip_obs=float(args.vec_clip_obs),
         vec_clip_reward=float(args.vec_clip_reward),
         vec_norm_epsilon=float(args.vec_norm_epsilon),
+        load_model=args.load_model,
+        load_vecnormalize=args.load_vecnormalize,
     )
     if ppo_kwargs_override:
         config = replace(config, ppo_kwargs={**config.ppo_kwargs, **ppo_kwargs_override})

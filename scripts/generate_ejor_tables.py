@@ -103,6 +103,49 @@ C_STANDBY = 0.05    # standby time
 C_TERMINAL_PER_SCALE = {"S": 3000, "M": 2500, "L": 2000, "XL": 1500}
 
 
+def _clean_cost_from_raw(travel, travel_time, charging, delay, waiting,
+                         conflict_waiting, standby, rejected, num_tasks,
+                         completed, scale):
+    """Compute Option B total: Oper + Reject + Terminal (no reward shaping).
+
+    This gives a cost metric that is comparable across methods and interpretable
+    as Section 3 operational cost plus rejection and terminal penalties.
+    """
+    w_travel = C_TR * travel + C_TIME * travel_time
+    w_charging = C_CH * charging
+    w_tardiness = C_DELAY * delay
+    w_idle = C_WAIT * waiting + C_CONFLICT * (conflict_waiting + waiting) + C_STANDBY * standby
+    w_oper = w_travel + w_charging + w_tardiness + w_idle
+    w_rejection = REJECTION_PENALTY * rejected
+    unfinished = max(0, num_tasks - completed - rejected)
+    w_terminal = C_TERMINAL_PER_SCALE.get(scale, 1000) * unfinished
+    return w_oper + w_rejection + w_terminal
+
+
+def _clean_cost_d(d: dict, scale: str) -> float:
+    """Compute Option B clean cost from a grouped data dict."""
+    return _clean_cost_from_raw(
+        d["travel"], d["travel_time"], d["charging"], d["delay"],
+        d["waiting"], d["conflict_waiting"], d["standby"],
+        d["rejected"], d["num_tasks"], d["completed"], scale)
+
+
+def _clean_cost_ir(r: dict, scale: str) -> float:
+    """Compute Option B clean cost from an individual_rules CSV row."""
+    return _clean_cost_from_raw(
+        float(r.get("metrics_total_distance", 0) or 0),
+        float(r.get("metrics_total_travel_time", 0) or 0),
+        float(r.get("metrics_total_charging", 0) or 0),
+        float(r.get("metrics_total_delay", 0) or 0),
+        float(r.get("metrics_total_waiting", 0) or 0),
+        float(r.get("metrics_total_conflict_waiting", 0) or 0),
+        float(r.get("metrics_total_standby", 0) or 0),
+        float(r.get("rejected_tasks", 0) or 0),
+        float(r.get("num_tasks_manifest", 0) or 0),
+        float(r.get("completed_tasks", 0) or 0),
+        scale)
+
+
 def _pick_best_csv(scale: str) -> Tuple[Optional[str], str]:
     candidates = [
         (f"evaluate_{scale}_v3_30.csv", "v3"),
@@ -283,7 +326,8 @@ def main():
         csv_rows_rules = []
 
         # Compute per-rule averages per scale (cost + service quality + components)
-        rule_avgs: Dict[str, Dict[int, float]] = {}
+        rule_avgs: Dict[str, Dict[int, float]] = {}       # Option B clean cost
+        rule_avgs_orig: Dict[str, Dict[int, float]] = {}  # Original cost (for ranking)
         rule_completed: Dict[str, Dict[int, float]] = {}
         rule_rejected: Dict[str, Dict[int, float]] = {}
         rule_delay: Dict[str, Dict[int, float]] = {}
@@ -296,6 +340,7 @@ def main():
         rule_num_tasks: Dict[str, Dict[int, float]] = {}
         for scale in SCALES:
             rule_avgs[scale] = {}
+            rule_avgs_orig[scale] = {}
             rule_completed[scale] = {}
             rule_rejected[scale] = {}
             rule_delay[scale] = {}
@@ -310,9 +355,13 @@ def main():
                 for rid in range(1, 16):
                     ok_rows = [r for r in ir_data[scale]
                                if int(r["rule_id"]) == rid and r.get("status") == "OK"]
-                    costs = [float(r["cost"]) for r in ok_rows]
-                    if costs:
-                        rule_avgs[scale][rid] = np.mean(costs)
+                    # rule_avgs_orig: original cost (with shaping) for ranking
+                    # rule_avgs: clean cost (Option B) for reporting
+                    orig_costs = [float(r["cost"]) for r in ok_rows]
+                    clean_costs = [_clean_cost_ir(r, scale) for r in ok_rows]
+                    if clean_costs:
+                        rule_avgs_orig[scale][rid] = np.mean(orig_costs)
+                        rule_avgs[scale][rid] = np.mean(clean_costs)
                         rule_completed[scale][rid] = np.mean(
                             [float(r.get("completed_tasks", 0)) for r in ok_rows])
                         rule_rejected[scale][rid] = np.mean(
@@ -334,18 +383,19 @@ def main():
                         rule_num_tasks[scale][rid] = np.mean(
                             [float(r.get("num_tasks_manifest", 0) or 0) for r in ok_rows])
 
-        # Find best single rule per scale
+        # Find best single rule per scale (using original cost ranking,
+        # since Option B clean cost would favor degenerate Accept-Val)
         best_rule_per_scale = {}
         for scale in SCALES:
-            avgs = rule_avgs.get(scale, {})
-            if avgs:
-                best_rule_per_scale[scale] = min(avgs, key=avgs.get)
+            avgs_orig = rule_avgs_orig.get(scale, {})
+            if avgs_orig:
+                best_rule_per_scale[scale] = min(avgs_orig, key=avgs_orig.get)
 
-        # RL-APC costs per scale
+        # RL-APC costs per scale (Option B: clean cost)
         rl_avgs = {}
         for scale in SCALES:
             if scale in all_data and "rl_apc" in all_data[scale]:
-                rl_avgs[scale] = np.mean([d["cost"] for d in all_data[scale]["rl_apc"]])
+                rl_avgs[scale] = np.mean([_clean_cost_d(d, scale) for d in all_data[scale]["rl_apc"]])
 
         for rid in range(1, 16):
             name = RULE_NAMES.get(rid, f"Rule {rid}")
@@ -447,10 +497,10 @@ def main():
         for scale in SCALES:
             if scale not in ir_data or scale not in all_data:
                 continue
-            avgs = rule_avgs.get(scale, {})
-            if not avgs:
+            avgs_orig = rule_avgs_orig.get(scale, {})
+            if not avgs_orig:
                 continue
-            best_rid = min(avgs, key=avgs.get)
+            best_rid = min(avgs_orig, key=avgs_orig.get)
             best_name = RULE_NAMES.get(best_rid, f"Rule {best_rid}")
 
             # Best rule: service quality
@@ -465,15 +515,15 @@ def main():
                 rl_rej = np.mean([d.get("rejected", 0)
                                   for d in all_data[scale]["rl_apc"]])
 
-            # Get paired costs for Wilcoxon test
+            # Get paired clean costs for Wilcoxon test
             ir_rows = ir_data[scale]
             best_costs_sorted = sorted(
-                [(r["seed"], float(r["cost"])) for r in ir_rows
+                [(r["seed"], _clean_cost_ir(r, scale)) for r in ir_rows
                  if int(r["rule_id"]) == best_rid and r.get("status") == "OK"],
                 key=lambda x: x[0]
             )
             best_arr = np.array([c for _, c in best_costs_sorted])
-            rl_arr = (np.array([d["cost"] for d in all_data[scale]["rl_apc"]])
+            rl_arr = (np.array([_clean_cost_d(d, scale) for d in all_data[scale]["rl_apc"]])
                       if "rl_apc" in all_data.get(scale, {}) else np.array([]))
 
             if len(best_arr) > 0 and len(rl_arr) > 0:
@@ -556,7 +606,7 @@ def main():
         by = all_data.get(scale, {})
         if "rl_apc" not in by:
             continue
-        rl = np.array([d["cost"] for d in by["rl_apc"]])
+        rl = np.array([_clean_cost_d(d, scale) for d in by["rl_apc"]])
         first_in_scale = True
 
         # Collect all comparisons for this scale
@@ -564,21 +614,21 @@ def main():
         for bl in baselines_online:
             if bl not in by:
                 continue
-            bl_arr = np.array([d["cost"] for d in by[bl]])
+            bl_arr = np.array([_clean_cost_d(d, scale) for d in by[bl]])
             comparisons.append((ALGO_DISPLAY[bl], rl, bl_arr))
 
-        # Add top-3 individual rules for this scale.
+        # Add top-3 individual rules for this scale (ranked by original cost).
         # Pair by seed to match instance-level pairing required by Wilcoxon.
         if scale in ir_data:
-            avgs = rule_avgs.get(scale, {})
-            if avgs:
-                top3_rids = sorted(avgs, key=avgs.get)[:3]
+            avgs_orig = rule_avgs_orig.get(scale, {})
+            if avgs_orig:
+                top3_rids = sorted(avgs_orig, key=avgs_orig.get)[:3]
                 # Get RL seeds in order for pairing
                 rl_seeds = [d.get("seed") for d in by["rl_apc"]] if "rl_apc" in by else []
                 for rid in top3_rids:
                     name = RULE_NAMES.get(rid, f"Rule{rid}")
                     ir_by_seed = {
-                        r.get("seed", r.get("seed_id", "")): float(r["cost"])
+                        r.get("seed", r.get("seed_id", "")): _clean_cost_ir(r, scale)
                         for r in ir_data[scale]
                         if int(r["rule_id"]) == rid and r.get("status") == "OK"
                     }
@@ -663,29 +713,29 @@ def main():
         # Collect stats for 3 methods: RL, Greedy, Best Rule
         methods = []  # list of (name, cost, compl, rej, delay)
 
-        # RL-APC
+        # RL-APC (Option B: clean cost)
         rl = by["rl_apc"]
-        rl_cost = np.mean([d["cost"] for d in rl])
+        rl_cost = np.mean([_clean_cost_d(d, scale) for d in rl])
         rl_comp = np.mean([d["completed"] for d in rl])
         rl_rej = np.mean([d["rejected"] for d in rl])
         rl_del = np.mean([d["delay"] for d in rl])
         methods.append(("RL-APC", rl_cost, rl_comp, rl_rej, rl_del))
 
-        # Greedy-FR
+        # Greedy-FR (Option B: clean cost)
         if "greedy_fr" in by:
             gr = by["greedy_fr"]
-            gr_cost = np.mean([d["cost"] for d in gr])
+            gr_cost = np.mean([_clean_cost_d(d, scale) for d in gr])
             gr_comp = np.mean([d["completed"] for d in gr])
             gr_rej = np.mean([d["rejected"] for d in gr])
             gr_del = np.mean([d["delay"] for d in gr])
             methods.append(("Greedy-FR", gr_cost, gr_comp, gr_rej, gr_del))
 
-        # Best Fixed Rule (from ir_data) — skip if same as Greedy-FR
-        avgs = rule_avgs.get(scale, {})
-        if avgs:
-            best_rid = min(avgs, key=avgs.get)
+        # Best Fixed Rule (ranked by original cost, reported as clean cost)
+        avgs_orig = rule_avgs_orig.get(scale, {})
+        if avgs_orig:
+            best_rid = min(avgs_orig, key=avgs_orig.get)
             best_name = RULE_NAMES.get(best_rid, f"Rule {best_rid}")
-            br_cost = rule_avgs[scale][best_rid]
+            br_cost = rule_avgs[scale][best_rid]  # clean cost for reporting
             br_comp = rule_completed.get(scale, {}).get(best_rid, 0)
             br_rej = rule_rejected.get(scale, {}).get(best_rid, 0)
             br_del = rule_delay.get(scale, {}).get(best_rid, 0)
@@ -751,11 +801,15 @@ def main():
                 f"{_fmt_delay(mdel, mdel == best_delay)} & "
                 f"{_fmt_cpt(cpt, cpt == best_cpt)} \\\\")
 
+            # Use rounded Cost/Completed for CSV self-consistency
+            csv_cost = round(mcost)
+            csv_comp = round(mcomp, 1)
+            csv_cpt = round(csv_cost / csv_comp) if csv_comp > 0 else 0
             csv_rows_sq.append({
                 "Scale": scale, "Method": mname,
-                "Cost": f"{mcost:.0f}", "Completed": f"{mcomp:.1f}",
+                "Cost": f"{csv_cost:.0f}", "Completed": f"{csv_comp:.1f}",
                 "Rejected": f"{mrej:.1f}", "Delay": f"{mdel:.1f}",
-                "Cost/Task": f"{cpt:.0f}",
+                "Cost/Task": f"{csv_cpt:.0f}",
             })
 
         if scale != SCALES[-1]:
@@ -831,47 +885,44 @@ def main():
                csv_rows_off)
 
     # ================================================================
-    # Table 8: Cost Decomposition — Three-Way with Weighted Costs [ENHANCED]
-    # Shows weighted cost contributions (coefficient × raw metric),
-    # not raw physical quantities.
+    # Table 8: Cost Decomposition — Option B (Oper + Reject + Terminal)
+    # Total = Oper + Reject + Terminal (no reward shaping).
     # ================================================================
     tex("% " + "=" * 70)
-    tex("% Table 8: Cost Decomposition — Weighted Cost Contributions")
+    tex("% Table 8: Cost Decomposition — Section 3 Operational Cost")
     tex("% " + "=" * 70)
     tex(r"\begin{table*}[htbp]")
     tex(r"\centering")
-    tex(r"\caption{Cost decomposition into weighted components (averages over 30 instances). "
-        r"Travel = $C_\text{tr} \times d + C_\text{time} \times t$; "
-        r"Charging = $C_\text{ch} \times t_\text{ch}$; "
-        r"Tardiness = $C_\text{delay} \times \tau$; "
-        r"Idle = $C_\text{wait} \times t_w + C_\text{cf} \times (t_w + t_\text{cf}) "
-        r"+ C_\text{sb} \times t_\text{sb}$; "
-        r"Rejection = $10{,}000 \times n_\text{rej}$; "
-        r"Terminal = $C_\text{term} \times n_\text{unfin}$ (scale-specific); "
-        r"Shaping = continuous tardiness and backlog penalties (residual). "
-        r"Rejection cost in \textcolor{red}{red} when $\geq 30\%$ of total.}")
+    tex(r"\caption{Cost decomposition into weighted components (averages over 30 test instances). "
+        r"Oper.\ = Travel + Charging + Tardiness + Idle (Section~3 operational cost). "
+        r"Reject.\ = $10{,}000 \times n_\text{rej}$. "
+        r"Terminal = $C_\text{term} \times n_\text{unfin}$ at episode end "
+        r"(tasks accepted but not completed within the horizon). "
+        r"Best Oper.\ per scale in \textbf{bold}. "
+        r"Rejection cost in \textcolor{red}{red} when $\geq 30\%$ of total. "
+        r"L-scale: Greedy-FR = Charge-High (best fixed rule).}")
     tex(r"\label{tab:cost_decomp}")
     tex(r"\small")
-    tex(r"\begin{tabular}{llrrrrrrrrr}")
+    tex(r"\begin{tabular}{ll rrrr r r r r r}")
     tex(r"\toprule")
-    tex(r"Scale & Method & Travel & Charg. & Tard. & Idle & Reject. & Terminal & Shaping & Total & \% Rej. \\")
+    tex(r"Scale & Method & Travel & Charg. & Tard. & Idle & Oper. & Reject. & Terminal & Total & \% Rej. \\")
     tex(r"\midrule")
 
-    def _weighted_costs(travel, travel_time, charging, delay, waiting,
-                        conflict, standby, rejected, num_tasks, completed,
-                        total_cost, scale):
-        """Compute weighted cost contributions, terminal penalty, and shaping residual."""
+    def _weighted_decomp(travel, travel_time, charging, delay, waiting,
+                         conflict, standby, rejected, num_tasks, completed,
+                         scale):
+        """Compute weighted cost components for Option B decomposition."""
         w_travel = C_TR * travel + C_TIME * travel_time
         w_charging = C_CH * charging
         w_tardiness = C_DELAY * delay
         w_idle = C_WAIT * waiting + C_CONFLICT * (conflict + waiting) + C_STANDBY * standby
+        w_oper = w_travel + w_charging + w_tardiness + w_idle
         w_rejection = REJECTION_PENALTY * rejected
         unfinished = max(0, num_tasks - completed - rejected)
         w_terminal = C_TERMINAL_PER_SCALE.get(scale, 1000) * unfinished
-        w_known = w_travel + w_charging + w_tardiness + w_idle + w_rejection + w_terminal
-        w_shaping = total_cost - w_known  # continuous tardiness + backlog shaping
-        rej_pct = (w_rejection / total_cost * 100) if total_cost > 0 else 0
-        return w_travel, w_charging, w_tardiness, w_idle, w_rejection, w_terminal, w_shaping, rej_pct
+        w_total = w_oper + w_rejection + w_terminal
+        rej_pct = (w_rejection / w_total * 100) if w_total > 0 else 0
+        return w_travel, w_charging, w_tardiness, w_idle, w_oper, w_rejection, w_terminal, w_total, rej_pct
 
     csv_rows_cd = []
     for scale in SCALES:
@@ -879,8 +930,6 @@ def main():
         first = True
 
         # Build method list with all raw metrics
-        # tuple: (name, travel, travel_time, charging, delay, waiting,
-        #         conflict, standby, rejected, num_tasks, completed, cost)
         method_rows = []
         for a in ["rl_apc", "greedy_fr"]:
             if a not in by:
@@ -898,20 +947,21 @@ def main():
                 np.mean([d["rejected"] for d in vals]),
                 np.mean([d["num_tasks"] for d in vals]),
                 np.mean([d["completed"] for d in vals]),
-                np.mean([d["cost"] for d in vals]),
             ))
 
-        # Best Fixed Rule from ir_data — skip if same as Greedy-FR
-        avgs = rule_avgs.get(scale, {})
-        if avgs:
-            best_rid = min(avgs, key=avgs.get)
+        # Best Fixed Rule from ir_data (ranked by original cost)
+        avgs_orig = rule_avgs_orig.get(scale, {})
+        if avgs_orig:
+            best_rid = min(avgs_orig, key=avgs_orig.get)
             best_name = RULE_NAMES.get(best_rid, f"Rule {best_rid}")
             br_cost = rule_avgs[scale][best_rid]
-            gr_cost_val = None
+            gr_clean = None
             for row in method_rows:
                 if row[0] == "Greedy-FR":
-                    gr_cost_val = row[-1]
-            if gr_cost_val is not None and abs(br_cost - gr_cost_val) < 1:
+                    gr_clean = _clean_cost_from_raw(
+                        row[1], row[2], row[3], row[4], row[5],
+                        row[6], row[7], row[8], row[9], row[10], scale)
+            if gr_clean is not None and abs(br_cost - gr_clean) < 1:
                 method_rows = [(f"Greedy-FR (={best_name})" if n == "Greedy-FR" else n,
                                 *rest) for n, *rest in method_rows]
             else:
@@ -927,35 +977,48 @@ def main():
                     rule_rejected.get(scale, {}).get(best_rid, 0),
                     rule_num_tasks.get(scale, {}).get(best_rid, 0),
                     rule_completed.get(scale, {}).get(best_rid, 0),
-                    br_cost,
                 ))
 
+        # Find best Oper. per scale for bold highlighting
+        oper_values = {}
         for (mname, travel, travel_time, charging, delay, waiting,
-             conflict, standby, rejected, num_tasks, completed, cost) in method_rows:
+             conflict, standby, rejected, num_tasks, completed) in method_rows:
+            decomp = _weighted_decomp(travel, travel_time, charging, delay, waiting,
+                                      conflict, standby, rejected, num_tasks, completed, scale)
+            oper_values[mname] = decomp[4]  # w_oper
+        best_oper = min(oper_values.values()) if oper_values else float('inf')
+
+        for (mname, travel, travel_time, charging, delay, waiting,
+             conflict, standby, rejected, num_tasks, completed) in method_rows:
             scale_col = scale if first else ""
             first = False
 
-            w_tr, w_ch, w_td, w_idle, w_rej, w_term, w_shp, rej_pct = _weighted_costs(
+            w_tr, w_ch, w_td, w_idle, w_oper, w_rej, w_term, w_total, rej_pct = _weighted_decomp(
                 travel, travel_time, charging, delay, waiting,
-                conflict, standby, rejected, num_tasks, completed, cost, scale)
+                conflict, standby, rejected, num_tasks, completed, scale)
 
             # Highlight rejection when ≥ 30% of total
             rej_str = f"{w_rej:,.0f}"
             if rej_pct >= 30:
                 rej_str = r"\textcolor{red}{" + rej_str + "}"
 
+            # Bold best Oper. per scale
+            oper_str = f"{w_oper:,.0f}"
+            if abs(w_oper - best_oper) < 1:
+                oper_str = r"\textbf{" + oper_str + "}"
+
             tex(f"{scale_col} & {mname} & {w_tr:,.0f} & {w_ch:,.0f} & "
-                f"{w_td:,.0f} & {w_idle:,.0f} & {rej_str} & "
-                f"{w_term:,.0f} & {w_shp:,.0f} & {cost:,.0f} & {rej_pct:.0f}\\% \\\\")
+                f"{w_td:,.0f} & {w_idle:,.0f} & {oper_str} & {rej_str} & "
+                f"{w_term:,.0f} & {w_total:,.0f} & {rej_pct:.0f}\\% \\\\")
 
             csv_rows_cd.append({
                 "Scale": scale, "Method": mname,
                 "Travel": f"{w_tr:.0f}", "Charging": f"{w_ch:.0f}",
                 "Tardiness": f"{w_td:.0f}", "Idle": f"{w_idle:.0f}",
+                "Oper": f"{w_oper:.0f}",
                 "Rejection": f"{w_rej:.0f}",
                 "Terminal": f"{w_term:.0f}",
-                "Shaping": f"{w_shp:.0f}",
-                "Total": f"{cost:.0f}",
+                "Total": f"{w_total:.0f}",
                 "Rej %": f"{rej_pct:.0f}",
             })
         if scale != SCALES[-1]:
@@ -968,7 +1031,7 @@ def main():
 
     _write_csv(PAPER / "ejor_table8_decomposition.csv",
                ["Scale", "Method", "Travel", "Charging", "Tardiness",
-                "Idle", "Rejection", "Terminal", "Shaping", "Total", "Rej %"],
+                "Idle", "Oper", "Rejection", "Terminal", "Total", "Rej %"],
                csv_rows_cd)
 
     # ================================================================

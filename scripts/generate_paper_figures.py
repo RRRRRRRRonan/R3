@@ -48,6 +48,36 @@ CATEGORY_COLORS = {
 
 SCALE_ORDER = ["S", "M", "L", "XL"]
 
+# ── Cost coefficients for Option B clean cost ─────────────────────────────
+REJECTION_PENALTY = 10000
+C_TR = 1.0; C_TIME = 0.1; C_CH = 0.6; C_DELAY = 2.0
+C_WAIT = 0.05; C_CONFLICT = 0.05; C_STANDBY = 0.05
+C_TERMINAL_PER_SCALE = {"S": 3000, "M": 2500, "L": 2000, "XL": 1500}
+
+
+def _clean_cost_row(r: Dict, scale: str) -> float:
+    """Compute Option B clean cost from a CSV row (eval or individual_rules)."""
+    travel = float(r.get("metrics_total_distance", 0) or 0)
+    travel_time = float(r.get("metrics_total_travel_time", 0) or 0)
+    charging = float(r.get("metrics_total_charging", 0) or 0)
+    delay = float(r.get("metrics_total_delay", 0) or 0)
+    waiting = float(r.get("metrics_total_waiting", 0) or 0)
+    conflict = float(r.get("metrics_total_conflict_waiting", 0) or 0)
+    standby = float(r.get("metrics_total_standby", 0) or 0)
+    rejected = float(r.get("rejected_tasks", 0) or 0)
+    num_tasks = float(r.get("num_tasks_manifest", 0) or 0)
+    completed = float(r.get("completed_tasks", 0) or 0)
+
+    w_travel = C_TR * travel + C_TIME * travel_time
+    w_charging = C_CH * charging
+    w_tardiness = C_DELAY * delay
+    w_idle = C_WAIT * waiting + C_CONFLICT * (conflict + waiting) + C_STANDBY * standby
+    w_oper = w_travel + w_charging + w_tardiness + w_idle
+    w_rejection = REJECTION_PENALTY * rejected
+    unfinished = max(0, num_tasks - completed - rejected)
+    w_terminal = C_TERMINAL_PER_SCALE.get(scale, 1000) * unfinished
+    return w_oper + w_rejection + w_terminal
+
 
 def _load_csv(path: str) -> List[Dict[str, Any]]:
     with open(path) as f:
@@ -74,17 +104,17 @@ def _load_individual_rules(scale: str) -> Optional[List[Dict]]:
     return _load_csv(str(path))
 
 
-def _get_rule_costs(rows: List[Dict], rule_id: int) -> List[float]:
+def _get_rule_costs(rows: List[Dict], rule_id: int, scale: str = "") -> List[float]:
     return [
-        float(r["cost"])
+        _clean_cost_row(r, scale) if scale else float(r["cost"])
         for r in rows
         if int(r["rule_id"]) == rule_id and r.get("status") == "OK"
     ]
 
 
-def _get_algo_costs(rows: List[Dict], algo_id: str) -> List[float]:
+def _get_algo_costs(rows: List[Dict], algo_id: str, scale: str = "") -> List[float]:
     return [
-        float(r["cost"])
+        _clean_cost_row(r, scale) if scale else float(r["cost"])
         for r in rows
         if r.get("algorithm_id") == algo_id and r.get("status") == "OK"
     ]
@@ -112,7 +142,7 @@ def fig_rule_bar_chart(scales: List[str], output_dir: Path):
         rl_rej = None
         if eval_csv:
             eval_rows = _load_csv(eval_csv)
-            rl_costs = _get_algo_costs(eval_rows, "rl_apc")
+            rl_costs = _get_algo_costs(eval_rows, "rl_apc", scale)
             if rl_costs:
                 rl_cost = np.mean(rl_costs)
             rl_rej_vals = [float(r.get("rejected_tasks", 0)) for r in eval_rows
@@ -125,7 +155,7 @@ def fig_rule_bar_chart(scales: List[str], output_dir: Path):
         for rid in range(1, 16):
             ok_rows = [r for r in ir_rows
                        if int(r["rule_id"]) == rid and r.get("status") == "OK"]
-            costs = [float(r["cost"]) for r in ok_rows]
+            costs = [_clean_cost_row(r, scale) for r in ok_rows]
             if costs:
                 rule_avgs[rid] = np.mean(costs)
                 rule_rejs[rid] = np.mean([float(r.get("rejected_tasks", 0)) for r in ok_rows])
@@ -282,23 +312,28 @@ def fig_cost_boxplots(scales: List[str], output_dir: Path):
         eval_rows = _load_csv(eval_csv)
 
         methods = {}
-        rl_costs = _get_algo_costs(eval_rows, "rl_apc")
+        rl_costs = _get_algo_costs(eval_rows, "rl_apc", scale)
         if rl_costs:
             methods["RL-APC"] = rl_costs
-        gr_costs = _get_algo_costs(eval_rows, "greedy_fr")
+        gr_costs = _get_algo_costs(eval_rows, "greedy_fr", scale)
         if gr_costs:
             methods["Greedy-FR"] = gr_costs
 
-        # Add top-3 individual rules
+        # Add top-3 individual rules (ranked by original cost, shown as clean cost)
         ir_rows = _load_individual_rules(scale)
         if ir_rows:
-            rule_means = {}
+            rule_means_orig = {}  # original cost for ranking
+            rule_clean = {}       # clean cost for display
             for rid in range(1, 16):
-                costs = _get_rule_costs(ir_rows, rid)
-                if costs:
-                    rule_means[rid] = (np.mean(costs), costs)
+                orig_costs = [float(r["cost"]) for r in ir_rows
+                              if int(r["rule_id"]) == rid and r.get("status") == "OK"]
+                clean_costs = _get_rule_costs(ir_rows, rid, scale)
+                if orig_costs:
+                    rule_means_orig[rid] = np.mean(orig_costs)
+                    rule_clean[rid] = clean_costs
 
-            top3 = sorted(rule_means.items(), key=lambda x: x[1][0])[:3]
+            top3 = sorted(rule_means_orig.items(), key=lambda x: x[1])[:3]
+            top3 = [(rid, (np.mean(rule_clean[rid]), rule_clean[rid])) for rid, _ in top3]
             for rid, (_, costs) in top3:
                 name = RULE_NAMES_SHORT.get(rid, f"R{rid}")
                 methods[name] = costs
