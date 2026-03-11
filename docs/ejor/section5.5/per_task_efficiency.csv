@@ -1,0 +1,10 @@
+Scale,Method,Total Cost,Completed Tasks,Cost/Task,Notes
+S,ALNS-PR,5282,17.2,308,Offline - completes all tasks
+S,RL-APC,13162,14.5,908,Online - Option B clean cost
+S,Greedy-FR,64725,15.3,4229,Online - Option B clean cost
+M,ALNS-PR,53600,34.8,1542,Offline - completes all tasks
+M,RL-APC,48745,18.1,2694,Online - Option B clean cost
+M,Greedy-FR,233564,11.5,20310,Online - Option B clean cost
+XL,ALNS-PR,170514,89.8,1900,Offline - completes all tasks
+XL,RL-APC,130077,22.2,5859,Online - Option B clean cost
+XL,Greedy-FR,606680,20.0,30334,Online - Option B clean cost
