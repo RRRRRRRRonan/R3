@@ -1,4 +1,4 @@
-% EJOR Paper Tables — Auto-generated 2026-03-03 21:49
+% EJOR Paper Tables — Auto-generated 2026-03-06 22:02
 % Data sources: S=evaluate_S_30.csv (v1), M=evaluate_M_synced_30.csv (synced), L=evaluate_L_v3_30.csv (v3), XL=evaluate_XL_synced_30.csv (synced)
 % Individual rules: L=individual_rules_L_30.csv, M=individual_rules_M_30.csv, S=individual_rules_S_30.csv, XL=individual_rules_XL_30.csv
 
@@ -32,10 +32,10 @@ XL & 80--100 & 12 & 6 & 30 \\
 \toprule
 Scale & Steps & Network & $\gamma$ & $H_\text{ent}$ & $C_\text{terminal}$ & $\alpha_\text{tard}$ \\
 \midrule
-S & 500K & [256, 128] & 0.995 & 0.05 & 3,000 & 0.2 \\
-M & 1M & [256, 128] & 0.995 & 0.05 & 2,500 & 0.25 \\
-L & 500K & [512, 256] & 0.998 & 0.05 & 2,000 & 0.3 \\
-XL & 500K & [512, 256] & 0.998 & 0.08 & 1,500 & 0.2 \\
+S & 500K & [256, 128] & 0.99 & 0.05 & 3,000 & 0.2 \\
+M & 1M & [256, 128] & 0.99 & 0.05 & 2,500 & 0.25 \\
+L & 500K & [256, 128] & 0.99 & 0.05 & 2,000 & 0.3 \\
+XL & 500K & [256, 128] & 0.99 & 0.05 & 1,500 & 0.2 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -43,62 +43,37 @@ XL & 500K & [512, 256] & 0.998 & 0.08 & 1,500 & 0.2 \\
 % ======================================================================
 % Table 3: Individual Rule Performance
 % ======================================================================
-% Key messages:
-%   (1) No universal rule: best shifts from Standby-Lazy (S/M/XL) to Charge-High (L)
-%   (2) Large inter-rule gap: 2.0x--2.6x between best and worst per scale
-%   (3) Equivalent rules: †STTF=EDD=HPF, ‡Charge-High=Charge-Opp, §Standby-LC=Standby-HM
-%   (4) Low-cost rules reject heavily: Rej>=10 in red; RL-APC Rej in bold (near-zero)
-%   (5) RL-APC beats all rules only in S: bold cost only for S-scale
-\begin{table*}[htbp]
+\begin{table}[htbp]
 \centering
-\caption{Individual rule performance across four problem scales (30 test instances each).
-For each rule--scale combination, we report average total cost and number of rejected tasks (Rej).
-Rules are grouped by category; identical superscripts denote equivalent rules
-($^\dagger$\,STTF\,=\,EDD\,=\,HPF;
- $^\ddagger$\,Charge-High\,=\,Charge-Opp;
- $^\S$\,Standby-LC\,=\,Standby-HM),
-reducing 15 rules to 11 effectively independent strategies.
-\underline{Underlined}: best single-rule cost per scale.
-\textbf{Bold} RL-APC cost: lower than all single rules.
-Rej in \textcolor{red}{red}: $\geq 10$ rejected tasks.
-The best rule shifts from Standby-Lazy (S, M, XL) to Charge-High (L),
-and the cost ratio between worst and best single rule ranges from
-$2.0\times$ (XL) to $2.6\times$ (S).}
+\caption{Average total cost and service quality of individual dispatch rules and RL-APC (30 test instances). Best single-rule cost per scale is underlined; RL-APC in bold when it outperforms all single rules. Rej = average number of rejected tasks.}
 \label{tab:rules}
 \small
-\begin{tabular}{ll rr rr rr rr}
+\begin{tabular}{llrrrrrrrr}
 \toprule
  & & \multicolumn{2}{c}{S} & \multicolumn{2}{c}{M} & \multicolumn{2}{c}{L} & \multicolumn{2}{c}{XL} \\
 \cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}
 Rule & Category & Cost & Rej & Cost & Rej & Cost & Rej & Cost & Rej \\
 \midrule
-% --- Dispatch rules ---
-STTF$^\dagger$ & Dispatch & 110,551 & 7.9 & 294,978 & \textcolor{red}{26.5} & 491,192 & \textcolor{red}{45.8} & 764,969 & \textcolor{red}{74.0} \\
-EDD$^\dagger$ & Dispatch & 110,551 & 7.9 & 294,978 & \textcolor{red}{26.5} & 491,192 & \textcolor{red}{45.8} & 764,969 & \textcolor{red}{74.0} \\
-MST & Dispatch & 108,707 & 7.5 & 294,407 & \textcolor{red}{26.2} & 490,298 & \textcolor{red}{45.8} & 768,743 & \textcolor{red}{74.3} \\
-HPF$^\dagger$ & Dispatch & 110,551 & 7.9 & 294,978 & \textcolor{red}{26.5} & 491,192 & \textcolor{red}{45.8} & 764,969 & \textcolor{red}{74.0} \\
-Insert-MC & Dispatch & 103,048 & 2.7 & 351,911 & \textcolor{red}{16.0} & 447,292 & \textcolor{red}{36.4} & 747,761 & \textcolor{red}{46.1} \\
-\addlinespace
-% --- Charge rules ---
-Charge-Urgent & Charge & 118,337 & 8.2 & 301,809 & \textcolor{red}{26.2} & 498,087 & \textcolor{red}{45.5} & 841,829 & \textcolor{red}{66.8} \\
-Charge-Low & Charge & 118,135 & 8.2 & 335,128 & \textcolor{red}{21.7} & 737,186 & \textcolor{red}{14.7} & 1,141,406 & \textcolor{red}{34.0} \\
-Charge-Med & Charge & 112,644 & 7.5 & 299,669 & \textcolor{red}{25.9} & 490,829 & \textcolor{red}{43.1} & 915,014 & \textcolor{red}{57.3} \\
-Charge-High$^\ddagger$ & Charge & 83,962 & 1.4 & 266,218 & \textcolor{red}{20.8} & \underline{336,386} & \textcolor{red}{16.8} & 790,373 & \textcolor{red}{55.0} \\
-Charge-Opp$^\ddagger$ & Charge & 83,962 & 1.4 & 266,218 & \textcolor{red}{20.8} & 336,386 & \textcolor{red}{16.8} & 790,373 & \textcolor{red}{55.0} \\
-\addlinespace
-% --- Standby rules ---
-Standby-LC$^\S$ & Standby & 126,546 & 9.2 & 301,201 & \textcolor{red}{26.3} & 497,103 & \textcolor{red}{45.3} & 762,554 & \textcolor{red}{74.3} \\
-Standby-Lazy & Standby & \underline{60,731} & 3.8 & \underline{224,316} & \textcolor{red}{19.2} & 418,299 & \textcolor{red}{37.9} & \underline{696,148} & \textcolor{red}{64.6} \\
-Standby-HM$^\S$ & Standby & 126,546 & 9.2 & 301,201 & \textcolor{red}{26.3} & 497,103 & \textcolor{red}{45.3} & 762,554 & \textcolor{red}{74.3} \\
-\addlinespace
-% --- Accept rules ---
-Accept-Feas & Accept & 118,405 & 8.5 & 300,925 & \textcolor{red}{26.3} & 497,360 & \textcolor{red}{45.5} & 780,760 & \textcolor{red}{74.0} \\
-Accept-Val & Accept & 157,360 & 0.0 & 490,642 & 0.0 & 831,429 & 0.0 & 1,360,537 & 0.0 \\
+STTF & Dispatch & 89,904 & 7.9 & 275,363 & \textcolor{red}{26.5} & 471,106 & \textcolor{red}{45.8} & 752,660 & \textcolor{red}{74.0} \\
+EDD & Dispatch & 89,904 & 7.9 & 275,363 & \textcolor{red}{26.5} & 471,106 & \textcolor{red}{45.8} & 752,660 & \textcolor{red}{74.0} \\
+MST & Dispatch & 88,092 & 7.5 & 272,625 & \textcolor{red}{26.2} & 471,019 & \textcolor{red}{45.8} & 756,409 & \textcolor{red}{74.3} \\
+HPF & Dispatch & 89,904 & 7.9 & 275,363 & \textcolor{red}{26.5} & 471,106 & \textcolor{red}{45.8} & 752,660 & \textcolor{red}{74.0} \\
+Charge-Urgent & Charge & 90,562 & 8.2 & 273,432 & \textcolor{red}{26.2} & 468,721 & \textcolor{red}{45.5} & 692,505 & \textcolor{red}{66.8} \\
+Charge-Low & Charge & 90,344 & 8.2 & 239,797 & \textcolor{red}{21.7} & 222,654 & \textcolor{red}{14.7} & 416,206 & \textcolor{red}{34.0} \\
+Charge-Med & Charge & 86,506 & 7.5 & 270,681 & \textcolor{red}{25.9} & 449,220 & \textcolor{red}{43.1} & 611,878 & \textcolor{red}{57.3} \\
+Charge-High & Charge & 58,106 & 1.4 & 225,761 & \textcolor{red}{20.8} & \underline{223,112} & \textcolor{red}{16.8} & 582,997 & \textcolor{red}{55.0} \\
+Charge-Opp & Charge & 58,106 & 1.4 & 225,761 & \textcolor{red}{20.8} & 223,112 & \textcolor{red}{16.8} & 582,997 & \textcolor{red}{55.0} \\
+Standby-LC & Standby & 98,295 & 9.2 & 272,509 & \textcolor{red}{26.3} & 463,841 & \textcolor{red}{45.3} & 753,772 & \textcolor{red}{74.3} \\
+Standby-Lazy & Standby & \underline{45,043} & 3.8 & \underline{202,882} & \textcolor{red}{19.2} & 394,979 & \textcolor{red}{37.9} & \underline{667,971} & \textcolor{red}{64.6} \\
+Standby-HM & Standby & 98,295 & 9.2 & 272,509 & \textcolor{red}{26.3} & 463,841 & \textcolor{red}{45.3} & 753,772 & \textcolor{red}{74.3} \\
+Accept-Feas & Accept & 92,196 & 8.5 & 274,204 & \textcolor{red}{26.3} & 468,854 & \textcolor{red}{45.5} & 753,717 & \textcolor{red}{74.0} \\
+Accept-Val & Accept & 32,632 & 0.0 & 76,404 & 0.0 & 105,834 & 0.0 & 124,870 & 0.0 \\
+Insert-MC & Dispatch & 53,798 & 2.7 & 198,695 & \textcolor{red}{16.0} & 388,701 & \textcolor{red}{36.4} & 605,952 & \textcolor{red}{46.1} \\
 \midrule
-\textbf{RL-APC} & \textbf{Adaptive} & \textbf{39,846} & \textbf{0.0} & 286,665 & \textbf{0.0} & 662,267 & \textbf{0.0} & 814,344 & \textbf{1.5} \\
+\textbf{RL-APC} & \textbf{Adaptive} & \textbf{13,162} & \textbf{0.0} & \textbf{48,745} & \textbf{0.0} & \textbf{101,616} & \textbf{0.0} & \textbf{130,077} & \textbf{1.5} \\
 \bottomrule
 \end{tabular}
-\end{table*}
+\end{table}
 
 % ======================================================================
 % Table 4: RL-APC vs Best Fixed Rule (multi-dimensional)
@@ -114,10 +89,10 @@ Accept-Val & Accept & 157,360 & 0.0 & 490,642 & 0.0 & 831,429 & 0.0 & 1,360,537 
 \cmidrule(lr){3-5}\cmidrule(lr){6-8}
 Scale & Best Rule & Cost & Compl & Rej & Cost & Compl & Rej & $\Delta_\text{cost}$ (\%) & $p$ \\
 \midrule
-S & Standby-Lazy & 60,731 & 12.4 & 3.8 & \textbf{39,846} & 14.5 & \textbf{0.0} & $-34.4$** & $5.38e-03$ \\
-M & Standby-Lazy & \textbf{224,316} & 13.8 & \textcolor{red}{19.2} & 286,665 & 18.1 & \textbf{0.0} & $+27.8$** & $2.77e-03$ \\
-L & Charge-High & \textbf{336,386} & 30.4 & \textcolor{red}{16.8} & 662,267 & 17.5 & \textbf{0.0} & $+96.9$*** & $9.31e-09$ \\
-XL & Standby-Lazy & \textbf{696,148} & 18.8 & \textcolor{red}{64.6} & 814,344 & 22.2 & \textbf{1.5} & $+17.0$ & $0.058$ \\
+S & Standby-Lazy & 45,043 & 12.4 & 3.8 & \textbf{13,162} & 14.5 & \textbf{0.0} & $-70.8$*** & $1.86e-08$ \\
+M & Standby-Lazy & 202,882 & 13.8 & \textcolor{red}{19.2} & \textbf{48,745} & 18.1 & \textbf{0.0} & $-76.0$*** & $1.86e-09$ \\
+L & Charge-High & 223,112 & 30.4 & \textcolor{red}{16.8} & \textbf{101,616} & 17.5 & \textbf{0.0} & $-54.5$*** & $7.99e-06$ \\
+XL & Standby-Lazy & 667,971 & 18.8 & \textcolor{red}{64.6} & \textbf{130,077} & 22.2 & \textbf{1.5} & $-80.5$*** & $1.86e-09$ \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -133,33 +108,33 @@ XL & Standby-Lazy & \textbf{696,148} & 18.8 & \textcolor{red}{64.6} & 814,344 & 
 \toprule
 Scale & Baseline & RL Mean & BL Mean & $\Delta$ (\%) & $p_\text{adj}$ & W/L \\
 \midrule
-S & Greedy-FR & 39,846 & 94,772 & $-58.0$*** & $2.31e-06$ & 27/3 \\
- & Greedy-PR & 39,846 & 94,772 & $-58.0$*** & $2.31e-06$ & 27/3 \\
- & Random & 39,846 & 110,832 & $-64.0$*** & $1.56e-07$ & 29/1 \\
- & Standby-Lazy & 39,846 & 60,731 & $-34.4$** & $4.00e-03$ & 23/7 \\
- & Charge-High & 39,846 & 83,962 & $-52.5$*** & $7.15e-06$ & 25/5 \\
- & Charge-Opp & 39,846 & 83,962 & $-52.5$*** & $7.15e-06$ & 25/5 \\
+S & Greedy-FR & 13,162 & 64,725 & $-79.7$*** & $1.12e-07$ & 28/2 \\
+ & Greedy-PR & 13,162 & 64,725 & $-79.7$*** & $1.12e-07$ & 28/2 \\
+ & Random & 13,162 & 53,207 & $-75.3$*** & $1.12e-08$ & 30/0 \\
+ & Standby-Lazy & 13,162 & 45,043 & $-70.8$*** & $1.12e-07$ & 28/2 \\
+ & Charge-High & 13,162 & 58,106 & $-77.3$*** & $1.56e-07$ & 28/2 \\
+ & Charge-Opp & 13,162 & 58,106 & $-77.3$*** & $1.56e-07$ & 28/2 \\
 \addlinespace
-M & Greedy-FR & 286,665 & 281,349 & $+1.9$ & $1.000$ & 9/21 \\
- & Greedy-PR & 286,665 & 281,349 & $+1.9$ & $1.000$ & 9/21 \\
- & Random & 286,665 & 396,505 & $-27.7$*** & $8.52e-06$ & 26/4 \\
- & Standby-Lazy & 286,665 & 224,316 & $+27.8$* & $0.022$ & 7/23 \\
- & Charge-High & 286,665 & 266,218 & $+7.7$ & $0.948$ & 10/20 \\
- & Charge-Opp & 286,665 & 266,218 & $+7.7$ & $0.948$ & 10/20 \\
+M & Greedy-FR & 48,745 & 233,564 & $-79.1$*** & $1.12e-08$ & 30/0 \\
+ & Greedy-PR & 48,745 & 233,564 & $-79.1$*** & $1.12e-08$ & 30/0 \\
+ & Random & 48,745 & 156,522 & $-68.9$*** & $1.12e-08$ & 30/0 \\
+ & Standby-Lazy & 48,745 & 202,882 & $-76.0$*** & $1.12e-08$ & 30/0 \\
+ & Charge-High & 48,745 & 225,761 & $-78.4$*** & $1.12e-08$ & 30/0 \\
+ & Charge-Opp & 48,745 & 225,761 & $-78.4$*** & $1.12e-08$ & 30/0 \\
 \addlinespace
-L & Greedy-FR & 662,267 & 336,386 & $+96.9$*** & $5.59e-08$ & 2/28 \\
- & Greedy-PR & 662,267 & 336,386 & $+96.9$*** & $5.59e-08$ & 2/28 \\
- & Random & 662,267 & 474,032 & $+39.7$*** & $1.12e-07$ & 1/29 \\
- & Charge-High & 662,267 & 336,386 & $+96.9$*** & $2.79e-07$ & 2/28 \\
- & Charge-Opp & 662,267 & 336,386 & $+96.9$*** & $2.79e-07$ & 2/28 \\
- & Standby-Lazy & 662,267 & 418,299 & $+58.3$*** & $1.23e-06$ & 4/26 \\
+L & Greedy-FR & 101,616 & 223,112 & $-54.5$*** & $4.80e-05$ & 25/5 \\
+ & Greedy-PR & 101,616 & 223,112 & $-54.5$*** & $4.80e-05$ & 25/5 \\
+ & Random & 101,616 & 206,111 & $-50.7$*** & $1.89e-06$ & 29/1 \\
+ & Charge-High & 101,616 & 223,112 & $-54.5$*** & $4.80e-05$ & 25/5 \\
+ & Charge-Opp & 101,616 & 223,112 & $-54.5$*** & $4.80e-05$ & 25/5 \\
+ & Standby-Lazy & 101,616 & 394,979 & $-74.3$*** & $2.24e-08$ & 29/1 \\
 \addlinespace
-XL & Greedy-FR & 814,344 & 809,830 & $+0.6$ & $1.000$ & 19/11 \\
- & Greedy-PR & 814,344 & 809,830 & $+0.6$ & $1.000$ & 19/11 \\
- & Random & 814,344 & 1,011,351 & $-19.5$ & $0.082$ & 17/13 \\
- & Standby-Lazy & 814,344 & 696,148 & $+17.0$ & $0.776$ & 15/15 \\
- & Insert-MC & 814,344 & 747,761 & $+8.9$ & $1.000$ & 16/14 \\
- & Standby-LC & 814,344 & 762,554 & $+6.8$ & $1.000$ & 16/14 \\
+XL & Greedy-FR & 130,077 & 606,680 & $-78.6$*** & $4.81e-07$ & 26/4 \\
+ & Greedy-PR & 130,077 & 606,680 & $-78.6$*** & $4.81e-07$ & 26/4 \\
+ & Random & 130,077 & 379,041 & $-65.7$*** & $5.59e-08$ & 29/1 \\
+ & Standby-Lazy & 130,077 & 667,971 & $-80.5$*** & $1.12e-08$ & 30/0 \\
+ & Insert-MC & 130,077 & 605,952 & $-78.5$*** & $3.35e-08$ & 29/1 \\
+ & Standby-LC & 130,077 & 753,772 & $-82.7$*** & $1.12e-08$ & 30/0 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -176,20 +151,20 @@ XL & Greedy-FR & 814,344 & 809,830 & $+0.6$ & $1.000$ & 19/11 \\
 \toprule
 Scale & Method & Cost & Completed & Rejected & Delay & Cost/Task \\
 \midrule
-S & RL-APC & \textbf{39,846} & 14.5 & \textbf{0.0} & 137 & \textbf{2,748} \\
- & Greedy-FR & 94,772 & \textbf{15.3} & 1.5 & 17,137 & 6,194 \\
- & Standby-Lazy & 60,731 & 12.4 & 3.8 & \textbf{0} & 4,911 \\
+S & RL-APC & \textbf{13,162} & 14.5 & \textbf{0.0} & 137 & \textbf{908} \\
+ & Greedy-FR & 64,725 & \textbf{15.3} & 1.5 & 17,137 & 4,230 \\
+ & Standby-Lazy & 45,043 & 12.4 & 3.8 & \textbf{0} & 3,642 \\
 \addlinespace
-M & RL-APC & 286,665 & \textbf{18.1} & \textbf{0.0} & 22 & \textbf{15,867} \\
- & Greedy-FR & 281,349 & 11.5 & \textcolor{red}{21.8} & 605 & 24,536 \\
- & Standby-Lazy & \textbf{224,316} & 13.8 & \textcolor{red}{19.2} & \textbf{0} & 16,294 \\
+M & RL-APC & \textbf{48,745} & \textbf{18.1} & \textbf{0.0} & 22 & \textbf{2,698} \\
+ & Greedy-FR & 233,564 & 11.5 & \textcolor{red}{21.8} & 605 & 20,369 \\
+ & Standby-Lazy & 202,882 & 13.8 & \textcolor{red}{19.2} & \textbf{0} & 14,737 \\
 \addlinespace
-L & RL-APC & 662,267 & 17.5 & \textbf{0.0} & \textbf{5,743} & 37,916 \\
- & Greedy-FR (=Charge-High) & \textbf{336,386} & \textbf{30.4} & \textcolor{red}{16.8} & 8,456 & \textbf{11,065} \\
+L & RL-APC & \textbf{101,616} & 17.5 & \textbf{0.0} & \textbf{5,743} & \textbf{5,818} \\
+ & Greedy-FR (=Charge-High) & 223,112 & \textbf{30.4} & \textcolor{red}{16.8} & 8,456 & 7,339 \\
 \addlinespace
-XL & RL-APC & 814,344 & \textbf{22.2} & \textbf{1.5} & 3,365 & \textbf{36,737} \\
- & Greedy-FR & 809,830 & 20.0 & \textcolor{red}{57.7} & 177 & 40,491 \\
- & Standby-Lazy & \textbf{696,148} & 18.8 & \textcolor{red}{64.6} & \textbf{0} & 37,029 \\
+XL & RL-APC & \textbf{130,077} & \textbf{22.2} & \textbf{1.5} & 3,365 & \textbf{5,868} \\
+ & Greedy-FR & 606,680 & 20.0 & \textcolor{red}{57.7} & 177 & 30,334 \\
+ & Standby-Lazy & 667,971 & 18.8 & \textcolor{red}{64.6} & \textbf{0} & 35,530 \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -214,31 +189,31 @@ XL & 814,344 & 809,830 & 170,514 & $+377.6$ & $+374.9$ \\
 \end{table}
 
 % ======================================================================
-% Table 8: Cost Decomposition — Weighted Cost Contributions
+% Table 8: Cost Decomposition — Section 3 Operational Cost
 % ======================================================================
 \begin{table*}[htbp]
 \centering
-\caption{Cost decomposition into weighted components (averages over 30 instances). Travel = $C_\text{tr} \times d + C_\text{time} \times t$; Charging = $C_\text{ch} \times t_\text{ch}$; Tardiness = $C_\text{delay} \times \tau$; Idle = $C_\text{wait} \times t_w + C_\text{cf} \times (t_w + t_\text{cf}) + C_\text{sb} \times t_\text{sb}$; Rejection = $10{,}000 \times n_\text{rej}$; Other = terminal penalties and reward shaping. Rejection cost (in \textcolor{red}{red} when $\geq 30\%$ of total) dominates baselines; RL-APC shifts cost to idle (conservative waiting).}
+\caption{Cost decomposition into weighted components (averages over 30 test instances). Oper.\ = Travel + Charging + Tardiness + Idle (Section~3 operational cost). Reject.\ = $10{,}000 \times n_\text{rej}$. Terminal = $C_\text{term} \times n_\text{unfin}$ at episode end (tasks accepted but not completed within the horizon). Best Oper.\ per scale in \textbf{bold}. Rejection cost in \textcolor{red}{red} when $\geq 30\%$ of total. L-scale: Greedy-FR = Charge-High (best fixed rule).}
 \label{tab:cost_decomp}
 \small
-\begin{tabular}{llrrrrrrrr}
+\begin{tabular}{ll rrrr r r r r r}
 \toprule
-Scale & Method & Travel & Charg. & Tard. & Idle & Reject. & Other & Total & \% Rej. \\
+Scale & Method & Travel & Charg. & Tard. & Idle & Oper. & Reject. & Terminal & Total & \% Rej. \\
 \midrule
-S & RL-APC & 1,487 & 78 & 273 & 3,323 & 0 & 34,684 & 39,846 & 0\% \\
- & Greedy-FR & 8,729 & 1,110 & 34,274 & 4,279 & 15,333 & 31,047 & 94,772 & 16\% \\
- & Standby-Lazy & 1,053 & 9 & 0 & 2,982 & \textcolor{red}{38,000} & 18,688 & 60,731 & 63\% \\
+S & RL-APC & 1,487 & 78 & 273 & 3,323 & 5,162 & 0 & 8,000 & 13,162 & 0\% \\
+ & Greedy-FR & 8,729 & 1,110 & 34,274 & 4,279 & 48,391 & 15,333 & 1,000 & 64,725 & 24\% \\
+ & Standby-Lazy & 1,053 & 9 & 0 & 2,982 & \textbf{4,043} & \textcolor{red}{38,000} & 3,000 & 45,043 & 84\% \\
 \addlinespace
-M & RL-APC & 3,123 & 199 & 44 & 3,629 & 0 & 279,671 & 286,665 & 0\% \\
- & Greedy-FR & 4,087 & 336 & 1,210 & 6,182 & \textcolor{red}{218,000} & 51,535 & 281,349 & 77\% \\
- & Standby-Lazy & 1,686 & 6 & 0 & 4,440 & \textcolor{red}{192,333} & 25,851 & 224,316 & 86\% \\
+M & RL-APC & 3,123 & 199 & 44 & 3,629 & 6,995 & 0 & 41,750 & 48,745 & 0\% \\
+ & Greedy-FR & 4,087 & 336 & 1,210 & 6,182 & 11,814 & \textcolor{red}{218,000} & 3,750 & 233,564 & 93\% \\
+ & Standby-Lazy & 1,686 & 6 & 0 & 4,440 & \textbf{6,132} & \textcolor{red}{192,333} & 4,417 & 202,882 & 95\% \\
 \addlinespace
-L & RL-APC & 4,598 & 276 & 11,487 & 7,322 & 0 & 638,584 & 662,267 & 0\% \\
- & Greedy-FR (=Charge-High) & 12,329 & 1,341 & 16,913 & 6,064 & \textcolor{red}{168,000} & 131,740 & 336,386 & 50\% \\
+L & RL-APC & 4,598 & 276 & 11,487 & 7,322 & \textbf{23,682} & 0 & 77,933 & 101,616 & 0\% \\
+ & Greedy-FR (=Charge-High) & 12,329 & 1,341 & 16,913 & 6,064 & 36,646 & \textcolor{red}{168,000} & 18,467 & 223,112 & 75\% \\
 \addlinespace
-XL & RL-APC & 7,035 & 392 & 6,731 & 2,052 & 14,667 & 783,468 & 814,344 & 2\% \\
- & Greedy-FR & 7,889 & 509 & 354 & 2,545 & \textcolor{red}{577,333} & 221,200 & 809,830 & 71\% \\
- & Standby-Lazy & 3,672 & 4 & 0 & 8,462 & \textcolor{red}{646,333} & 37,677 & 696,148 & 93\% \\
+XL & RL-APC & 7,035 & 392 & 6,731 & 2,052 & 16,210 & 14,667 & 99,200 & 130,077 & 11\% \\
+ & Greedy-FR & 7,889 & 509 & 354 & 2,545 & \textbf{11,297} & \textcolor{red}{577,333} & 18,050 & 606,680 & 95\% \\
+ & Standby-Lazy & 3,672 & 4 & 0 & 8,462 & 12,138 & \textcolor{red}{646,333} & 9,500 & 667,971 & 97\% \\
 \bottomrule
 \end{tabular}
 \end{table*}

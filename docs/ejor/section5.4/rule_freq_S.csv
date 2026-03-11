@@ -1,0 +1,16 @@
+rule_id,rule_name,count,frequency,percentage
+1,STTF,142,0.0031,0.3%
+2,EDD,132,0.0029,0.3%
+3,MST,126,0.0028,0.3%
+4,HPF,141,0.0031,0.3%
+5,Charge-Urgent,11,0.0002,0.0%
+6,Charge-Low,12,0.0003,0.0%
+7,Charge-Med,60,0.0013,0.1%
+8,Charge-High,128,0.0028,0.3%
+9,Charge-Opp,20271,0.4471,44.7%
+10,Standby-LowCost,4630,0.1021,10.2%
+11,Standby-Lazy,14490,0.3196,32.0%
+12,Standby-Heatmap,4671,0.1030,10.3%
+13,Accept-Feasible,68,0.0015,0.1%
+14,Accept-Value,420,0.0093,0.9%
+15,Insert-MinCost,36,0.0008,0.1%

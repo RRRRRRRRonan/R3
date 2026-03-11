@@ -1,0 +1,21 @@
+Event Type,Scale,Top1 Rule,Top1 %,Top2 Rule,Top2 %,Top3 Rule,Top3 %
+TASK_ARRIVAL,S,Accept-Value,47.2%,HPF,12.6%,STTF,12.2%
+TASK_ARRIVAL,M,Accept-Value,79.7%,EDD,3.3%,HPF,3.2%
+TASK_ARRIVAL,L,Accept-Value,59.7%,Charge-Med,7.2%,Charge-High,6.7%
+TASK_ARRIVAL,XL,Accept-Value,73.5%,Accept-Feasible,9.7%,Charge-High,2.4%
+ROBOT_IDLE,S,Charge-Opp,45.4%,Standby-Lazy,34.5%,Standby-LowCost,10.0%
+ROBOT_IDLE,M,Standby-Lazy,71.4%,Charge-Opp,25.8%,Standby-LowCost,1.3%
+ROBOT_IDLE,L,Standby-Lazy,66.2%,Charge-Opp,25.7%,Standby-Heatmap,3.9%
+ROBOT_IDLE,XL,Charge-Opp,59.0%,Standby-Lazy,35.5%,Standby-LowCost,2.6%
+DEADLOCK_RISK,S,Charge-Opp,52.0%,Standby-Lazy,15.7%,Standby-Heatmap,14.4%
+DEADLOCK_RISK,M,Charge-Opp,86.0%,Standby-LowCost,3.9%,Standby-Lazy,3.7%
+DEADLOCK_RISK,L,Charge-Opp,58.8%,Standby-Lazy,11.8%,Standby-LowCost,10.0%
+DEADLOCK_RISK,XL,Charge-Opp,76.0%,Standby-Lazy,5.3%,Charge-High,4.5%
+CHARGE_DONE,S,Standby-Heatmap,36.1%,Standby-Lazy,32.7%,Standby-LowCost,26.5%
+CHARGE_DONE,M,Standby-Lazy,27.5%,Standby-LowCost,26.2%,Standby-Heatmap,23.0%
+CHARGE_DONE,L,Standby-Lazy,44.0%,Standby-Heatmap,16.6%,Standby-LowCost,13.5%
+CHARGE_DONE,XL,Standby-Lazy,38.1%,Standby-Heatmap,27.4%,Standby-LowCost,15.5%
+SOC_LOW,S,Standby-Heatmap,34.7%,Standby-Lazy,26.3%,Standby-LowCost,21.6%
+SOC_LOW,M,Charge-Opp,34.7%,Standby-LowCost,24.9%,Standby-Lazy,18.7%
+SOC_LOW,L,Charge-Opp,55.5%,Standby-Lazy,13.6%,Standby-Heatmap,11.0%
+SOC_LOW,XL,Charge-Opp,39.5%,Standby-LowCost,35.5%,Standby-Heatmap,14.5%
