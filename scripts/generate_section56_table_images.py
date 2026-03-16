@@ -303,10 +303,10 @@ def render_ablation_table():
                   "Compl.", "Rej.", "Delta vs Full"]
 
     data = [
-        ["RL-APC (Full)", "Complete model",         "48,745", "18.1", "0.0", "--"],
-        ["RL-APC-PC",     "No partial charging",    "57,500", "17.3", "0.2", "+18.0%"],
-        ["RL-APC-FM",     "No feasibility masking", "68,200", "15.8", "2.6", "+39.9%"],
-        ["Random",        "Uniform random rule",   "156,522", "9.8", "11.5", "+221.1%"],
+        ["RL-APC (Full)", "Complete model",         "48,745",  "18.10", "0.00", "--"],
+        ["RL-APC-PC",     "No partial charging",    "69,008",  "11.33", "0.00", "+41.6%"],
+        ["RL-APC-FM",     "No feasibility masking", "86,917",   "0.00", "0.00", "+78.3%"],
+        ["Random",        "Uniform random rule",   "156,522",   "9.80", "11.50", "+221.1%"],
     ]
 
     fig, ax = plt.subplots(figsize=(11, 3.8))
@@ -350,6 +350,10 @@ def render_ablation_table():
         rej_val = float(data[i - 1][4])
         if rej_val >= 2:
             table[i, 4].set_text_props(color="#C62828", fontweight="bold")
+        # Zero completions in red (policy collapse)
+        compl_val = float(data[i - 1][3])
+        if compl_val == 0 and i > 1:  # skip Full row
+            table[i, 3].set_text_props(color="#C62828", fontweight="bold")
 
     ax.set_title("Ablation Study: Component Contribution on M-Scale\n"
                  "(Option B Cost, 30 Test Instances)",
@@ -357,8 +361,8 @@ def render_ablation_table():
 
     fig.text(0.5, 0.03,
              "RL-APC-PC: charge_level_ratios=[1.0]; "
-             "RL-APC-FM: feasibility mask disabled. "
-             "Full model cost (48,745) from Section 5.3.",
+             "RL-APC-FM: feasibility mask disabled; "
+             "FM completed 0 tasks (policy collapse).",
              ha="center", fontsize=8, fontstyle="italic", color="gray")
 
     _save(fig, "table_ablation_image")
@@ -384,7 +388,7 @@ if __name__ == "__main__":
     print("\n[4/5] Table 10: Sensitivity")
     render_table10()
 
-    print("\n[5/5] Ablation Table (Template)")
+    print("\n[5/5] Ablation Table")
     render_ablation_table()
 
     print("\nDone!")

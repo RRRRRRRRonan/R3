@@ -1,22 +1,17 @@
 # Section 5.6: Robustness and Sensitivity — Data-Filled Draft
 
-> Updated 2026-03-13, Option B clean cost (Total = Oper + Reject + Terminal)
+> Updated 2026-03-16, Option B clean cost (Total = Oper + Reject + Terminal)
 
 ---
 
 ## P1: Cross-Scale Statistical Significance
 
-Table 4 summarises the comparison between RL-APC and the best-performing
-dispatching rule on each scale. RL-APC reduces total cost by 70.8% on S
-(p = 1.86 × 10⁻⁸), 76.0% on M (p = 1.86 × 10⁻⁹), 54.5% on L
-(p = 7.99 × 10⁻⁶), and 80.5% on XL (p = 1.86 × 10⁻⁹), all statistically
-significant at the 0.1% level after Holm correction. Table 5 extends the
-analysis to all six baselines per scale (24 comparisons total); every adjusted
-p-value remains below 5 × 10⁻⁵, confirming that the improvement is not
-an artefact of a favourable baseline choice. Instance-level win/loss ratios
-range from 25/5 (L vs Charge-High) to 30/0 (M and XL vs several baselines),
-indicating consistent superiority rather than a few large outliers pulling
-the mean.
+As established in Section 5.3, RL-APC achieves statistically significant
+cost reductions across all four scales (54–81%, all p < 10⁻⁵ after Holm
+correction; Tables 4–5). All 24 pairwise comparisons against the six
+baselines reject the null hypothesis at the 0.1% level, and instance-level
+win/loss ratios confirm consistent dominance rather than outlier-driven
+gains.
 
 ---
 
@@ -39,29 +34,15 @@ Figure~\ref{fig:cost-boxplots} shows the distribution of total cost
 interquartile range is tight and well separated from the baselines,
 indicating both low variance and consistent dominance. Multi-seed
 experiments on S-scale (seeds 42, 43, 44) confirm that different random
-initialisations converge to comparable policies.
+initialisations converge to comparable policies. Supplementary L-scale
+experiments with varied network architectures and terminal penalties
+show that under-training, rather than architecture choice, is the
+primary risk factor; given sufficient budget, both [256,128] and
+[512,256] networks converge to comparable performance.
 
 ---
 
-## P3: Hyper-Parameter Sensitivity (L-Scale)
-
-Table 10 reports the effect of architecture and terminal-penalty choices on
-L-scale performance. Configuration v1 ([256, 128] network, penalty = 3,000
-per unfinished task) achieves a cost of 103,180, beating the Greedy-FR
-baseline (234,316) by 56.0%. Configuration v2 ([512, 256], penalty = 2,000)
-with an identical training budget yields 251,495 (+7.3% vs Greedy) — the
-only setting where RL-APC fails to outperform the baseline. However,
-configuration v3, which uses the same architecture and penalty as v2 but
-extends training, recovers to 101,616 (−54.5%), demonstrating that the
-v2 failure is attributable to under-training rather than a fundamental
-architecture mismatch. Two key observations emerge: (i) the terminal
-penalty is the most influential hyper-parameter, as it directly shapes
-the incentive for task acceptance versus rejection; (ii) given sufficient
-training, both network architectures deliver strong results.
-
----
-
-## P4: Computational Cost
+## P3: Computational Cost
 
 Table 9 reports wall-clock runtimes for a single simulation episode.
 RL-APC requires 3.30 s (S), 5.23 s (M), 11.54 s (L), and 4.24 s (XL),
@@ -72,3 +53,42 @@ However, RL remains faster than the offline ALNS heuristic on M
 (event processing, state updates); the neural-network inference itself
 executes in sub-millisecond time per decision point, making RL-APC
 suitable for real-time dispatching even on the largest instances tested.
+
+---
+
+## P4: Ablation Study (M-Scale)
+
+To isolate the contribution of each architectural component, we retrain
+two ablation variants on M-scale with identical hyperparameters and
+training budget (1M steps): RL-APC-PC removes partial-charging
+discretisation (all charging events use full recharge), and RL-APC-FM
+disables feasibility masking (all 15 rules are selectable regardless of
+precondition satisfaction).
+
+Removing partial charging increases total cost by 41.6% (from 48,745 to
+69,008) and reduces completed tasks from 18.10 to 11.33 per episode.
+The agent retains its zero-rejection strategy but loses the ability to
+minimise charging time through opportunistic partial top-ups: full
+recharge cycles consume time that would otherwise be spent on task
+execution, resulting in 23.4 unfinished tasks per episode (terminal
+penalty = 58,583).
+
+Disabling feasibility masking produces a more severe outcome: RL-APC-FM
+completes zero tasks across all 30 test instances, achieving only 106
+decision steps per episode on average (compared with ~1,900 for the PC
+variant and ~2,000 for the full model). Without the action mask
+filtering infeasible choices before the policy network evaluates them,
+the agent cannot distinguish productive from unproductive rules in the
+15-action combinatorial space. Training entropy remains high throughout
+(−2.44 nats), indicating that the policy never converges to a
+meaningful selection strategy. This result demonstrates that feasibility
+masking is not merely a safety constraint but a prerequisite for
+learning: it reduces the effective action space at each decision point
+to the subset of rules whose preconditions are satisfied, transforming
+an intractable exploration problem into one the RL agent can solve.
+
+For reference, uniform random rule selection achieves a cost of 156,522
+(+221% vs Full; 9.8 completions, 11.5 rejections). Even the degenerate
+FM policy (86,917) incurs less cost than Random because it avoids
+explicit task rejections, but this is a vacuous advantage — it simply
+does nothing rather than doing something poorly.
