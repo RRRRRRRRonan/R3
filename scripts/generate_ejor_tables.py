@@ -844,10 +844,15 @@ def main():
     csv_rows_off = []
     for scale in SCALES:
         by = all_data.get(scale, {})
-        rl_cost = np.mean([d["cost"] for d in by["rl_apc"]]) if "rl_apc" in by else None
-        gr_cost = np.mean([d["cost"] for d in by["greedy_fr"]]) if "greedy_fr" in by else None
 
-        # Best offline = min(ALNS-FR, ALNS-PR)
+        # Option B clean cost for online methods (Oper + Reject + Terminal)
+        rl_cost = np.mean([_clean_cost_d(d, scale) for d in by["rl_apc"]]) if "rl_apc" in by else None
+        gr_cost = np.mean([_clean_cost_d(d, scale) for d in by["greedy_fr"]]) if "greedy_fr" in by else None
+
+        # Best offline = min(ALNS-FR, ALNS-PR).
+        # ALNS rows lack per-component metrics (offline optimizer, not simulated),
+        # so use raw cost directly — ALNS completes all tasks with no rejection
+        # or terminal penalty, making its raw cost equivalent to operational cost.
         offline_costs = {}
         for a in ["alns_fr", "alns_pr"]:
             if a in by:
@@ -1101,8 +1106,9 @@ def main():
         for path, label in l_versions:
             rows = _load(path)
             by = _group(rows)
-            rl_cost = np.mean([d["cost"] for d in by["rl_apc"]]) if "rl_apc" in by else None
-            gr_cost = np.mean([d["cost"] for d in by["greedy_fr"]]) if "greedy_fr" in by else None
+            # Option B clean cost for consistency with other tables
+            rl_cost = np.mean([_clean_cost_d(d, "L") for d in by["rl_apc"]]) if "rl_apc" in by else None
+            gr_cost = np.mean([_clean_cost_d(d, "L") for d in by["greedy_fr"]]) if "greedy_fr" in by else None
 
             cfg = l_configs.get(label, {"net_arch": "—", "terminal": "—"})
             diff = ((rl_cost - gr_cost) / gr_cost * 100) if (rl_cost and gr_cost) else None

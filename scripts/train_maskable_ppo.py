@@ -159,6 +159,10 @@ def _build_core_env(
         log_dir=log_dir,
         auto_synth=args.auto_heatmap_from_synth,
     )
+    # Ablation overrides
+    ablation_charge_ratios = (1.0,) if getattr(args, "no_partial_charging", False) else None
+    ablation_disable_mask = getattr(args, "no_feasibility_mask", False)
+
     core_env = RuleSelectionEnv(
         simulator=simulator,
         execution_layer=executor,
@@ -170,6 +174,8 @@ def _build_core_env(
         mip_solver_config=solver_config,
         scenarios=scenarios,
         heatmap_log_path=heatmap_log_path,
+        charge_level_ratios=ablation_charge_ratios,
+        disable_feasibility_mask=ablation_disable_mask,
         cost_log_path=str(log_dir / f"cost_log_{stamp}.jsonl"),
         cost_log_csv_path=str(log_dir / f"cost_log_{stamp}.csv"),
         decision_log_path=str(log_dir / f"decision_log_{stamp}.jsonl"),
@@ -578,10 +584,30 @@ def main() -> None:
         default=None,
         help="Override PPO learning rate. Default uses ppo_trainer value (3e-4).",
     )
+    # ── Ablation flags ──────────────────────────────────────────────────
+    parser.add_argument(
+        "--no-partial-charging",
+        action="store_true",
+        default=False,
+        help="Ablation: disable partial charging (force charge_level_ratios=[1.0], full recharge only).",
+    )
+    parser.add_argument(
+        "--no-feasibility-mask",
+        action="store_true",
+        default=False,
+        help="Ablation: disable feasibility masking (all 15 rules always selectable).",
+    )
     args = parser.parse_args()
 
     log_dir = Path(args.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
+
+    # Report ablation flags
+    if args.no_partial_charging:
+        print("[ABLATION] --no-partial-charging: charge_level_ratios forced to [1.0]")
+    if args.no_feasibility_mask:
+        print("[ABLATION] --no-feasibility-mask: all 15 rules always selectable")
+
     previous_decision_logs = _collect_decision_logs(log_dir)
 
     np.random.seed(args.seed)

@@ -71,6 +71,7 @@ class RuleSelectionEnv:
         heatmap_lookback_buckets: int = 3,
         charge_level_ratios: Optional[Sequence[float]] = None,
         rule7_min_charge_ratio: Optional[float] = None,
+        disable_feasibility_mask: bool = False,
         cost_log_path: Optional[str] = None,
         cost_log_csv_path: Optional[str] = None,
         decision_log_path: Optional[str] = None,
@@ -145,6 +146,7 @@ class RuleSelectionEnv:
             else:
                 rule7_min_charge_ratio = 0.8
         self.rule7_min_charge_ratio = float(rule7_min_charge_ratio)
+        self.disable_feasibility_mask = disable_feasibility_mask
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         base_dir = Path("results") / "logs"
         default_decision_log = base_dir / f"decision_log_{stamp}.jsonl"
@@ -210,15 +212,7 @@ class RuleSelectionEnv:
             self._current_state,
             soc_threshold=self.soc_threshold,
         )
-        mask = action_masks(
-            self._current_event,
-            self._current_state,
-            soc_threshold=self.soc_threshold,
-            energy_config=self.energy_config,
-            charge_level_ratios=self.charge_level_ratios,
-            rule7_min_charge_ratio=self.rule7_min_charge_ratio,
-            return_numpy=False,
-        )
+        mask = self.action_masks()
         info = self._build_info(
             event,
             selected_rule_id=None,
@@ -235,6 +229,8 @@ class RuleSelectionEnv:
     def action_masks(self) -> Sequence[bool]:
         """Return the action mask for the current decision epoch."""
         if self._current_state is None:
+            return [True] * len(ALL_RULES)
+        if self.disable_feasibility_mask:
             return [True] * len(ALL_RULES)
         return action_masks(
             self._current_event,
@@ -261,15 +257,7 @@ class RuleSelectionEnv:
             current_state,
             soc_threshold=self.soc_threshold,
         )
-        mask = action_masks(
-            current_event,
-            current_state,
-            soc_threshold=self.soc_threshold,
-            energy_config=self.energy_config,
-            charge_level_ratios=self.charge_level_ratios,
-            rule7_min_charge_ratio=self.rule7_min_charge_ratio,
-            return_numpy=False,
-        )
+        mask = self.action_masks()
 
         selected_rule_id, action_index = _normalize_action(action_rule_id)
         masked = False

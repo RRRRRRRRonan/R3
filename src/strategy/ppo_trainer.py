@@ -45,6 +45,8 @@ class PPOTrainingConfig:
     vec_clip_reward: float = 10.0
     vec_norm_epsilon: float = 1e-8
     ppo_kwargs: dict[str, object] = field(default_factory=_default_ppo_kwargs)
+    load_model: Optional[str] = None
+    load_vecnormalize: Optional[str] = None
 
 
 def make_masked_env(core_env: RuleSelectionEnv):
@@ -122,6 +124,7 @@ def train_maskable_ppo(
         train_env=train_env,
         eval_env=eval_env,
         config=config,
+        load_vecnormalize=config.load_vecnormalize,
     )
 
     if eval_vec_env is not None and config.eval_freq > 0:
@@ -139,13 +142,23 @@ def train_maskable_ppo(
             _vec_normalize_env=vec_normalize_env,
         )
 
-    model = MaskablePPO(
-        config.policy,
-        train_vec_env,
-        verbose=1,
-        seed=config.seed,
-        **config.ppo_kwargs,
-    )
+    if config.load_model:
+        print(f"[fine-tune] Loading pretrained model from {config.load_model}")
+        model = MaskablePPO.load(
+            config.load_model,
+            env=train_vec_env,
+            verbose=1,
+            seed=config.seed,
+            **config.ppo_kwargs,
+        )
+    else:
+        model = MaskablePPO(
+            config.policy,
+            train_vec_env,
+            verbose=1,
+            seed=config.seed,
+            **config.ppo_kwargs,
+        )
     model.learn(total_timesteps=config.total_timesteps, callback=callback)
     if save_dir:
         model.save(str(save_dir / "final_model"))
@@ -159,6 +172,7 @@ def _prepare_vec_envs(
     train_env,
     eval_env,
     config: PPOTrainingConfig,
+    load_vecnormalize: Optional[str] = None,
 ):
     from stable_baselines3.common.vec_env import VecNormalize
 
@@ -169,16 +183,23 @@ def _prepare_vec_envs(
         return train_vec_env, eval_vec_env, None
 
     gamma = float(config.ppo_kwargs.get("gamma", 0.99))
-    train_vec_env = VecNormalize(
-        train_vec_env,
-        training=True,
-        norm_obs=config.vec_norm_obs,
-        norm_reward=config.vec_norm_reward,
-        clip_obs=float(config.vec_clip_obs),
-        clip_reward=float(config.vec_clip_reward),
-        gamma=gamma,
-        epsilon=float(config.vec_norm_epsilon),
-    )
+
+    if load_vecnormalize:
+        print(f"[fine-tune] Loading VecNormalize stats from {load_vecnormalize}")
+        train_vec_env = VecNormalize.load(load_vecnormalize, train_vec_env)
+        train_vec_env.training = True
+        train_vec_env.gamma = gamma
+    else:
+        train_vec_env = VecNormalize(
+            train_vec_env,
+            training=True,
+            norm_obs=config.vec_norm_obs,
+            norm_reward=config.vec_norm_reward,
+            clip_obs=float(config.vec_clip_obs),
+            clip_reward=float(config.vec_clip_reward),
+            gamma=gamma,
+            epsilon=float(config.vec_norm_epsilon),
+        )
     if eval_vec_env is not None:
         eval_vec_env = VecNormalize(
             eval_vec_env,

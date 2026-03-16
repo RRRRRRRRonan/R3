@@ -264,6 +264,8 @@ def _build_rule_env(
     selected_scenario = _select_scenario(experiment, scenario_index)
     scenarios = [selected_scenario] if selected_scenario is not None else None
     cost_params = getattr(args, "_cost_params_override", None)
+    ablation_charge_ratios = (1.0,) if getattr(args, "no_partial_charging", False) else None
+    ablation_disable_mask = getattr(args, "no_feasibility_mask", False)
     env = RuleSelectionEnv(
         simulator=simulator,
         execution_layer=ExecutionLayer(
@@ -282,6 +284,8 @@ def _build_rule_env(
         scenario_seed=seed,
         fixed_scenario=True,
         auto_synthesize_scenarios=False,
+        charge_level_ratios=ablation_charge_ratios,
+        disable_feasibility_mask=ablation_disable_mask,
         cost_log_path=os.devnull,
         cost_log_csv_path=os.devnull,
         decision_log_path=os.devnull,
@@ -950,6 +954,19 @@ def main() -> int:
         type=float,
         default=None,
         help="Override C_tardiness_shaping_scale to match training cost params.",
+    )
+    # ── Ablation flags (must match training conditions) ──────────────
+    parser.add_argument(
+        "--no-partial-charging",
+        action="store_true",
+        default=False,
+        help="Ablation: disable partial charging (force charge_level_ratios=[1.0]).",
+    )
+    parser.add_argument(
+        "--no-feasibility-mask",
+        action="store_true",
+        default=False,
+        help="Ablation: disable feasibility masking (all 15 rules always selectable).",
     )
 
     args = parser.parse_args()
