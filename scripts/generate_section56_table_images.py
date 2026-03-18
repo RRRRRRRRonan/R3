@@ -192,8 +192,9 @@ def render_table9():
         ["XL", "4.24", "1.03", "9.42", "45.93", "4.1×", "0.09×"],
     ]
 
-    fig, ax = plt.subplots(figsize=(11, 3.2))
+    fig, ax = plt.subplots(figsize=(11, 2.4))
     ax.axis("off")
+    ax.set_position([0.05, 0.15, 0.90, 0.70])
 
     table = ax.table(
         cellText=data, colLabels=col_labels,
@@ -201,7 +202,7 @@ def render_table9():
     )
     table.auto_set_font_size(False)
     table.set_fontsize(10)
-    table.scale(1, 1.7)
+    table.scale(1, 1.5)
 
     # Header
     for j in range(len(col_labels)):
@@ -223,10 +224,10 @@ def render_table9():
 
     ax.set_title("Table 9: Average Wall-Clock Runtime per Instance (seconds)\n"
                  "RL-APC includes simulation overhead; NN inference is sub-millisecond per decision",
-                 fontsize=11, fontweight="bold", pad=15)
+                 fontsize=11, fontweight="bold", pad=8)
 
     # Footnote
-    fig.text(0.5, 0.02,
+    fig.text(0.5, 0.03,
              "Green = RL-APC faster than ALNS-PR. "
              "L-scale ALNS unavailable for current instance set.",
              ha="center", fontsize=8, fontstyle="italic", color="gray")
