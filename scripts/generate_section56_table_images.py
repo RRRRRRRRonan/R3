@@ -301,7 +301,7 @@ def render_table10():
 
 def render_ablation_table():
     col_labels = ["Variant", "Description", "M Cost",
-                  "Compl.", "Rej.", "Delta vs Full"]
+                  "Completed", "Rejected", "Delta vs Full"]
 
     data = [
         ["RL-APC (Full)", "Complete model",         "48,745",  "18.10", "0.00", "--"],
@@ -361,8 +361,8 @@ def render_ablation_table():
                  fontsize=11, fontweight="bold", pad=15)
 
     fig.text(0.5, 0.03,
-             "RL-APC-PC: charge_level_ratios=[1.0]; "
-             "RL-APC-FM: feasibility mask disabled; "
+             "RL-APC-PC: partial charging disabled (full recharge only); "
+             "RL-APC-FM: feasibility masking disabled; "
              "FM completed 0 tasks (policy collapse).",
              ha="center", fontsize=8, fontstyle="italic", color="gray")
 

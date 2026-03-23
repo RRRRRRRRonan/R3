@@ -40,27 +40,27 @@ plt.rcParams.update({
 # ── Data ──────────────────────────────────────────────────────────────────────
 RULES = [
     # (name, category, S_cost, S_rej, M_cost, M_rej, L_cost, L_rej, XL_cost, XL_rej)
-    ("STTF\u2020",       "Dispatch", 110551, 7.9, 294978, 26.5, 491192, 45.8, 764969,  74.0),
-    ("EDD\u2020",        "Dispatch", 110551, 7.9, 294978, 26.5, 491192, 45.8, 764969,  74.0),
-    ("MST",              "Dispatch", 108707, 7.5, 294407, 26.2, 490298, 45.8, 768743,  74.3),
-    ("HPF\u2020",        "Dispatch", 110551, 7.9, 294978, 26.5, 491192, 45.8, 764969,  74.0),
-    ("Insert-MC",        "Dispatch", 103048, 2.7, 351911, 16.0, 447292, 36.4, 747761,  46.1),
-    ("Charge-Urgent",    "Charge",   118337, 8.2, 301809, 26.2, 498087, 45.5, 841829,  66.8),
-    ("Charge-Low",       "Charge",   118135, 8.2, 335128, 21.7, 737186, 14.7, 1141406, 34.0),
-    ("Charge-Med",       "Charge",   112644, 7.5, 299669, 25.9, 490829, 43.1, 915014,  57.3),
-    ("Charge-High\u2021","Charge",    83962, 1.4, 266218, 20.8, 336386, 16.8, 790373,  55.0),
-    ("Charge-Opp\u2021", "Charge",    83962, 1.4, 266218, 20.8, 336386, 16.8, 790373,  55.0),
-    ("Standby-LC\u00A7", "Standby",  126546, 9.2, 301201, 26.3, 497103, 45.3, 762554,  74.3),
-    ("Standby-Lazy",     "Standby",   60731, 3.8, 224316, 19.2, 418299, 37.9, 696148,  64.6),
-    ("Standby-HM\u00A7", "Standby",  126546, 9.2, 301201, 26.3, 497103, 45.3, 762554,  74.3),
-    ("Accept-Feas",      "Accept",   118405, 8.5, 300925, 26.3, 497360, 45.5, 780760,  74.0),
-    ("Accept-Val",       "Accept",   157360, 0.0, 490642,  0.0, 831429,  0.0, 1360537,  0.0),
+    ("STTF\u2020",       "Dispatch",  88840, 7.9, 275178, 26.5, 469092, 45.8, 750969,  74.0),
+    ("EDD\u2020",        "Dispatch",  88840, 7.9, 275178, 26.5, 469092, 45.8, 750969,  74.0),
+    ("MST",              "Dispatch",  85842, 7.5, 272907, 26.2, 468798, 45.8, 754343,  74.3),
+    ("HPF\u2020",        "Dispatch",  88840, 7.9, 275178, 26.5, 469092, 45.8, 750969,  74.0),
+    ("Insert-MC",        "Dispatch",  82132, 2.7, 265211, 16.0, 435012, 36.4, 710061,  46.1),
+    ("Charge-Urgent",    "Charge",    93535, 8.2, 275409, 26.2, 469287, 45.5, 744229,  66.8),
+    ("Charge-Low",       "Charge",    93435, 8.2, 258428, 21.7, 340286, 14.7, 733306,  34.0),
+    ("Charge-Med",       "Charge",    88044, 7.5, 272769, 25.9, 450729, 43.1, 726214,  57.3),
+    ("Charge-High\u2021","Charge",    64725, 1.4, 233564, 20.8, 223112, 16.8, 667971,  55.0),
+    ("Charge-Opp\u2021", "Charge",    64725, 1.4, 233564, 20.8, 223112, 16.8, 667971,  55.0),
+    ("Standby-LC\u00A7", "Standby",  102746, 9.2, 275901, 26.3, 468003, 45.3, 751654,  74.3),
+    ("Standby-Lazy",     "Standby",   45043, 3.8, 202882, 19.2, 418299, 37.9, 667971,  64.6),
+    ("Standby-HM\u00A7", "Standby",  102746, 9.2, 275901, 26.3, 468003, 45.3, 751654,  74.3),
+    ("Accept-Feas",      "Accept",    95405, 8.5, 275825, 26.3, 469360, 45.5, 757900,  74.0),
+    ("Accept-Val",       "Accept",   114130, 0.0, 490642,  0.0, 831429,  0.0, 1360537,  0.0),
 ]
 
-RL_ROW = ("RL-APC", "Adaptive", 39846, 0.0, 286665, 0.0, 662267, 0.0, 814344, 1.5)
+RL_ROW = ("RL-APC", "Adaptive", 13162, 0.0, 48745, 0.0, 101616, 0.3, 130077, 1.5)
 
 CAT_BOUNDARIES = [5, 10, 13]
-BEST_RULE_ROWS = {"S": 11, "M": 11, "L": 8, "XL": 11}
+BEST_RULE_ROWS = {"S": 11, "M": 11, "L": 8, "XL": [8, 11]}
 
 # ── Colors ────────────────────────────────────────────────────────────────────
 C_NAVY     = "#1B2A4A"
@@ -105,14 +105,14 @@ def draw_table():
     CAPTION_TEXT = (
         "Average total cost and number of rejected tasks (Rej) for 15 individual "
         "dispatch rules and RL-APC across four problem scales (30 test instances "
-        "per scale). Rules are grouped by category. Underlined: best single-rule "
-        "cost per scale. Bold RL-APC cost: lower than all single rules (S only). "
+        "per scale, Option B clean cost). Rules are grouped by category. "
+        "Underlined: best single-rule cost per scale. "
         "Red Rej: \u2265 10 rejected tasks. "
         "\u2020 STTF = EDD = HPF;  \u2021 Charge-High = Charge-Opp;  "
         "\u00A7 Standby-LC = Standby-HM (identical performance), "
         "reducing 15 rules to 11 independent strategies. "
-        "The best rule shifts from Standby-Lazy (S, M, XL) to Charge-High (L); "
-        "cost ratio between worst and best: 1.95\u00D7 (XL) to 2.59\u00D7 (S)."
+        "The best rule is Standby-Lazy (S, M) and Charge-High (L); "
+        "on XL, Charge-High and Standby-Lazy tie at 667,971."
     )
     cap_lines = textwrap.wrap(CAPTION_TEXT, width=130)
     CAP_LINE_H = 0.16       # very tight line spacing
@@ -236,12 +236,11 @@ def draw_table():
             ci_c = 2 + si * 2
             ci_r = 3 + si * 2
 
-            is_best = (not is_rl and ri == BEST_RULE_ROWS[sc])
-            is_rl_s = (is_rl and sc == "S")
-
+            best_val = BEST_RULE_ROWS[sc]
+            is_best = (not is_rl and (ri == best_val if isinstance(best_val, int) else ri in best_val))
             # cost
-            cw = "bold" if (is_best or is_rl_s) else "normal"
-            cc = C_NAVY if is_rl_s else C_TEXT
+            cw = "bold" if (is_best or is_rl) else "normal"
+            cc = C_NAVY if is_rl else C_TEXT
             if is_best:
                 txt_uline(col_cx[ci_c], ym, fmt_cost(cv), fs=7.5,
                           color=cc, weight=cw)

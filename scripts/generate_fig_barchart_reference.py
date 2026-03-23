@@ -56,20 +56,20 @@ CAT_COLORS = {
     "Accept":   "#8E44AD",
 }
 
-# costs[scale][rule_index]  — same as table3_target_reference RULES
+# costs[scale][rule_index]  — Option B clean cost (Total = Oper + Reject + Terminal)
 COSTS = {
-    "S":  [110551, 110551, 108707, 110551, 103048,
-           118337, 118135, 112644,  83962,  83962,
-           126546,  60731, 126546, 118405, 157360],
-    "M":  [294978, 294978, 294407, 294978, 351911,
-           301809, 335128, 299669, 266218, 266218,
-           301201, 224316, 301201, 300925, 490642],
-    "L":  [491192, 491192, 490298, 491192, 447292,
-           498087, 737186, 490829, 336386, 336386,
-           497103, 418299, 497103, 497360, 831429],
-    "XL": [764969, 764969, 768743, 764969, 747761,
-           841829, 1141406, 915014, 790373, 790373,
-           762554, 696148, 762554, 780760, 1360537],
+    "S":  [ 88840,  88840,  85842,  88840,  82132,
+            93535,  93435,  88044,  64725,  64725,
+           102746,  45043, 102746,  95405, 114130],
+    "M":  [275178, 275178, 272907, 275178, 265211,
+           275409, 258428, 272769, 233564, 233564,
+           275901, 202882, 275901, 275825, 490642],
+    "L":  [469092, 469092, 468798, 469092, 435012,
+           469287, 340286, 450729, 223112, 223112,
+           468003, 418299, 468003, 469360, 831429],
+    "XL": [750969, 750969, 754343, 750969, 710061,
+           744229, 733306, 726214, 667971, 667971,
+           751654, 667971, 751654, 757900, 1360537],
 }
 
 REJS = {
@@ -79,9 +79,9 @@ REJS = {
     "XL": [74.0, 74.0, 74.3, 74.0, 46.1, 66.8, 34.0, 57.3, 55.0, 55.0, 74.3, 64.6, 74.3, 74.0, 0.0],
 }
 
-# RL-APC projected targets (matching table3_target_reference RL_ROW)
-RL_COST = {"S": 39846, "M": 251438, "L": 397214, "XL": 728591}
-RL_REJ  = {"S": 0.0,   "M": 0.0,   "L": 0.3,    "XL": 0.7}
+# RL-APC real results (Option B clean cost)
+RL_COST = {"S": 13162, "M": 48745, "L": 101616, "XL": 130077}
+RL_REJ  = {"S": 0.0,   "M": 0.0,   "L": 0.3,    "XL": 1.5}
 
 # ── Colors ────────────────────────────────────────────────────────────────────
 C_NAVY = "#1B2A4A"
@@ -148,7 +148,7 @@ def draw_chart():
     # Unified legend at bottom: categories + RL-APC line + R: note
     cat_handles = [Patch(facecolor=CAT_COLORS[c], label=c) for c in CAT_COLORS]
     rl_handle = mlines.Line2D([], [], color=C_RL, linewidth=1.8,
-                               linestyle="--", label="RL-APC (target)")
+                               linestyle="--", label="RL-APC")
     all_handles = cat_handles + [rl_handle]
     fig.legend(handles=all_handles, loc="lower center", ncol=5,
                fontsize=9, bbox_to_anchor=(0.5, 0.01),
@@ -158,7 +158,7 @@ def draw_chart():
              "R:n = average number of rejected tasks (shown when \u2265 5).",
              ha="center", fontsize=8, color="#555555", style="italic")
 
-    fig.suptitle("Individual Rule Performance Across Scales  [REFERENCE TARGET]",
+    fig.suptitle("Individual Rule Performance Across Scales",
                  fontsize=14, fontweight="bold", color=C_NAVY, y=0.99)
     fig.tight_layout(rect=[0, 0.05, 1, 0.96])
     return fig

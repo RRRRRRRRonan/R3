@@ -42,7 +42,7 @@ RULE_NAMES = {
     5: "Charge-Urgent", 6: "Charge-Low", 7: "Charge-Med",
     8: "Charge-High", 9: "Charge-Opp",
     10: "Standby-LowCost", 11: "Standby-Lazy", 12: "Standby-Heatmap",
-    13: "Accept-Feasible", 14: "Accept-Value",
+    13: "Accept-Feasible", 14: "Accept-Feasible",
     15: "Insert-MinCost",
 }
 
@@ -116,7 +116,7 @@ def _short_name(rid: int) -> str:
         5: "Ch-Urg", 6: "Ch-Low", 7: "Ch-Med",
         8: "Ch-High", 9: "Ch-Opp",
         10: "Sb-LC", 11: "Sb-Lazy", 12: "Sb-Heat",
-        13: "Ac-Feas", 14: "Ac-Val",
+        13: "Ac-Feas", 14: "Ac-Feas",
         15: "Ins-MC",
     }
     return mapping.get(rid, f"R{rid}")
@@ -189,12 +189,11 @@ def main():
         "Charge-Other": (RULE_COLORS[7], "Charge-Other (Urg/Low/Med/High)"),
         "Standby-Lazy": (RULE_COLORS[11], "Standby-Lazy"),
         "Standby-Other": (RULE_COLORS[10], "Standby-Other (LowCost/Heatmap)"),
-        "Accept-Value": (RULE_COLORS[14], "Accept-Value"),
-        "Accept-Feasible": (RULE_COLORS[13], "Accept-Feasible"),
+        "Accept-Feasible": (RULE_COLORS[14], "Accept-Feasible"),
     }
 
     for key in ["Dispatch", "Charge-Opp", "Charge-Other",
-                "Standby-Lazy", "Standby-Other", "Accept-Value", "Accept-Feasible"]:
+                "Standby-Lazy", "Standby-Other", "Accept-Feasible"]:
         color, label = cat_representative[key]
         legend_entries.append(mpatches.Patch(facecolor=color, edgecolor="white",
                                              linewidth=0.5, label=label))
