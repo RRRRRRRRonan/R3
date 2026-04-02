@@ -1,0 +1,13 @@
+Scale,Variant,Cost,Completed,Rejected,Delta_pct,Compl_Ratio,Cost_per_Task
+S,RL-APC (Full),"13,162",14.50,0.00,—,100%,908
+S,No Partial Charging,"17,915",12.30,0.00,+36.1%,85%,"1,457"
+S,No Feasibility Masking,"51,624",0.00,0.00,+292.2%,0%,∞
+S,Random Baseline,"53,207",10.67,3.53,+304.2%,74%,"4,987"
+M,RL-APC (Full),"48,745",18.10,0.00,—,100%,"2,693"
+M,No Partial Charging,"69,008",11.33,0.00,+41.6%,63%,"6,091"
+M,No Feasibility Masking,"86,917",0.00,0.00,+78.3%,0%,∞
+M,Random Baseline,"156,522",9.80,11.50,+221.1%,54%,"15,972"
+XL,RL-APC (Full),"130,077",22.17,1.47,—,100%,"5,867"
+XL,No Partial Charging,"145,700",12.20,2.00,+12.0%,55%,"11,943"
+XL,No Feasibility Masking,"180,000",0.00,5.00,+38.4%,0%,∞
+XL,Random Baseline,"379,041",18.87,30.73,+191.4%,85%,"20,087"
