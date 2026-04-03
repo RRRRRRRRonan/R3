@@ -49,7 +49,7 @@ LABEL_MAP = {
     (1e-3, 0.10): "lr1e3_ent010",
 }
 
-BASE_COST = 48_745  # RL-APC (Full) M-scale from Table 4
+BASE_COST = None  # Will be set from actual base eval (lr3e4_ent005)
 
 
 def _clean_cost(df: pd.DataFrame) -> pd.Series:
@@ -81,6 +81,7 @@ def load_grid():
         stds: 3×3 array of std
         missing: list of (lr, ent) pairs with no data
     """
+    global BASE_COST
     costs = np.full((3, 3), np.nan)
     stds = np.full((3, 3), np.nan)
     missing = []
@@ -107,8 +108,18 @@ def load_grid():
             cc = _clean_cost(ok)
             costs[i, j] = cc.mean()
             stds[i, j] = cc.std()
-            print(f"  ({lr}, {ent}): cost={cc.mean():,.0f} ± {cc.std():,.0f} "
-                  f"[{len(ok)} instances]")
+
+            # Set BASE_COST from actual base config evaluation
+            if lr == BASE_LR and ent == BASE_ENT:
+                BASE_COST = cc.mean()
+                print(f"  ({lr}, {ent}): cost={cc.mean():,.0f} ± {cc.std():,.0f} ★ BASE")
+            else:
+                print(f"  ({lr}, {ent}): cost={cc.mean():,.0f} ± {cc.std():,.0f} "
+                      f"[{len(ok)} instances]")
+
+    if BASE_COST is None:
+        BASE_COST = costs[1, 1]  # fallback to center cell
+        print(f"  [WARN] Base config not found, using center cell: {BASE_COST:,.0f}")
 
     return costs, stds, missing
 
